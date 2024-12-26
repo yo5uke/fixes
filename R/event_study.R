@@ -6,19 +6,37 @@ utils::globalVariables(c(
 #'
 #' This function performs an event study using fixed effects regression.
 #' It first generates lead and lag dummy variables relative to the treatment timing,
-#' and then estimates the regression model.
+#' scales the time intervals if specified, and then estimates the regression model.
 #'
 #' @param data A dataframe containing the dataset.
-#' @param outcome_var The name of the outcome variable (e.g., "y").
-#' @param treated_var The name of the treatment variable (e.g., "treated").
-#' @param time_var The name of the time variable (e.g., "year").
-#' @param timing The time period when the treatment occurred.
-#' @param lead_range Number of time periods to include before the treatment (negative leads).
-#' @param lag_range Number of time periods to include after the treatment (positive lags).
-#' @param fe_var A vector of fixed effects variables (e.g., c("id", "year")).
-#' @param cluster_var An optional variable for clustering standard errors.
-#' @return A tidy dataframe with regression results, including estimates,
-#' confidence intervals, and a relative time column.
+#' @param outcome_var The name of the outcome variable (e.g., "y"). Should be unquoted.
+#' @param treated_var The name of the treatment variable (e.g., "treated"). Should be unquoted.
+#' @param time_var The name of the time variable (e.g., "year"). Should be unquoted.
+#' @param timing The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.
+#' @param lead_range Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.
+#' @param lag_range Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.
+#' @param fe_var A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.
+#' @param cluster_var An optional variable for clustering standard errors. For example, `cluster_var = "state"`.
+#' @param baseline The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.
+#' @param interval The time interval between observations (default: 1). For example, use `interval = 5` for datasets where time steps are in 5-year intervals.
+#' @return A tidy dataframe with regression results. This includes:
+#' - `term`: The lead or lag variable names.
+#' - `estimate`: Estimated coefficients.
+#' - `std.error`: Standard errors.
+#' - `conf.high`: Upper bound of the 95% confidence interval.
+#' - `conf.low`: Lower bound of the 95% confidence interval.
+#' - `relative_time`: Scaled relative time based on the specified `interval`.
+#' @details
+#' This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals). It automatically scales the relative time variable using the `interval` parameter.
+#'
+#' Steps:
+#' 1. Compute the relative time for each observation as `(time_var - timing) / interval`.
+#' 2. Generate lead and lag dummy variables within the specified ranges (`lead_range`, `lag_range`).
+#' 3. Construct and estimate the fixed effects regression model using `fixest::feols`.
+#' 4. Format the regression results into a tidy dataframe.
+#'
+#' If `interval > 1`, ensure that the specified `lead_range` and `lag_range` correspond to the number of time intervals, not the absolute number of years.
+#'
 #' @export
 run_es <- function(data,
                    outcome_var,
@@ -28,29 +46,40 @@ run_es <- function(data,
                    lead_range,
                    lag_range,
                    fe_var,
-                   cluster_var = NULL) {
-  # --- 1. Create lead and lag variables ---
+                   cluster_var = NULL,
+                   baseline = -1,
+                   interval = 1) {
+  # ---- 0. Helper function ----
+  # Generate dummy variable names (leadX / lagX) based on relative year i
+  get_term_name <- function(i) {
+    if (i < 0) {
+      paste0("lead", abs(i))
+    } else {
+      paste0("lag", i)
+    }
+  }
 
-  # Convert treated and time variables to symbols
+  # ---- 1. Create lead and lag variables ----
+
+  # Convert treated_var and time_var to symbols
   treated_var_sym <- dplyr::ensym(treated_var)
   time_var_sym    <- dplyr::ensym(time_var)
 
-  # (1) Create a column for relative time
+  # (1) Create relative_time column with scaling (1 unit = 'interval' years)
   data <- data |>
-    dplyr::mutate(relative_time = !!time_var_sym - timing)
+    dplyr::mutate(relative_time = ( !!time_var_sym - timing ) / interval)
 
-  # (2) Check the range of relative time
+  # (2) Check the minimum and maximum values of relative_time
   min_relative_time <- min(data$relative_time, na.rm = TRUE)
   max_relative_time <- max(data$relative_time, na.rm = TRUE)
 
-  # (3) Warn if the specified lead_range or lag_range exceeds the data range
+  # (3) Warn if lead_range or lag_range exceeds the range of data
   if (lead_range > abs(min_relative_time)) {
     warning(
       "The specified lead_range (", lead_range,
       ") exceeds the available range in the data on the lead side (", abs(min_relative_time), ")."
     )
   }
-
   if (lag_range > max_relative_time) {
     warning(
       "The specified lag_range (", lag_range,
@@ -58,19 +87,15 @@ run_es <- function(data,
     )
   }
 
-  # (4) Filter the data within the specified lead and lag range
+  # (4) Filter data to include only the specified lead and lag range
   data <- data |>
     dplyr::filter(
       dplyr::between(relative_time, -lead_range, lag_range)
     )
 
-  # (5) Create lead and lag dummy variables
+  # (5) Create dummy variables for each lead and lag
   for (i in seq(-lead_range, lag_range, by = 1)) {
-    col_name <- if (i < 0) {
-      paste0("lead", abs(i))
-    } else {
-      paste0("lag", i)
-    }
+    col_name <- get_term_name(i)
     data <- data |>
       dplyr::mutate(
         !!col_name := dplyr::if_else(
@@ -81,25 +106,33 @@ run_es <- function(data,
       )
   }
 
-  # --- 2. Run the regression model ---
+  # ---- 2. Construct and estimate the regression model ----
 
-  # Convert outcome variable to a symbol
+  # Convert outcome_var to a symbol
   outcome_var_sym <- dplyr::ensym(outcome_var)
 
-  # Create the right-hand side of the formula
-  RHS_formula <- paste(
-    c(paste0("lead", seq(2, lead_range)),
-      paste0("lag", seq(0, lag_range))),
-    collapse = "+"
+  # 2-1) Generate the full list of terms for lead and lag variables
+  all_terms <- c(
+    paste0("lead", seq(lead_range, 1)),     # lead5,...,lead1
+    paste0("lag", seq(0, lag_range))        # lag0, lag1,...
   )
 
-  # Combine fixed effects variables into a formula
+  # 2-2) Determine the baseline variable to exclude
+  baseline_term <- get_term_name(baseline)
+
+  # 2-3) Exclude the baseline term from the list of terms
+  included_terms <- setdiff(all_terms, baseline_term)
+
+  # 2-4) Create the right-hand side (RHS) of the regression formula
+  RHS_formula <- paste(included_terms, collapse = "+")
+
+  # 2-5) Combine fixed effect variables into a formula
   fe_formula <- paste(fe_var, collapse = "+")
 
-  # Construct the regression formula
+  # 2-6) Construct the regression formula: outcome ~ RHS | FE
   model_formula <- stats::as.formula(
     paste(
-      outcome_var_sym,
+      rlang::as_string(outcome_var_sym),
       "~",
       RHS_formula,
       "|",
@@ -107,46 +140,52 @@ run_es <- function(data,
     )
   )
 
-  # Estimate the model using fixest::feols
+  # 2-7) Estimate the model using fixest::feols
   if (!is.null(cluster_var)) {
     model <- fixest::feols(model_formula, data = data, cluster = cluster_var)
   } else {
     model <- fixest::feols(model_formula, data = data)
   }
 
-  # Format the regression results using broom::tidy
+  # ---- 3. Format the results ----
   result <- broom::tidy(model)
 
-  # Create the order for sorting terms
-  order <- c(
+  # 3-1) Create the full order of terms for sorting
+  full_order <- c(
     paste0("lead", seq(lead_range, 1)),
     paste0("lag", seq(0, lag_range))
   )
 
-  # Add a baseline row for lead1
-  lead1_row <- tibble::tibble(
-    term = "lead1",
+  # 3-2) Add the baseline row with estimate = 0
+  baseline_row <- tibble::tibble(
+    term = baseline_term,
     estimate = 0,
     std.error = 0,
     statistic = NA_real_,
     p.value = NA_real_
   )
 
-  # Combine the baseline with results, reorder terms, and calculate confidence intervals
+  # 3-3) Combine and reorder results
   result <- result |>
-    dplyr::bind_rows(lead1_row) |>
-    dplyr::mutate(term = factor(term, levels = order)) |>
+    dplyr::bind_rows(baseline_row) |>
+    dplyr::mutate(
+      term = factor(term, levels = full_order)
+    ) |>
     dplyr::arrange(term) |>
     dplyr::mutate(
       conf_high = estimate + 1.96 * std.error,
       conf_low  = estimate - 1.96 * std.error
     )
 
-  # Add a relative time column
+  # 3-4) Add the relative_time column based on the scaled interval
+  rel_times <- c(seq(-lead_range, -1), seq(0, lag_range)) * interval
+  rel_map <- tibble::tibble(
+    term = factor(full_order, levels = full_order),
+    relative_time = rel_times
+  )
+
   result <- result |>
-    dplyr::mutate(
-      relative_time = seq(-lead_range, lag_range)
-    )
+    dplyr::left_join(rel_map, by = "term")
 
   return(result)
 }
@@ -155,21 +194,55 @@ run_es <- function(data,
 #' Plot Event Study Results
 #'
 #' This function creates a plot for event study results using `ggplot2`.
-#' Users can choose between ribbon-style confidence intervals or error bars.
+#' Users can choose between ribbon-style confidence intervals or error bars
+#' to visualize the estimates and their uncertainty.
 #'
 #' @param data A dataframe containing the results from the `run_es` function.
+#' The dataframe must include the following columns:
+#' - `relative_time`: The scaled time relative to the treatment.
+#' - `estimate`: The estimated coefficients.
+#' - `conf_low`: The lower bound of the 95% confidence interval.
+#' - `conf_high`: The upper bound of the 95% confidence interval.
+#' - `std.error`: The standard errors (required if `type = "errorbar"`).
 #' @param type The type of confidence interval visualization: "ribbon" (default) or "errorbar".
+#' - "ribbon": Shaded area representing the confidence intervals.
+#' - "errorbar": Vertical error bars for each estimate.
 #' @param vline_val The x-intercept for the vertical reference line (default: 0).
-#' @param vline_color Color for the vertical reference line (default: "#000").
+#' Typically represents the time of treatment.
+#' @param vline_color The color of the vertical reference line (default: "#000").
 #' @param hline_val The y-intercept for the horizontal reference line (default: 0).
-#' @param hline_color Color for the horizontal reference line (default: "#000").
-#' @param linewidth The width of the lines for the plot (default: 1).
+#' Usually represents the null effect line.
+#' @param hline_color The color of the horizontal reference line (default: "#000").
+#' @param linewidth The width of the lines in the plot (default: 1).
 #' @param pointsize The size of the points for the estimates (default: 2).
-#' @param alpha The transparency level for ribbons (default: 0.2).
+#' @param alpha The transparency level for the ribbon (default: 0.2).
 #' @param barwidth The width of the error bars (default: 0.2).
-#' @param color The color for the lines and points (default: "#B25D91FF").
-#' @param fill The fill color for ribbons (default: "#B25D91FF").
-#' @return A ggplot object displaying the event study results.
+#' @param color The color of the lines and points (default: "#B25D91FF").
+#' @param fill The fill color for the ribbon (default: "#B25D91FF").
+#' @return A ggplot object displaying the event study results. The plot includes:
+#' - A line connecting the estimates over relative time.
+#' - Points for the estimated coefficients.
+#' - Either ribbon-style confidence intervals or error bars, depending on `type`.
+#' - Vertical and horizontal reference lines for better interpretability.
+#' @details
+#' This function provides a flexible visualization tool for event study results.
+#' Users can customize the appearance of the plot by adjusting the parameters
+#' for line styles, point sizes, colors, and confidence interval types.
+#'
+#' **Column Requirements**:
+#' The input dataframe (`data`) must include:
+#' - `relative_time`: A numeric column for the time relative to the treatment.
+#' - `estimate`: The estimated coefficients for each relative time.
+#' - `conf_low` and `conf_high`: The bounds of the confidence intervals.
+#' - `std.error`: The standard errors (only required if `type = "errorbar"`).
+#'
+#' **Type Options**:
+#' - `"ribbon"`: A shaded area to represent the confidence intervals.
+#' - `"errorbar"`: Error bars for each point. Standard errors (`std.error`) are required.
+#'
+#' @note If `type = "errorbar"`, ensure that the `std.error` column is present in the input dataframe.
+#' Missing values in the `std.error` column for any term will result in incomplete confidence intervals.
+#'
 #' @export
 plot_es <- function(data, type = "ribbon", vline_val = 0, vline_color = "#000", hline_val = 0, hline_color = "#000", linewidth = 1, pointsize = 2, alpha = .2, barwidth = .2, color = "#B25D91FF", fill = "#B25D91FF") {
   # Validate the type of confidence interval visualization

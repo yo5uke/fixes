@@ -20,34 +20,69 @@ plot_es(
 )
 }
 \arguments{
-\item{data}{A dataframe containing the results from the `run_es` function.}
+\item{data}{A dataframe containing the results from the `run_es` function.
+The dataframe must include the following columns:
+- `relative_time`: The scaled time relative to the treatment.
+- `estimate`: The estimated coefficients.
+- `conf_low`: The lower bound of the 95% confidence interval.
+- `conf_high`: The upper bound of the 95% confidence interval.
+- `std.error`: The standard errors (required if `type = "errorbar"`).}
 
-\item{type}{The type of confidence interval visualization: "ribbon" (default) or "errorbar".}
+\item{type}{The type of confidence interval visualization: "ribbon" (default) or "errorbar".
+- "ribbon": Shaded area representing the confidence intervals.
+- "errorbar": Vertical error bars for each estimate.}
 
-\item{vline_val}{The x-intercept for the vertical reference line (default: 0).}
+\item{vline_val}{The x-intercept for the vertical reference line (default: 0).
+Typically represents the time of treatment.}
 
-\item{vline_color}{Color for the vertical reference line (default: "#000").}
+\item{vline_color}{The color of the vertical reference line (default: "#000").}
 
-\item{hline_val}{The y-intercept for the horizontal reference line (default: 0).}
+\item{hline_val}{The y-intercept for the horizontal reference line (default: 0).
+Usually represents the null effect line.}
 
-\item{hline_color}{Color for the horizontal reference line (default: "#000").}
+\item{hline_color}{The color of the horizontal reference line (default: "#000").}
 
-\item{linewidth}{The width of the lines for the plot (default: 1).}
+\item{linewidth}{The width of the lines in the plot (default: 1).}
 
 \item{pointsize}{The size of the points for the estimates (default: 2).}
 
-\item{alpha}{The transparency level for ribbons (default: 0.2).}
+\item{alpha}{The transparency level for the ribbon (default: 0.2).}
 
 \item{barwidth}{The width of the error bars (default: 0.2).}
 
-\item{color}{The color for the lines and points (default: "#B25D91FF").}
+\item{color}{The color of the lines and points (default: "#B25D91FF").}
 
-\item{fill}{The fill color for ribbons (default: "#B25D91FF").}
+\item{fill}{The fill color for the ribbon (default: "#B25D91FF").}
 }
 \value{
-A ggplot object displaying the event study results.
+A ggplot object displaying the event study results. The plot includes:
+- A line connecting the estimates over relative time.
+- Points for the estimated coefficients.
+- Either ribbon-style confidence intervals or error bars, depending on `type`.
+- Vertical and horizontal reference lines for better interpretability.
 }
 \description{
 This function creates a plot for event study results using `ggplot2`.
-Users can choose between ribbon-style confidence intervals or error bars.
+Users can choose between ribbon-style confidence intervals or error bars
+to visualize the estimates and their uncertainty.
+}
+\details{
+This function provides a flexible visualization tool for event study results.
+Users can customize the appearance of the plot by adjusting the parameters
+for line styles, point sizes, colors, and confidence interval types.
+
+**Column Requirements**:
+The input dataframe (`data`) must include:
+- `relative_time`: A numeric column for the time relative to the treatment.
+- `estimate`: The estimated coefficients for each relative time.
+- `conf_low` and `conf_high`: The bounds of the confidence intervals.
+- `std.error`: The standard errors (only required if `type = "errorbar"`).
+
+**Type Options**:
+- `"ribbon"`: A shaded area to represent the confidence intervals.
+- `"errorbar"`: Error bars for each point. Standard errors (`std.error`) are required.
+}
+\note{
+If `type = "errorbar"`, ensure that the `std.error` column is present in the input dataframe.
+Missing values in the `std.error` column for any term will result in incomplete confidence intervals.
 }

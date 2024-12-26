@@ -13,34 +13,56 @@ run_es(
   lead_range,
   lag_range,
   fe_var,
-  cluster_var = NULL
+  cluster_var = NULL,
+  baseline = -1,
+  interval = 1
 )
 }
 \arguments{
 \item{data}{A dataframe containing the dataset.}
 
-\item{outcome_var}{The name of the outcome variable (e.g., "y").}
+\item{outcome_var}{The name of the outcome variable (e.g., "y"). Should be unquoted.}
 
-\item{treated_var}{The name of the treatment variable (e.g., "treated").}
+\item{treated_var}{The name of the treatment variable (e.g., "treated"). Should be unquoted.}
 
-\item{time_var}{The name of the time variable (e.g., "year").}
+\item{time_var}{The name of the time variable (e.g., "year"). Should be unquoted.}
 
-\item{timing}{The time period when the treatment occurred.}
+\item{timing}{The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.}
 
-\item{lead_range}{Number of time periods to include before the treatment (negative leads).}
+\item{lead_range}{Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.}
 
-\item{lag_range}{Number of time periods to include after the treatment (positive lags).}
+\item{lag_range}{Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.}
 
-\item{fe_var}{A vector of fixed effects variables (e.g., c("id", "year")).}
+\item{fe_var}{A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.}
 
-\item{cluster_var}{An optional variable for clustering standard errors.}
+\item{cluster_var}{An optional variable for clustering standard errors. For example, `cluster_var = "state"`.}
+
+\item{baseline}{The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.}
+
+\item{interval}{The time interval between observations (default: 1). For example, use `interval = 5` for datasets where time steps are in 5-year intervals.}
 }
 \value{
-A tidy dataframe with regression results, including estimates,
-confidence intervals, and a relative time column.
+A tidy dataframe with regression results. This includes:
+- `term`: The lead or lag variable names.
+- `estimate`: Estimated coefficients.
+- `std.error`: Standard errors.
+- `conf.high`: Upper bound of the 95% confidence interval.
+- `conf.low`: Lower bound of the 95% confidence interval.
+- `relative_time`: Scaled relative time based on the specified `interval`.
 }
 \description{
 This function performs an event study using fixed effects regression.
 It first generates lead and lag dummy variables relative to the treatment timing,
-and then estimates the regression model.
+scales the time intervals if specified, and then estimates the regression model.
+}
+\details{
+This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals). It automatically scales the relative time variable using the `interval` parameter.
+
+Steps:
+1. Compute the relative time for each observation as `(time_var - timing) / interval`.
+2. Generate lead and lag dummy variables within the specified ranges (`lead_range`, `lag_range`).
+3. Construct and estimate the fixed effects regression model using `fixest::feols`.
+4. Format the regression results into a tidy dataframe.
+
+If `interval > 1`, ensure that the specified `lead_range` and `lag_range` correspond to the number of time intervals, not the absolute number of years.
 }
