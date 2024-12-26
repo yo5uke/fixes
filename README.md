@@ -11,6 +11,14 @@
 
 ## Overview
 
+> **Note**  
+> The `fixes` package currently supports data with annual time intervals
+> only.  
+> For datasets with finer time intervals, such as monthly or quarterly
+> data, I recommend creating a new column with sequential time numbers
+> (e.g., 1, 2, 3, …) representing the time order.  
+> This column can then be used for analysis.
+
 The `fixes` package is designed for conducting analysis and creating
 plots for event studies, a method used to verify the parallel trends
 assumption in two-way fixed effects (TWFE) difference-in-differences
@@ -85,7 +93,7 @@ For example, a data frame like the following:
 | time_var | Variable that represents time |
 | timing | Variable indicating treatment timing |
 | lead_range | Range of time before treatment |
-| lag_range | Range of time aftere treatment |
+| lag_range | Range of time aftere treatment (excluding the year of treatment) |
 | fe_var | Variable representing fixed effects |
 | cluster_var | A variable that specifies how to cluster the standard error (if clustering is requested) |
 | baseline | A number indicating the relative year to be dropped when performing a regression |
@@ -103,7 +111,9 @@ event_study <- run_es(
   lead_range  = 5, 
   lag_range   = 5, 
   fe_var      = c("firm_id", "year"), 
-  cluster_var = "state_id"
+  cluster_var = "state_id", 
+  # Yearly data
+  interval = 1
 )
 ```
 
@@ -153,7 +163,7 @@ plot_es(event_study, type = "errorbar")
 ![](README_files/figure-commonmark/unnamed-chunk-5-1.png)
 
 ``` r
-plot_es(event_study, type = "errorbar", vline_val = -1)
+plot_es(event_study, type = "errorbar", vline_val = -.5)
 ```
 
 ![](README_files/figure-commonmark/unnamed-chunk-6-1.png)
@@ -162,7 +172,7 @@ Since it is created on a `ggplot2` basis, it is possible to modify minor
 details.
 
 ``` r
-plot_es(event_study, type = "errorbar", vline_val = -1) + 
+plot_es(event_study, type = "errorbar") + 
   ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) + 
   ggplot2::ggtitle("Result of Event Study")
 ```
