@@ -332,10 +332,6 @@ plot_es <- function(data,
       linetype = "dashed",
       color = hline_color
     ) +
-    ggplot2::geom_line(
-      linewidth = linewidth,
-      color = color
-    ) +
     ggplot2::geom_point(
       size = pointsize,
       color = color
@@ -353,6 +349,10 @@ plot_es <- function(data,
         ggplot2::aes(ymin = conf_low, ymax = conf_high),
         fill = fill,
         alpha = alpha
+      ) +
+      ggplot2::geom_line(
+        linewidth = linewidth,
+        color = color
       )
   }
   # Add error bars for confidence intervals
