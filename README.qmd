@@ -136,13 +136,14 @@ event_study <- run_es(
   lag_range   = 5, 
   fe_var      = c("firm_id", "year"), 
   cluster_var = "state_id", 
+  baseline    = -1, 
   interval    = 1
 )
 ```
 
 ***Note:*** Please enclose `fe_var` and `cluster_var` in double quotation marks.
 
-By executing `run_es()`, the event study analysis results will be returned as a tidy data frame.
+By executing `run_es()`, the event study analysis results will be returned as a tidy data frame^[Behind the scenes of the analysis, fixest::feols() is used.].
 
 You can use this data to create your own plots, but `fixes` also has convenient plotting functions.
 
