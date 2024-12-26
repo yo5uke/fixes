@@ -4,6 +4,11 @@
 
 # fixes <a><img src="man/figures/logo.png" align="right" height="138" /></a>
 
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/yo5uke/fixes/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/yo5uke/fixes/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
 ## Overview
 
 The `fixes` package is designed for conducting analysis and creating
@@ -83,6 +88,8 @@ For example, a data frame like the following:
 | lag_range | Range of time aftere treatment |
 | fe_var | Variable representing fixed effects |
 | cluster_var | A variable that specifies how to cluster the standard error (if clustering is requested) |
+| baseline | A number indicating the relative year to be dropped when performing a regression |
+| interval | Parameter to specify the time step between observations (e.g., 1 for yearly data, 5 for 5-year intervals) |
 
 Then, perform the analysis as follows:
 
