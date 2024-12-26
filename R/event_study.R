@@ -1,7 +1,3 @@
-utils::globalVariables(c(
-  "relative_time", "estimate", "conf_low", "conf_high", "term", "std.error", ":="
-))
-
 #' Run Event Study with Fixed Effects
 #'
 #' This function performs an event study using fixed effects regression.
