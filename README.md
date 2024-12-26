@@ -1,6 +1,6 @@
 
 
-<!-- README.md is generated from README.Qmd. Please edit that file -->
+<!-- README.md is generated from README.qmd. Please edit that file -->
 
 # fixes <a><img src="man/figures/logo.png" align="right" height="138" /></a>
 
@@ -112,7 +112,6 @@ event_study <- run_es(
   lag_range   = 5, 
   fe_var      = c("firm_id", "year"), 
   cluster_var = "state_id", 
-  # Yearly data
   interval    = 1
 )
 ```
