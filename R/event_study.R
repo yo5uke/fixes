@@ -55,9 +55,60 @@ run_es <- function(data,
     }
   }
 
+  # ---- 0.1 Check for column existence ----
+  # Convert unquoted arguments to strings
+  outcome_var_chr <- rlang::as_string(dplyr::ensym(outcome_var))
+  treated_var_chr <- rlang::as_string(dplyr::ensym(treated_var))
+  time_var_chr    <- rlang::as_string(dplyr::ensym(time_var))
+
+  # Check if these columns exist in data
+  # (If not, stop with an informative error)
+  if (!outcome_var_chr %in% colnames(data)) {
+    stop(
+      "The specified outcome_var ('", outcome_var_chr,
+      "') does not exist in the dataframe. Please specify an existing column."
+    )
+  }
+  if (!treated_var_chr %in% colnames(data)) {
+    stop(
+      "The specified treated_var ('", treated_var_chr,
+      "') does not exist in the dataframe. Please specify an existing column."
+    )
+  }
+  if (!time_var_chr %in% colnames(data)) {
+    stop(
+      "The specified time_var ('", time_var_chr,
+      "') does not exist in the dataframe. Please specify an existing column."
+    )
+  }
+
+  # fe_var may contain multiple columns, so check them all if provided
+  if (length(fe_var) > 0) {
+    missing_fe_vars <- fe_var[!fe_var %in% colnames(data)]
+    if (length(missing_fe_vars) > 0) {
+      stop(
+        "The specified fixed effects variable(s) (",
+        paste(missing_fe_vars, collapse = ", "),
+        ") do not exist in the dataframe. Please specify existing columns."
+      )
+    }
+  }
+
+  # cluster_var may be NULL or a string/column name
+  if (!is.null(cluster_var)) {
+    # convert to string if it's not already
+    cluster_var_chr <- rlang::as_string(dplyr::ensym(cluster_var))
+    if (!cluster_var_chr %in% colnames(data)) {
+      stop(
+        "The specified cluster_var ('", cluster_var_chr,
+        "') does not exist in the dataframe. Please specify an existing column."
+      )
+    }
+  }
+
   # ---- 1. Create lead and lag variables ----
 
-  # Convert treated_var and time_var to symbols
+  # Convert treated_var and time_var to symbols again for usage
   treated_var_sym <- dplyr::ensym(treated_var)
   time_var_sym    <- dplyr::ensym(time_var)
 
@@ -262,10 +313,6 @@ plot_es <- function(data, type = "ribbon", vline_val = 0, vline_color = "#000", 
       linetype = "dashed",
       color = hline_color
     ) +
-    ggplot2::geom_line(
-      linewidth = linewidth,
-      color = color
-    ) +
     ggplot2::geom_point(
       size = pointsize,
       color = color
@@ -283,6 +330,10 @@ plot_es <- function(data, type = "ribbon", vline_val = 0, vline_color = "#000", 
         ggplot2::aes(ymin = conf_low, ymax = conf_high),
         fill = fill,
         alpha = alpha
+      ) +
+      ggplot2::geom_line(
+        linewidth = linewidth,
+        color = color
       )
   }
   # Add error bars for confidence intervals
