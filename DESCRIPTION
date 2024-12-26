@@ -1,7 +1,7 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed Effects Event Study Models
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: c(
     person(
       "Yosuke", "Abe",
