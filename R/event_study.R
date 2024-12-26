@@ -204,6 +204,7 @@ run_es <- function(data,
   )
 
   # 3-2) Add the baseline row with estimate = 0
+  baseline_term <- get_term_name(baseline)
   baseline_row <- tibble::tibble(
     term = baseline_term,
     estimate = 0,
@@ -233,6 +234,13 @@ run_es <- function(data,
 
   result <- result |>
     dplyr::left_join(rel_map, by = "term")
+
+  # 3-5) Add a logical column "is_baseline"
+  #         TRUE if the row is the baseline row, FALSE otherwise.
+  result <- result |>
+    dplyr::mutate(
+      is_baseline = (term == baseline_term)
+    )
 
   return(result)
 }
@@ -291,7 +299,18 @@ run_es <- function(data,
 #' Missing values in the `std.error` column for any term will result in incomplete confidence intervals.
 #'
 #' @export
-plot_es <- function(data, type = "ribbon", vline_val = 0, vline_color = "#000", hline_val = 0, hline_color = "#000", linewidth = 1, pointsize = 2, alpha = .2, barwidth = .2, color = "#B25D91FF", fill = "#B25D91FF") {
+plot_es <- function(data,
+                    type = "ribbon",
+                    vline_val = 0,
+                    vline_color = "#000",
+                    hline_val = 0,
+                    hline_color = "#000",
+                    linewidth = 1,
+                    pointsize = 2,
+                    alpha = .2,
+                    barwidth = .2,
+                    color = "#B25D91FF",
+                    fill = "#B25D91FF") {
   # Validate the type of confidence interval visualization
   if (!type %in% c("ribbon", "errorbar")) {
     stop("Invalid type. Please choose 'ribbon' or 'errorbar'.")
@@ -313,6 +332,10 @@ plot_es <- function(data, type = "ribbon", vline_val = 0, vline_color = "#000", 
       linetype = "dashed",
       color = hline_color
     ) +
+    ggplot2::geom_line(
+      linewidth = linewidth,
+      color = color
+    ) +
     ggplot2::geom_point(
       size = pointsize,
       color = color
@@ -330,23 +353,31 @@ plot_es <- function(data, type = "ribbon", vline_val = 0, vline_color = "#000", 
         ggplot2::aes(ymin = conf_low, ymax = conf_high),
         fill = fill,
         alpha = alpha
-      ) +
-      ggplot2::geom_line(
-        linewidth = linewidth,
-        color = color
       )
   }
   # Add error bars for confidence intervals
   else if (type == "errorbar") {
-    data_ <- data |>
-      dplyr::mutate(
-        std.error = dplyr::if_else(term == "lead1", NA_real_, std.error),
-        conf_high = estimate + 1.96 * std.error,
-        conf_low  = estimate - 1.96 * std.error
-      )
+    # If we have the "is_baseline" column, set the baseline row's std.error to NA
+    # so that the error bars disappear for the baseline row.
+    if ("is_baseline" %in% colnames(data)) {
+      data <- data |>
+        dplyr::mutate(
+          std.error = dplyr::if_else(is_baseline, NA_real_, std.error),
+          conf_high = estimate + 1.96 * std.error,
+          conf_low  = estimate - 1.96 * std.error
+        )
+    } else {
+      # Fallback if is_baseline doesn't exist (no changes)
+      data <- data |>
+        dplyr::mutate(
+          conf_high = estimate + 1.96 * std.error,
+          conf_low  = estimate - 1.96 * std.error
+        )
+    }
+
     base_plot <- base_plot +
       ggplot2::geom_errorbar(
-        data = data_,
+        data = data,
         ggplot2::aes(ymin = conf_low, ymax = conf_high),
         color = color,
         width = barwidth,
