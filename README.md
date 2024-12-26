@@ -137,13 +137,19 @@ created with `run_es()` and the plot will be complete.
 plot_es(event_study)
 ```
 
+![](README_files/figure-commonmark/unnamed-chunk-4-1.png)
+
 ``` r
 plot_es(event_study, type = "errorbar")
 ```
 
+![](README_files/figure-commonmark/unnamed-chunk-5-1.png)
+
 ``` r
 plot_es(event_study, type = "errorbar", vline_val = -1)
 ```
+
+![](README_files/figure-commonmark/unnamed-chunk-6-1.png)
 
 Since it is created on a `ggplot2` basis, it is possible to modify minor
 details.
@@ -153,6 +159,8 @@ plot_es(event_study, type = "errorbar", vline_val = -1) +
   ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) + 
   ggplot2::ggtitle("Result of Event Study")
 ```
+
+![](README_files/figure-commonmark/unnamed-chunk-7-1.png)
 
 ## Debugging
 

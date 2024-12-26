@@ -37,7 +37,7 @@ The `fixes` package is not currently available on CRAN. Please install it from t
 
 First, load the library.
 
-```{.r}
+```{r}
 library(fixes)
 ```
 
@@ -113,7 +113,7 @@ df |>
 
 Then, perform the analysis as follows:
 
-```{.r}
+```{r}
 event_study <- run_es(
   data        = df, 
   outcome_var = y, 
@@ -156,21 +156,21 @@ The `plot_es()` function creates a plot based on `ggplot2`.
 
 If you don't care about the details, you can just pass the data frame created with `run_es()` and the plot will be complete.
 
-```{.r}
+```{r}
 plot_es(event_study)
 ```
 
-```{.r}
+```{r}
 plot_es(event_study, type = "errorbar")
 ```
 
-```{.r}
+```{r}
 plot_es(event_study, type = "errorbar", vline_val = -1)
 ```
 
 Since it is created on a `ggplot2` basis, it is possible to modify minor details.
 
-```{.r}
+```{r}
 plot_es(event_study, type = "errorbar", vline_val = -1) + 
   ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) + 
   ggplot2::ggtitle("Result of Event Study")
