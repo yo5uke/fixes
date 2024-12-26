@@ -113,7 +113,7 @@ event_study <- run_es(
   fe_var      = c("firm_id", "year"), 
   cluster_var = "state_id", 
   # Yearly data
-  interval = 1
+  interval    = 1
 )
 ```
 
