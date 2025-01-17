@@ -6,14 +6,14 @@
 \usage{
 run_es(
   data,
-  outcome_var,
-  treated_indicator,
-  time_var,
+  outcome,
+  treatment,
+  time,
   timing,
   lead_range,
   lag_range,
-  fe_var,
-  cluster_var = NULL,
+  fe,
+  cluster = NULL,
   baseline = -1,
   interval = 1
 )
@@ -21,11 +21,11 @@ run_es(
 \arguments{
 \item{data}{A dataframe containing the dataset.}
 
-\item{outcome_var}{The name of the outcome variable (e.g., "y"). Should be unquoted.}
+\item{outcome}{The name of the outcome variable (e.g., "y"). Should be unquoted.}
 
-\item{treated_indicator}{The name of the treatment variable (e.g., "treated"). Should be unquoted.}
+\item{treatment}{The name of the treatment variable (e.g., "treated"). Should be unquoted.}
 
-\item{time_var}{The name of the time variable (e.g., "year"). Should be unquoted.}
+\item{time}{The name of the time variable (e.g., "year"). Should be unquoted.}
 
 \item{timing}{The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.}
 
@@ -33,9 +33,9 @@ run_es(
 
 \item{lag_range}{Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.}
 
-\item{fe_var}{A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.}
+\item{fe}{A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.}
 
-\item{cluster_var}{An optional variable for clustering standard errors. For example, `cluster_var = "state"`.}
+\item{cluster}{An optional variable for clustering standard errors. For example, `cluster = "state"`.}
 
 \item{baseline}{The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.}
 
@@ -59,7 +59,7 @@ scales the time intervals if specified, and then estimates the regression model.
 This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals). It automatically scales the relative time variable using the `interval` parameter.
 
 Steps:
-1. Compute the relative time for each observation as `(time_var - timing) / interval`.
+1. Compute the relative time for each observation as `(time - timing) / interval`.
 2. Generate lead and lag dummy variables within the specified ranges (`lead_range`, `lag_range`).
 3. Construct and estimate the fixed effects regression model using `fixest::feols`.
 4. Format the regression results into a tidy dataframe.

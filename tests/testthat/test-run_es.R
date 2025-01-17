@@ -32,7 +32,7 @@ test_that("run_es produces correct output with interval parameter", {
   )
 })
 
-test_that("run_es handles expression in outcome_var (e.g., log(y)) correctly", {
+test_that("run_es handles expression in outcome (e.g., log(y)) correctly", {
   # Create test data ensuring y is always positive for log()
   df2 <- tibble::tibble(
     id      = rep(1:5, each = 5),
@@ -44,7 +44,7 @@ test_that("run_es handles expression in outcome_var (e.g., log(y)) correctly", {
   # Run run_es() with log(y)
   result_log <- df2 |>
     run_es(log(y), treated, year, 2002, lead_range = 1, lag_range = 1,
-           fe_var = "id", cluster_var = "id", interval = 1)
+           fe = "id", cluster = "id", interval = 1)
 
   # Check that the function produces a result without error
   expect_true("relative_time" %in% colnames(result_log))

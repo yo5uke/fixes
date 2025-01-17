@@ -5,14 +5,14 @@
 #' scales the time intervals if specified, and then estimates the regression model.
 #'
 #' @param data A dataframe containing the dataset.
-#' @param outcome_var The name of the outcome variable (e.g., "y"). Should be unquoted.
-#' @param treated_indicator The name of the treatment variable (e.g., "treated"). Should be unquoted.
-#' @param time_var The name of the time variable (e.g., "year"). Should be unquoted.
+#' @param outcome The name of the outcome variable (e.g., "y"). Should be unquoted.
+#' @param treatment The name of the treatment variable (e.g., "treated"). Should be unquoted.
+#' @param time The name of the time variable (e.g., "year"). Should be unquoted.
 #' @param timing The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.
 #' @param lead_range Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.
 #' @param lag_range Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.
-#' @param fe_var A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.
-#' @param cluster_var An optional variable for clustering standard errors. For example, `cluster_var = "state"`.
+#' @param fe A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.
+#' @param cluster An optional variable for clustering standard errors. For example, `cluster = "state"`.
 #' @param baseline The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.
 #' @param interval The time interval between observations (default: 1). For example, use `interval = 5` for datasets where time steps are in 5-year intervals.
 #' @return A tidy dataframe with regression results. This includes:
@@ -26,7 +26,7 @@
 #' This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals). It automatically scales the relative time variable using the `interval` parameter.
 #'
 #' Steps:
-#' 1. Compute the relative time for each observation as `(time_var - timing) / interval`.
+#' 1. Compute the relative time for each observation as `(time - timing) / interval`.
 #' 2. Generate lead and lag dummy variables within the specified ranges (`lead_range`, `lag_range`).
 #' 3. Construct and estimate the fixed effects regression model using `fixest::feols`.
 #' 4. Format the regression results into a tidy dataframe.
@@ -35,14 +35,14 @@
 #'
 #' @export
 run_es <- function(data,
-                   outcome_var,
-                   treated_indicator,
-                   time_var,
+                   outcome,
+                   treatment,
+                   time,
                    timing,
                    lead_range,
                    lag_range,
-                   fe_var,
-                   cluster_var = NULL,
+                   fe,
+                   cluster = NULL,
                    baseline = -1,
                    interval = 1) {
 
@@ -56,70 +56,70 @@ run_es <- function(data,
     }
   }
 
-  # ---- 0.1 Handle outcome_var as an expression ----
-  # outcome_var can be a column name or an expression (e.g., log(variable)).
-  outcome_expr <- rlang::enexpr(outcome_var)
+  # ---- 0.1 Handle outcome as an expression ----
+  # outcome can be a column name or an expression (e.g., log(variable)).
+  outcome_expr <- rlang::enexpr(outcome)
 
-  # Convert treated_indicator and time_var to symbols
-  treated_indicator_sym <- rlang::ensym(treated_indicator)
-  time_var_sym    <- rlang::ensym(time_var)
+  # Convert treatment and time to symbols
+  treatment_sym <- rlang::ensym(treatment)
+  time_sym    <- rlang::ensym(time)
 
   # ---- 0.2 Check for column existence ----
   # Ensure that the specified variables exist in the data
   if (rlang::is_symbol(outcome_expr)) {
-    outcome_var_chr <- rlang::as_string(outcome_expr)
-    if (!outcome_var_chr %in% colnames(data)) {
+    outcome_chr <- rlang::as_string(outcome_expr)
+    if (!outcome_chr %in% colnames(data)) {
       stop(
-        "The specified outcome_var ('", outcome_var_chr,
+        "The specified outcome ('", outcome_chr,
         "') does not exist in the dataframe. ",
         "Please specify an existing column or use a valid expression."
       )
     }
   } else if (rlang::is_call(outcome_expr)) {
-    # If outcome_var is a call (e.g., log(variable)), skip column existence check
+    # If outcome is a call (e.g., log(variable)), skip column existence check
     # Optionally, validate the columns used in the call's arguments if needed
   } else {
     stop(
-      "The specified outcome_var must be either a column name (symbol) ",
+      "The specified outcome must be either a column name (symbol) ",
       "or a function call (e.g., log(variable))."
     )
   }
 
-  # Check treated_indicator and time_var
-  treated_indicator_chr <- rlang::as_string(treated_indicator_sym)
-  if (!treated_indicator_chr %in% colnames(data)) {
+  # Check treatment and time
+  treatment_chr <- rlang::as_string(treatment_sym)
+  if (!treatment_chr %in% colnames(data)) {
     stop(
-      "The specified treated_indicator ('", treated_indicator_chr,
+      "The specified treatment ('", treatment_chr,
       "') does not exist in the dataframe. Please specify an existing column."
     )
   }
 
-  time_var_chr <- rlang::as_string(time_var_sym)
-  if (!time_var_chr %in% colnames(data)) {
+  time_chr <- rlang::as_string(time_sym)
+  if (!time_chr %in% colnames(data)) {
     stop(
-      "The specified time_var ('", time_var_chr,
+      "The specified time ('", time_chr,
       "') does not exist in the dataframe. Please specify an existing column."
     )
   }
 
   # Check fixed effects
-  if (length(fe_var) > 0) {
-    missing_fe_vars <- fe_var[!fe_var %in% colnames(data)]
-    if (length(missing_fe_vars) > 0) {
+  if (length(fe) > 0) {
+    missing_fes <- fe[!fe %in% colnames(data)]
+    if (length(missing_fes) > 0) {
       stop(
         "The specified fixed effects variable(s) (",
-        paste(missing_fe_vars, collapse = ", "),
+        paste(missing_fes, collapse = ", "),
         ") do not exist in the dataframe. Please specify existing columns."
       )
     }
   }
 
-  # Check cluster_var if provided
-  if (!is.null(cluster_var)) {
-    cluster_var_chr <- rlang::as_string(dplyr::ensym(cluster_var))
-    if (!cluster_var_chr %in% colnames(data)) {
+  # Check cluster if provided
+  if (!is.null(cluster)) {
+    cluster_chr <- rlang::as_string(dplyr::ensym(cluster))
+    if (!cluster_chr %in% colnames(data)) {
       stop(
-        "The specified cluster_var ('", cluster_var_chr,
+        "The specified cluster ('", cluster_chr,
         "') does not exist in the dataframe. Please specify an existing column."
       )
     }
@@ -129,7 +129,7 @@ run_es <- function(data,
   # Compute relative time based on the timing and interval
   data <- data |>
     dplyr::mutate(
-      relative_time = ( !!time_var_sym - timing ) / interval
+      relative_time = ( !!time_sym - timing ) / interval
     )
 
   # Check range of relative_time and issue warnings if necessary
@@ -163,7 +163,7 @@ run_es <- function(data,
     data <- data |>
       dplyr::mutate(
         !!col_name := dplyr::if_else(
-          !!treated_indicator_sym == 1 & (relative_time == i),
+          !!treatment_sym == 1 & (relative_time == i),
           1,
           0
         )
@@ -182,17 +182,17 @@ run_es <- function(data,
   baseline_term <- get_term_name(baseline)
   included_terms <- setdiff(all_terms, baseline_term)
   RHS_formula <- paste(included_terms, collapse = "+")
-  fe_formula <- paste(fe_var, collapse = "+")
+  fe_formula <- paste(fe, collapse = "+")
 
-  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | fe_var"
+  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | fe"
   model_formula_text <- paste0(
     outcome_expr_text, " ~ ", RHS_formula, " | ", fe_formula
   )
   model_formula <- stats::as.formula(model_formula_text)
 
   # Estimate the model using fixest::feols
-  if (!is.null(cluster_var)) {
-    model <- fixest::feols(model_formula, data = data, cluster = cluster_var)
+  if (!is.null(cluster)) {
+    model <- fixest::feols(model_formula, data = data, cluster = cluster)
   } else {
     model <- fixest::feols(model_formula, data = data)
   }
