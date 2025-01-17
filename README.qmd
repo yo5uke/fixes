@@ -27,7 +27,7 @@ The package includes two main functions:
 
 ## Installation
 
-You can install the package like this:
+You can install the package like so:
 
 ```{.r}
 # install.packages("pak")
@@ -109,39 +109,39 @@ df |>
 
 `run_es()` has nine arguments.
 
-| Arguments   | Description                                                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------------|
-| data        | Data frame to be used                                                                                     |
-| outcome_var | Outcome variable                                                                                          |
-| treated_var | Dummy variable indicating the individual being treated                                                    |
-| time_var    | Variable that represents time                                                                             |
-| timing      | Variable indicating treatment timing                                                                      |
-| lead_range  | Range of time before treatment                                                                            |
-| lag_range   | Range of time aftere treatment (excluding the year of treatment)                                          |
-| fe_var      | Variable representing fixed effects                                                                       |
-| cluster_var | A variable that specifies how to cluster the standard error (if clustering is requested)                  |
-| baseline    | A number indicating the relative year to be dropped when performing a regression                          |
-| interval    | Parameter to specify the time step between observations (e.g., 1 for yearly data, 5 for 5-year intervals) |
+| Arguments  | Description                                                                                               |
+|------------|-----------------------------------------------------------------------------------------------------------|
+| data       | Data frame to be used                                                                                     |
+| outcome    | Outcome variable                                                                                          |
+| treatment  | Dummy variable indicating the individual being treated                                                    |
+| time       | Variable that represents time                                                                             |
+| timing     | Variable indicating treatment timing                                                                      |
+| lead_range | Range of time before treatment                                                                            |
+| lag_range  | Range of time aftere treatment (excluding the year of treatment)                                          |
+| fe         | Variable representing fixed effects                                                                       |
+| cluster    | A variable that specifies how to cluster the standard error (if clustering is requested)                  |
+| baseline   | A number indicating the relative year to be dropped when performing a regression                          |
+| interval   | Parameter to specify the time step between observations (e.g., 1 for yearly data, 5 for 5-year intervals) |
 
 Then, perform the analysis as follows:
 
 ```{r}
 event_study <- run_es(
-  data        = df, 
-  outcome_var = y, 
-  treated_var = is_treated, 
-  time_var    = year, 
-  timing      = 1998, 
-  lead_range  = 5, 
-  lag_range   = 5, 
-  fe_var      = c("firm_id", "year"), 
-  cluster_var = "state_id", 
-  baseline    = -1, 
-  interval    = 1
+  data       = df, 
+  outcome    = y, 
+  treatment  = is_treated, 
+  time       = year, 
+  timing     = 1998, 
+  lead_range = 5, 
+  lag_range  = 5, 
+  fe         = c("firm_id", "year"), 
+  cluster    = "state_id", 
+  baseline   = -1, 
+  interval   = 1
 )
 ```
 
-***Note:*** Please enclose `fe_var` and `cluster_var` in double quotation marks.
+***Note:*** Please enclose `fe` and `cluster` in double quotation marks.
 
 By executing `run_es()`, the event study analysis results will be returned as a tidy data frame^[Behind the scenes of the analysis, fixest::feols() is used.].
 
