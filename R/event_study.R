@@ -6,7 +6,7 @@
 #'
 #' @param data A dataframe containing the dataset.
 #' @param outcome_var The name of the outcome variable (e.g., "y"). Should be unquoted.
-#' @param treated_var The name of the treatment variable (e.g., "treated"). Should be unquoted.
+#' @param treated_indicator The name of the treatment variable (e.g., "treated"). Should be unquoted.
 #' @param time_var The name of the time variable (e.g., "year"). Should be unquoted.
 #' @param timing The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.
 #' @param lead_range Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.
@@ -36,7 +36,7 @@
 #' @export
 run_es <- function(data,
                    outcome_var,
-                   treated_var,
+                   treated_indicator,
                    time_var,
                    timing,
                    lead_range,
@@ -45,9 +45,10 @@ run_es <- function(data,
                    cluster_var = NULL,
                    baseline = -1,
                    interval = 1) {
+
   # ---- 0. Helper function ----
-  # Generate dummy variable names (leadX / lagX) based on relative year i
   get_term_name <- function(i) {
+    # Generate term names for lead and lag variables
     if (i < 0) {
       paste0("lead", abs(i))
     } else {
@@ -55,26 +56,45 @@ run_es <- function(data,
     }
   }
 
-  # ---- 0.1 Check for column existence ----
-  # Convert unquoted arguments to strings
-  outcome_var_chr <- rlang::as_string(dplyr::ensym(outcome_var))
-  treated_var_chr <- rlang::as_string(dplyr::ensym(treated_var))
-  time_var_chr    <- rlang::as_string(dplyr::ensym(time_var))
+  # ---- 0.1 Handle outcome_var as an expression ----
+  # outcome_var can be a column name or an expression (e.g., log(variable)).
+  outcome_expr <- rlang::enexpr(outcome_var)
 
-  # Check if these columns exist in data
-  # (If not, stop with an informative error)
-  if (!outcome_var_chr %in% colnames(data)) {
+  # Convert treated_indicator and time_var to symbols
+  treated_indicator_sym <- rlang::ensym(treated_indicator)
+  time_var_sym    <- rlang::ensym(time_var)
+
+  # ---- 0.2 Check for column existence ----
+  # Ensure that the specified variables exist in the data
+  if (rlang::is_symbol(outcome_expr)) {
+    outcome_var_chr <- rlang::as_string(outcome_expr)
+    if (!outcome_var_chr %in% colnames(data)) {
+      stop(
+        "The specified outcome_var ('", outcome_var_chr,
+        "') does not exist in the dataframe. ",
+        "Please specify an existing column or use a valid expression."
+      )
+    }
+  } else if (rlang::is_call(outcome_expr)) {
+    # If outcome_var is a call (e.g., log(variable)), skip column existence check
+    # Optionally, validate the columns used in the call's arguments if needed
+  } else {
     stop(
-      "The specified outcome_var ('", outcome_var_chr,
+      "The specified outcome_var must be either a column name (symbol) ",
+      "or a function call (e.g., log(variable))."
+    )
+  }
+
+  # Check treated_indicator and time_var
+  treated_indicator_chr <- rlang::as_string(treated_indicator_sym)
+  if (!treated_indicator_chr %in% colnames(data)) {
+    stop(
+      "The specified treated_indicator ('", treated_indicator_chr,
       "') does not exist in the dataframe. Please specify an existing column."
     )
   }
-  if (!treated_var_chr %in% colnames(data)) {
-    stop(
-      "The specified treated_var ('", treated_var_chr,
-      "') does not exist in the dataframe. Please specify an existing column."
-    )
-  }
+
+  time_var_chr <- rlang::as_string(time_var_sym)
   if (!time_var_chr %in% colnames(data)) {
     stop(
       "The specified time_var ('", time_var_chr,
@@ -82,7 +102,7 @@ run_es <- function(data,
     )
   }
 
-  # fe_var may contain multiple columns, so check them all if provided
+  # Check fixed effects
   if (length(fe_var) > 0) {
     missing_fe_vars <- fe_var[!fe_var %in% colnames(data)]
     if (length(missing_fe_vars) > 0) {
@@ -94,9 +114,8 @@ run_es <- function(data,
     }
   }
 
-  # cluster_var may be NULL or a string/column name
+  # Check cluster_var if provided
   if (!is.null(cluster_var)) {
-    # convert to string if it's not already
     cluster_var_chr <- rlang::as_string(dplyr::ensym(cluster_var))
     if (!cluster_var_chr %in% colnames(data)) {
       stop(
@@ -107,46 +126,44 @@ run_es <- function(data,
   }
 
   # ---- 1. Create lead and lag variables ----
-
-  # Convert treated_var and time_var to symbols again for usage
-  treated_var_sym <- dplyr::ensym(treated_var)
-  time_var_sym    <- dplyr::ensym(time_var)
-
-  # (1) Create relative_time column with scaling (1 unit = 'interval' years)
+  # Compute relative time based on the timing and interval
   data <- data |>
-    dplyr::mutate(relative_time = ( !!time_var_sym - timing ) / interval)
+    dplyr::mutate(
+      relative_time = ( !!time_var_sym - timing ) / interval
+    )
 
-  # (2) Check the minimum and maximum values of relative_time
+  # Check range of relative_time and issue warnings if necessary
   min_relative_time <- min(data$relative_time, na.rm = TRUE)
   max_relative_time <- max(data$relative_time, na.rm = TRUE)
 
-  # (3) Warn if lead_range or lag_range exceeds the range of data
   if (lead_range > abs(min_relative_time)) {
     warning(
       "The specified lead_range (", lead_range,
-      ") exceeds the available range in the data on the lead side (", abs(min_relative_time), ")."
+      ") exceeds the available range in the data on the lead side (",
+      abs(min_relative_time), ")."
     )
   }
   if (lag_range > max_relative_time) {
     warning(
       "The specified lag_range (", lag_range,
-      ") exceeds the available range in the data on the lag side (", max_relative_time, ")."
+      ") exceeds the available range in the data on the lag side (",
+      max_relative_time, ")."
     )
   }
 
-  # (4) Filter data to include only the specified lead and lag range
+  # Filter data within the specified lead and lag range
   data <- data |>
     dplyr::filter(
       dplyr::between(relative_time, -lead_range, lag_range)
     )
 
-  # (5) Create dummy variables for each lead and lag
+  # Create dummy variables for each lead and lag
   for (i in seq(-lead_range, lag_range, by = 1)) {
     col_name <- get_term_name(i)
     data <- data |>
       dplyr::mutate(
         !!col_name := dplyr::if_else(
-          !!treated_var_sym == 1 & (relative_time == i),
+          !!treated_indicator_sym == 1 & (relative_time == i),
           1,
           0
         )
@@ -154,40 +171,26 @@ run_es <- function(data,
   }
 
   # ---- 2. Construct and estimate the regression model ----
+  # Convert outcome_expr to text for use in formula construction
+  outcome_expr_text <- rlang::expr_text(outcome_expr)
 
-  # Convert outcome_var to a symbol
-  outcome_var_sym <- dplyr::ensym(outcome_var)
-
-  # 2-1) Generate the full list of terms for lead and lag variables
+  # Construct terms for regression
   all_terms <- c(
-    paste0("lead", seq(lead_range, 1)),     # lead5,...,lead1
-    paste0("lag", seq(0, lag_range))        # lag0, lag1,...
+    paste0("lead", seq(lead_range, 1)),  # lead5,...,lead1
+    paste0("lag", seq(0, lag_range))     # lag0, lag1,...
   )
-
-  # 2-2) Determine the baseline variable to exclude
   baseline_term <- get_term_name(baseline)
-
-  # 2-3) Exclude the baseline term from the list of terms
   included_terms <- setdiff(all_terms, baseline_term)
-
-  # 2-4) Create the right-hand side (RHS) of the regression formula
   RHS_formula <- paste(included_terms, collapse = "+")
-
-  # 2-5) Combine fixed effect variables into a formula
   fe_formula <- paste(fe_var, collapse = "+")
 
-  # 2-6) Construct the regression formula: outcome ~ RHS | FE
-  model_formula <- stats::as.formula(
-    paste(
-      rlang::as_string(outcome_var_sym),
-      "~",
-      RHS_formula,
-      "|",
-      fe_formula
-    )
+  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | fe_var"
+  model_formula_text <- paste0(
+    outcome_expr_text, " ~ ", RHS_formula, " | ", fe_formula
   )
+  model_formula <- stats::as.formula(model_formula_text)
 
-  # 2-7) Estimate the model using fixest::feols
+  # Estimate the model using fixest::feols
   if (!is.null(cluster_var)) {
     model <- fixest::feols(model_formula, data = data, cluster = cluster_var)
   } else {
@@ -195,16 +198,10 @@ run_es <- function(data,
   }
 
   # ---- 3. Format the results ----
+  # Extract results and format them for output
   result <- broom::tidy(model)
 
-  # 3-1) Create the full order of terms for sorting
-  full_order <- c(
-    paste0("lead", seq(lead_range, 1)),
-    paste0("lag", seq(0, lag_range))
-  )
-
-  # 3-2) Add the baseline row with estimate = 0
-  baseline_term <- get_term_name(baseline)
+  # Add baseline term with an estimate of 0
   baseline_row <- tibble::tibble(
     term = baseline_term,
     estimate = 0,
@@ -213,7 +210,11 @@ run_es <- function(data,
     p.value = NA_real_
   )
 
-  # 3-3) Combine and reorder results
+  # Reorder results and calculate confidence intervals
+  full_order <- c(
+    paste0("lead", seq(lead_range, 1)),
+    paste0("lag", seq(0, lag_range))
+  )
   result <- result |>
     dplyr::bind_rows(baseline_row) |>
     dplyr::mutate(
@@ -225,25 +226,22 @@ run_es <- function(data,
       conf_low  = estimate - 1.96 * std.error
     )
 
-  # 3-4) Add the relative_time column based on the scaled interval
+  # Add relative_time for visualization purposes
   rel_times <- c(seq(-lead_range, -1), seq(0, lag_range)) * interval
   rel_map <- tibble::tibble(
     term = factor(full_order, levels = full_order),
     relative_time = rel_times
   )
-
   result <- result |>
-    dplyr::left_join(rel_map, by = "term")
-
-  # 3-5) Add a logical column "is_baseline"
-  #         TRUE if the row is the baseline row, FALSE otherwise.
-  result <- result |>
+    dplyr::left_join(rel_map, by = "term") |>
     dplyr::mutate(
       is_baseline = (term == baseline_term)
     )
 
   return(result)
 }
+
+
 
 
 #' Plot Event Study Results

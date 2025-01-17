@@ -7,7 +7,7 @@
 run_es(
   data,
   outcome_var,
-  treated_var,
+  treated_indicator,
   time_var,
   timing,
   lead_range,
@@ -23,7 +23,7 @@ run_es(
 
 \item{outcome_var}{The name of the outcome variable (e.g., "y"). Should be unquoted.}
 
-\item{treated_var}{The name of the treatment variable (e.g., "treated"). Should be unquoted.}
+\item{treated_indicator}{The name of the treatment variable (e.g., "treated"). Should be unquoted.}
 
 \item{time_var}{The name of the time variable (e.g., "year"). Should be unquoted.}
 
