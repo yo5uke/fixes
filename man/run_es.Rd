@@ -67,3 +67,29 @@ Steps:
 
 If `interval > 1`, ensure that the specified `lead_range` and `lag_range` correspond to the number of time intervals, not the absolute number of years.
 }
+\examples{
+# Simulate panel data
+df <- tibble::tibble(
+  firm_id = rep(1:50, each = 10),  # 50 firms over 10 years
+  state_id = rep(sample(1:10, size = 50, replace = TRUE), each = 10),
+  year = rep(2000:2009, times = 50),
+  is_treated = rep(sample(c(1, 0), size = 50, replace = TRUE, prob = c(0.5, 0.5)), each = 10),
+  y = rnorm(500, mean = 0, sd = 1)  # Simulated outcome variable
+)
+
+# Run event study
+event_study <- run_es(
+  data       = df,
+  outcome    = y,
+  treatment  = is_treated,
+  time       = year,
+  timing     = 2005,
+  lead_range = 5,              # Corresponds to years 2000-2004 (relative time: -5 to -1)
+  lag_range  = 4,              # Corresponds to years 2006-2009 (relative time: 1 to 4)
+  fe         = firm_id + year,
+  cluster    = "state_id",
+  baseline   = -1,
+  interval   = 1
+)
+
+}
