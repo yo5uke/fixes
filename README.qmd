@@ -29,14 +29,14 @@ The package includes two main functions:
 
 You can install the package like so:
 
-```{.r}
+``` r
 # install.packages("pak")
 pak::pak("yo5uke/fixes")
 ```
 
 or
 
-```{.r}
+``` r
 # install.packages("devtools")
 devtools::install_github("yo5uke/fixes")
 ```
@@ -47,7 +47,7 @@ The `fixes` package is not currently available on CRAN. Please install it from t
 
 First, load the library.
 
-```{r}
+``` r
 library(fixes)
 ```
 
@@ -61,6 +61,324 @@ The data frame to be analyzed must include the following variables:
 1. An outcome variable.
 
 For example, a data frame like the following:
+
+```{r}
+#| echo: false
+
+run_es <- function(data,
+                   outcome,
+                   treatment,
+                   time,
+                   timing,
+                   lead_range,
+                   lag_range,
+                   fe,
+                   cluster = NULL,
+                   baseline = -1,
+                   interval = 1) {
+
+  # ---- 0. Helper function ----
+  get_term_name <- function(i) {
+    # Generate term names for lead and lag variables
+    if (i < 0) {
+      paste0("lead", abs(i))
+    } else {
+      paste0("lag", i)
+    }
+  }
+
+  # ---- 0.1 Handle outcome as an expression ----
+  # Outcome can be a column name or an expression (e.g., log(variable)).
+  outcome_expr <- rlang::enexpr(outcome)
+
+  # Convert treatment and time to symbols
+  treatment_sym <- rlang::ensym(treatment)
+  time_sym <- rlang::ensym(time)
+
+  # ---- 0.2 Check for column existence ----
+  # Ensure that the specified variables exist in the data
+  if (rlang::is_symbol(outcome_expr)) {
+    outcome_chr <- rlang::as_string(outcome_expr)
+    if (!outcome_chr %in% colnames(data)) {
+      stop(
+        "The specified outcome ('", outcome_chr,
+        "') does not exist in the dataframe. Please specify an existing column or use a valid expression."
+      )
+    }
+  } else if (rlang::is_call(outcome_expr)) {
+    # If outcome is a call (e.g., log(variable)), skip column existence check
+  } else {
+    stop(
+      "The specified outcome must be either a column name (symbol) or a function call (e.g., log(variable))."
+    )
+  }
+
+  # Check treatment and time
+  treatment_chr <- rlang::as_string(treatment_sym)
+  if (!treatment_chr %in% colnames(data)) {
+    stop(
+      "The specified treatment ('", treatment_chr,
+      "') does not exist in the dataframe. Please specify an existing column."
+    )
+  }
+
+  time_chr <- rlang::as_string(time_sym)
+  if (!time_chr %in% colnames(data)) {
+    stop(
+      "The specified time ('", time_chr,
+      "') does not exist in the dataframe. Please specify an existing column."
+    )
+  }
+
+  # ---- 0.3 Process fixed effects (fe) variable ----
+  # Allow fixed effects to be specified as an additive expression (e.g., firm_id + year)
+  fe_expr <- rlang::enexpr(fe)
+  parse_fe_expr <- function(expr) {
+    if (rlang::is_symbol(expr)) {
+      return(rlang::as_string(expr))
+    } else if (rlang::is_call(expr, "+")) {
+      # Recursively parse '+' calls to extract all variable names
+      c(parse_fe_expr(expr[[2]]), parse_fe_expr(expr[[3]]))
+    } else {
+      stop("Invalid fixed effects expression. Please use a formula-like expression (e.g., firm_id + year).")
+    }
+  }
+  fe_vars <- if (rlang::is_call(fe_expr, "+") || rlang::is_symbol(fe_expr)) {
+    parse_fe_expr(fe_expr)
+  } else if (is.vector(fe_expr)) {
+    fe_expr
+  } else {
+    stop("Invalid input for fe.")
+  }
+
+  # Check that the fixed effects variables exist in the data
+  if (length(fe_vars) > 0) {
+    missing_fes <- fe_vars[!fe_vars %in% colnames(data)]
+    if (length(missing_fes) > 0) {
+      stop(
+        "The specified fixed effects variable(s) (",
+        paste(missing_fes, collapse = ", "),
+        ") do not exist in the dataframe. Please specify existing columns."
+      )
+    }
+  }
+
+  # ---- 0.4 Check cluster if provided ----
+  if (!is.null(cluster)) {
+    cluster_chr <- rlang::as_string(dplyr::ensym(cluster))
+    if (!cluster_chr %in% colnames(data)) {
+      stop(
+        "The specified cluster ('", cluster_chr,
+        "') does not exist in the dataframe. Please specify an existing column."
+      )
+    }
+  }
+
+  # ---- 1. Create lead and lag variables ----
+  # Compute relative time based on the timing and interval
+  data <- data |>
+    dplyr::mutate(
+      relative_time = ( !!time_sym - timing ) / interval
+    )
+
+  # Check range of relative_time and issue warnings if necessary
+  min_relative_time <- min(data$relative_time, na.rm = TRUE)
+  max_relative_time <- max(data$relative_time, na.rm = TRUE)
+
+  if (lead_range > abs(min_relative_time)) {
+    warning(
+      "The specified lead_range (", lead_range,
+      ") exceeds the available range in the data on the lead side (",
+      abs(min_relative_time), ")."
+    )
+  }
+  if (lag_range > max_relative_time) {
+    warning(
+      "The specified lag_range (", lag_range,
+      ") exceeds the available range in the data on the lag side (",
+      max_relative_time, ")."
+    )
+  }
+
+  # Filter data within the specified lead and lag range
+  data <- data |>
+    dplyr::filter(
+      dplyr::between(relative_time, -lead_range, lag_range)
+    )
+
+  # Create dummy variables for each lead and lag period
+  for (i in seq(-lead_range, lag_range, by = 1)) {
+    col_name <- get_term_name(i)
+    data <- data |>
+      dplyr::mutate(
+        !!col_name := dplyr::if_else(
+          !!treatment_sym == 1 & (relative_time == i),
+          1,
+          0
+        )
+      )
+  }
+
+  # ---- 2. Construct and estimate the regression model ----
+  # Convert outcome_expr to text for use in formula construction
+  outcome_expr_text <- rlang::expr_text(outcome_expr)
+
+  # Construct terms for regression
+  all_terms <- c(
+    paste0("lead", seq(lead_range, 1)),
+    paste0("lag", seq(0, lag_range))
+  )
+  baseline_term <- get_term_name(baseline)
+  included_terms <- setdiff(all_terms, baseline_term)
+  RHS_formula <- paste(included_terms, collapse = "+")
+  fe_formula <- paste(fe_vars, collapse = "+")
+
+  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | firm_id+year"
+  model_formula_text <- paste0(
+    outcome_expr_text, " ~ ", RHS_formula, " | ", fe_formula
+  )
+  model_formula <- stats::as.formula(model_formula_text)
+
+  # Estimate the model using fixest::feols
+  if (!is.null(cluster)) {
+    model <- fixest::feols(model_formula, data = data, cluster = cluster)
+  } else {
+    model <- fixest::feols(model_formula, data = data)
+  }
+
+  # ---- 3. Format the results ----
+  # Extract results and format them for output
+  result <- broom::tidy(model)
+
+  # Add baseline term with an estimate of 0
+  baseline_row <- tibble::tibble(
+    term = baseline_term,
+    estimate = 0,
+    std.error = 0,
+    statistic = NA_real_,
+    p.value = NA_real_
+  )
+
+  # Reorder results and calculate confidence intervals
+  full_order <- c(
+    paste0("lead", seq(lead_range, 1)),
+    paste0("lag", seq(0, lag_range))
+  )
+  result <- result |>
+    dplyr::bind_rows(baseline_row) |>
+    dplyr::mutate(
+      term = factor(term, levels = full_order)
+    ) |>
+    dplyr::arrange(term) |>
+    dplyr::mutate(
+      conf_high = estimate + 1.96 * std.error,
+      conf_low  = estimate - 1.96 * std.error
+    )
+
+  # Add relative_time for visualization purposes
+  rel_times <- c(seq(-lead_range, -1), seq(0, lag_range)) * interval
+  rel_map <- tibble::tibble(
+    term = factor(full_order, levels = full_order),
+    relative_time = rel_times
+  )
+  result <- result |>
+    dplyr::left_join(rel_map, by = "term") |>
+    dplyr::mutate(
+      is_baseline = (term == baseline_term)
+    )
+
+  return(result)
+}
+
+plot_es <- function(data,
+                    type = "ribbon",
+                    vline_val = 0,
+                    vline_color = "#000",
+                    hline_val = 0,
+                    hline_color = "#000",
+                    linewidth = 1,
+                    pointsize = 2,
+                    alpha = .2,
+                    barwidth = .2,
+                    color = "#B25D91FF",
+                    fill = "#B25D91FF") {
+  # Validate the type of confidence interval visualization
+  if (!type %in% c("ribbon", "errorbar")) {
+    stop("Invalid type. Please choose 'ribbon' or 'errorbar'.")
+  }
+
+  # Create the base plot with vertical and horizontal reference lines
+  base_plot <-
+    ggplot2::ggplot(
+      data = data,
+      ggplot2::aes(x = relative_time, y = estimate, group = 1)
+    ) +
+    ggplot2::geom_vline(
+      xintercept = vline_val,
+      linetype = "dashed",
+      color = vline_color
+    ) +
+    ggplot2::geom_hline(
+      yintercept = hline_val,
+      linetype = "dashed",
+      color = hline_color
+    ) +
+    ggplot2::geom_point(
+      size = pointsize,
+      color = color
+    ) +
+    ggplot2::labs(
+      x = "Relative Time to Treatment",
+      y = "Estimate and 95% Confidence Interval"
+    ) +
+    ggplot2::theme_minimal()
+
+  # Add ribbon-style confidence intervals
+  if (type == "ribbon") {
+    base_plot <- base_plot +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = conf_low, ymax = conf_high),
+        fill = fill,
+        alpha = alpha
+      ) +
+      ggplot2::geom_line(
+        linewidth = linewidth,
+        color = color
+      )
+  }
+  # Add error bars for confidence intervals
+  else if (type == "errorbar") {
+    # If we have the "is_baseline" column, set the baseline row's std.error to NA
+    # so that the error bars disappear for the baseline row.
+    if ("is_baseline" %in% colnames(data)) {
+      data <- data |>
+        dplyr::mutate(
+          std.error = dplyr::if_else(is_baseline, NA_real_, std.error),
+          conf_high = estimate + 1.96 * std.error,
+          conf_low  = estimate - 1.96 * std.error
+        )
+    } else {
+      # Fallback if is_baseline doesn't exist (no changes)
+      data <- data |>
+        dplyr::mutate(
+          conf_high = estimate + 1.96 * std.error,
+          conf_low  = estimate - 1.96 * std.error
+        )
+    }
+
+    base_plot <- base_plot +
+      ggplot2::geom_errorbar(
+        data = data,
+        ggplot2::aes(ymin = conf_low, ymax = conf_high),
+        color = color,
+        width = barwidth,
+        linewidth = linewidth
+      )
+  }
+
+  return(base_plot)
+}
+```
 
 ```{r}
 #| echo: false
@@ -134,7 +452,7 @@ event_study <- run_es(
   timing     = 1998, 
   lead_range = 5, 
   lag_range  = 5, 
-  fe         = c("firm_id", "year"), 
+  fe         = firm_id + year, 
   cluster    = "state_id", 
   baseline   = -1, 
   interval   = 1

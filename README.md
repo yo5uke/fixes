@@ -110,7 +110,7 @@ event_study <- run_es(
   timing     = 1998, 
   lead_range = 5, 
   lag_range  = 5, 
-  fe         = c("firm_id", "year"), 
+  fe         = firm_id + year, 
   cluster    = "state_id", 
   baseline   = -1, 
   interval   = 1
