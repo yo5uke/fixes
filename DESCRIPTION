@@ -1,7 +1,7 @@
 Package: fixes
 Type: Package
-Title: Tools for Creating and Visualizing Fixed Effects Event Study Models
-Version: 0.0.2
+Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
+Version: 0.1.0
 Authors@R: c(
     person(
       "Yosuke", "Abe",
@@ -9,7 +9,7 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: This package provides functions for creating, analyzing, and visualizing event study models using fixed effects regression. It includes tools for generating lead and lag variables and producing plots with ggplot2.
+Description: This package provides functions for creating, estimating, and visualizing event study models using fixed-effects regression. It includes tools for generating lead and lag variables and for visualizing results.
 Depends: R (>= 4.0.0)
 Imports:
     dplyr,
@@ -20,5 +20,4 @@ Imports:
     rlang
 License: MIT + file LICENSE
 Encoding: UTF-8
-LazyData: true
 RoxygenNote: 7.3.2
