@@ -117,13 +117,15 @@ event_study <- run_es(
 )
 ```
 
-***Note:*** Please enclose `fe` and `cluster` in double quotation marks.
+***Note:*** The `fe` argument should be specified using additive
+notation (e.g., `firm_id + year`), while the `cluster` argument should
+be enclosed in double quotation marks.
 
 By executing `run_es()`, the event study analysis results will be
 returned as a tidy data frame[^1].
 
-You can use this data to create your own plots, but `fixes` also has
-convenient plotting functions.
+You can use this data to create your own plots, but `fixes` also
+provides convenient plotting functions.
 
 ### `plot_es()`
 
@@ -182,4 +184,4 @@ plot_es(event_study, type = "errorbar") +
 
 If you find an issue, please report it on the GitHub Issues page.
 
-[^1]: Behind the scenes of the analysis, fixest::feols() is used.
+[^1]: Behind the scenes, `fixest::feols()` is used for estimation.
