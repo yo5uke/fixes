@@ -1,0 +1,164 @@
+---
+title: "Introduction to fixes"
+author: "Yosuke Abe"
+date: "`r Sys.setlocale('LC_TIME', 'C'); format(Sys.Date(), '%B %d, %Y')`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to fixes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Introduction
+
+The **fixes** package provides a set of tools for creating, estimating, and visualizing event study models using fixed effects regression. With **fixes**, you can easily generate lead and lag dummy variables, estimate a fixed effects model via `fixest::feols()`, and visualize the results using `ggplot2`.
+
+This vignette walks you through a minimal example to demonstrate the core functionality of the package.
+
+## Installation
+
+You can install the released version from CRAN:
+
+``` r
+pak::pak("fixes")
+```
+
+Alternatively, you can use:
+
+``` r
+install.packages("fixes")
+```
+
+To install the development version directly from GitHub, run:
+
+``` r
+pak::pak("yo5uke/fixes")
+```
+
+or
+
+``` r
+devtools::install_github("yo5uke/fixes")
+```
+
+## A Minimal Example
+
+Below is a simple example to simulate a small panel dataset and perform an event study analysis. In this example, we assume an event (treatment) occurs in 2005.
+
+``` r
+library(fixes)
+library(tibble)
+library(dplyr)
+
+# Simulate panel data
+set.seed(2)
+
+n_firms <- 1000
+n_states <- 50
+T <- 36
+
+firm_id <- 1:n_firms
+state_id <- sample(n_states, size = n_firms, replace = TRUE)
+year <- 1980:2015
+
+fe_firm <- rnorm(n_firms, mean = 0, sd = .5)
+fe_year <- rnorm(T, mean = 0, sd = .5)
+error <- rnorm(n_firms * T, mean = 0, sd = .5)
+
+treated_1998 <- sample(c(1, 0), size = n_firms, 
+                       replace = TRUE, prob = c(1/2, 1/2))
+
+df <- tibble::tibble(
+  firm_id = rep(firm_id, each = T), 
+  state_id = rep(state_id, each = T), 
+  year = rep(year, times = n_firms), 
+  fe_firm = rep(fe_firm, each = T), 
+  fe_year = rep(fe_year, times = n_firms), 
+  error = error, 
+  is_treated = rep(treated_1998, each = T), 
+  after_treat = dplyr::if_else(is_treated == 1 & year >= 1998, 1, 0), 
+  y = dplyr::case_when(
+    after_treat == 1 ~ 
+      rnorm(n_firms * T, mean = .3, sd = .2) * (year - 1997) + fe_firm + fe_year + error, 
+    .default = fe_firm + fe_year + error
+  )
+)
+
+
+# Run the event study
+event_study <- run_es(
+  data       = df, 
+  outcome    = y, 
+  treatment  = is_treated, 
+  time       = year, 
+  timing     = 1998, 
+  lead_range = 18,              # Corresponds to years 2000-2004 (relative time: -5 to -1)
+  lag_range  = 17,              # Corresponds to years 2006-2009 (relative time: 1 to 4)
+  fe         = firm_id + year, 
+  cluster    = "state_id", 
+  baseline   = -1, 
+  interval   = 1
+)
+
+# View the first few rows of the event study results
+head(event_study)
+```
+
+## Visualizing the Event Study Results
+
+The **fixes** package provides the `plot_es()` function to create visualizations of your event study results. Here are some examples:
+
+``` r
+# Basic plot using ribbon-style confidence intervals
+p1 <- plot_es(event_study)
+print(p1)
+
+# Plot with error bars instead of a ribbon
+p2 <- plot_es(event_study, type = "errorbar")
+print(p2)
+
+# Plot with a custom vertical reference line
+p3 <- plot_es(event_study, type = "errorbar", vline_val = -0.5)
+print(p3)
+
+# Customized plot: adjust axis breaks and add a title
+library(ggplot2)
+p4 <- plot_es(event_study, type = "errorbar") + 
+  scale_x_continuous(breaks = seq(-5, 4, by = 1)) + 
+  ggtitle("Result of Event Study")
+print(p4)
+```
+
+## Package Details
+
+The **fixes** package is designed for panel data analysis and supports custom time intervals. Key functions include:
+
+- `run_es()`:
+    - Automatically generates lead and lag dummy variables relative to the treatment event.
+    - Constructs and estimates a fixed effects regression model using `fixest::feols()`.
+    - Returns a tidy dataframe with estimated coefficients, standard errors, and confidence intervals.
+
+- `plot_es()`:
+    - Provides a flexible visualization tool using `ggplot2`.
+    - Offers both ribbon-style and error bar representations of confidence intervals.
+    - Can be further customized with standard ggplot2 functions.
+    
+## Conclusion
+
+The **fixes** package streamlines the process of performing event study analyses with fixed effects. It simplifies the estimation and visualization steps, making it easier to interpret dynamic treatment effects in panel data.
+
+For more information, consult the package documentation:
+
+``` r
+?run_es
+?plot_es
+```
+
+Happy analyzing!🥂
