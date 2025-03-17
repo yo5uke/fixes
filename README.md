@@ -93,7 +93,7 @@ For example, a data frame like the following:
 | time | Variable that represents time |
 | timing | Variable indicating treatment timing |
 | lead_range | Range of time before treatment |
-| lag_range | Range of time aftere treatment (excluding the year of treatment) |
+| lag_range | Range of time after treatment (excluding the year of treatment) |
 | fe | Variable representing fixed effects |
 | cluster | A variable that specifies how to cluster the standard error (if clustering is requested) |
 | baseline | A number indicating the relative year to be dropped when performing a regression |
