@@ -11,10 +11,11 @@
 #' @param timing The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.
 #' @param lead_range Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.
 #' @param lag_range Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.
-#' @param fe A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.
+#' @param fe A vector of fixed effects variables or an additive expression (e.g., firm_id + year). These variables account for unobserved heterogeneity.
 #' @param cluster An optional variable for clustering standard errors. For example, `cluster = "state"`.
 #' @param baseline The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.
 #' @param interval The time interval between observations (default: 1). For example, use `interval = 5` for datasets where time steps are in 5-year intervals.
+#'
 #' @return A tidy dataframe with regression results. This includes:
 #' - `term`: The lead or lag variable names.
 #' - `estimate`: Estimated coefficients.
@@ -22,8 +23,10 @@
 #' - `conf.high`: Upper bound of the 95% confidence interval.
 #' - `conf.low`: Lower bound of the 95% confidence interval.
 #' - `relative_time`: Scaled relative time based on the specified `interval`.
+#'
 #' @details
-#' This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals). It automatically scales the relative time variable using the `interval` parameter.
+#' This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals).
+#' It automatically scales the relative time variable using the `interval` parameter.
 #'
 #' Steps:
 #' 1. Compute the relative time for each observation as `(time - timing) / interval`.
@@ -57,12 +60,12 @@ run_es <- function(data,
   }
 
   # ---- 0.1 Handle outcome as an expression ----
-  # outcome can be a column name or an expression (e.g., log(variable)).
+  # Outcome can be a column name or an expression (e.g., log(variable)).
   outcome_expr <- rlang::enexpr(outcome)
 
   # Convert treatment and time to symbols
   treatment_sym <- rlang::ensym(treatment)
-  time_sym    <- rlang::ensym(time)
+  time_sym <- rlang::ensym(time)
 
   # ---- 0.2 Check for column existence ----
   # Ensure that the specified variables exist in the data
@@ -71,17 +74,14 @@ run_es <- function(data,
     if (!outcome_chr %in% colnames(data)) {
       stop(
         "The specified outcome ('", outcome_chr,
-        "') does not exist in the dataframe. ",
-        "Please specify an existing column or use a valid expression."
+        "') does not exist in the dataframe. Please specify an existing column or use a valid expression."
       )
     }
   } else if (rlang::is_call(outcome_expr)) {
     # If outcome is a call (e.g., log(variable)), skip column existence check
-    # Optionally, validate the columns used in the call's arguments if needed
   } else {
     stop(
-      "The specified outcome must be either a column name (symbol) ",
-      "or a function call (e.g., log(variable))."
+      "The specified outcome must be either a column name (symbol) or a function call (e.g., log(variable))."
     )
   }
 
@@ -102,9 +102,30 @@ run_es <- function(data,
     )
   }
 
-  # Check fixed effects
-  if (length(fe) > 0) {
-    missing_fes <- fe[!fe %in% colnames(data)]
+  # ---- 0.3 Process fixed effects (fe) variable ----
+  # Allow fixed effects to be specified as an additive expression (e.g., firm_id + year)
+  fe_expr <- rlang::enexpr(fe)
+  parse_fe_expr <- function(expr) {
+    if (rlang::is_symbol(expr)) {
+      return(rlang::as_string(expr))
+    } else if (rlang::is_call(expr, "+")) {
+      # Recursively parse '+' calls to extract all variable names
+      c(parse_fe_expr(expr[[2]]), parse_fe_expr(expr[[3]]))
+    } else {
+      stop("Invalid fixed effects expression. Please use a formula-like expression (e.g., firm_id + year).")
+    }
+  }
+  fe_vars <- if (rlang::is_call(fe_expr, "+") || rlang::is_symbol(fe_expr)) {
+    parse_fe_expr(fe_expr)
+  } else if (is.vector(fe_expr)) {
+    fe_expr
+  } else {
+    stop("Invalid input for fe.")
+  }
+
+  # Check that the fixed effects variables exist in the data
+  if (length(fe_vars) > 0) {
+    missing_fes <- fe_vars[!fe_vars %in% colnames(data)]
     if (length(missing_fes) > 0) {
       stop(
         "The specified fixed effects variable(s) (",
@@ -114,7 +135,7 @@ run_es <- function(data,
     }
   }
 
-  # Check cluster if provided
+  # ---- 0.4 Check cluster if provided ----
   if (!is.null(cluster)) {
     cluster_chr <- rlang::as_string(dplyr::ensym(cluster))
     if (!cluster_chr %in% colnames(data)) {
@@ -157,7 +178,7 @@ run_es <- function(data,
       dplyr::between(relative_time, -lead_range, lag_range)
     )
 
-  # Create dummy variables for each lead and lag
+  # Create dummy variables for each lead and lag period
   for (i in seq(-lead_range, lag_range, by = 1)) {
     col_name <- get_term_name(i)
     data <- data |>
@@ -176,15 +197,15 @@ run_es <- function(data,
 
   # Construct terms for regression
   all_terms <- c(
-    paste0("lead", seq(lead_range, 1)),  # lead5,...,lead1
-    paste0("lag", seq(0, lag_range))     # lag0, lag1,...
+    paste0("lead", seq(lead_range, 1)),
+    paste0("lag", seq(0, lag_range))
   )
   baseline_term <- get_term_name(baseline)
   included_terms <- setdiff(all_terms, baseline_term)
   RHS_formula <- paste(included_terms, collapse = "+")
-  fe_formula <- paste(fe, collapse = "+")
+  fe_formula <- paste(fe_vars, collapse = "+")
 
-  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | fe"
+  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | firm_id+year"
   model_formula_text <- paste0(
     outcome_expr_text, " ~ ", RHS_formula, " | ", fe_formula
   )
@@ -240,6 +261,7 @@ run_es <- function(data,
 
   return(result)
 }
+
 
 
 

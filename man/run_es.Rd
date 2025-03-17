@@ -33,7 +33,7 @@ run_es(
 
 \item{lag_range}{Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.}
 
-\item{fe}{A vector of fixed effects variables (e.g., c("id", "year")). These variables account for unobserved heterogeneity.}
+\item{fe}{A vector of fixed effects variables or an additive expression (e.g., firm_id + year). These variables account for unobserved heterogeneity.}
 
 \item{cluster}{An optional variable for clustering standard errors. For example, `cluster = "state"`.}
 
@@ -56,7 +56,8 @@ It first generates lead and lag dummy variables relative to the treatment timing
 scales the time intervals if specified, and then estimates the regression model.
 }
 \details{
-This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals). It automatically scales the relative time variable using the `interval` parameter.
+This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals).
+It automatically scales the relative time variable using the `interval` parameter.
 
 Steps:
 1. Compute the relative time for each observation as `(time - timing) / interval`.
