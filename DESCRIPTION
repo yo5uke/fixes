@@ -9,8 +9,8 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: This package provides functions for creating, estimating, and visualizing event study models using fixed-effects regression. It includes tools for generating lead and lag variables and for visualizing results.
-Depends: R (>= 4.0.0)
+Description: Provides functions for creating, analyzing, and visualizing event study models using fixed-effects regression.
+Depends: R (>= 4.1.0)
 Imports:
     dplyr,
     ggplot2,
@@ -21,3 +21,7 @@ Imports:
 License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.2
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
