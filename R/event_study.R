@@ -11,6 +11,11 @@
 #' @param timing The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.
 #' @param lead_range Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.
 #' @param lag_range Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.
+#' @param covariates Optional covariates to include in the regression.
+#' You can specify covariates using either:
+#' - an additive expression (e.g., `x1 + x2 + x3`), or
+#' - a character vector of variable names (e.g., `c("x1", "x2", "x3")`).
+#' These variables are added to the right-hand side of the regression model.
 #' @param fe A vector of fixed effects variables or an additive expression (e.g., firm_id + year). These variables account for unobserved heterogeneity.
 #' @param cluster An optional variable for clustering standard errors. For example, `cluster = "state"`.
 #' @param baseline The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.
@@ -36,6 +41,13 @@
 #'
 #' If `interval > 1`, ensure that the specified `lead_range` and `lag_range` correspond to the number of time intervals, not the absolute number of years.
 #'
+#'
+#' You can include additional covariates using the `covariates` argument.
+#' These covariates will be added to the regression alongside the lead and lag dummy variables.
+#' You can provide:
+#' - an additive expression (e.g., `x1 + x2 + x3`), or
+#' - a character vector (e.g., `c("x1", "x2", "x3")`).
+#'
 #' @examples
 #' # Simulate panel data
 #' df <- tibble::tibble(
@@ -43,6 +55,9 @@
 #'   state_id = rep(sample(1:10, size = 50, replace = TRUE), each = 10),
 #'   year = rep(2000:2009, times = 50),
 #'   is_treated = rep(sample(c(1, 0), size = 50, replace = TRUE, prob = c(0.5, 0.5)), each = 10),
+#'   x1         = rnorm(500),           # Covariate 1
+#'   x2         = rbinom(500, 1, 0.4),  # Covariate 2 (binary)
+#'   x3         = runif(500, 0, 10),    # Covariate 3
 #'   y = rnorm(500, mean = 0, sd = 1)  # Simulated outcome variable
 #' )
 #'
@@ -61,6 +76,22 @@
 #'   interval   = 1
 #' )
 #'
+#' # Run event study with covariates
+#' event_study_cov <- run_es(
+#'   data       = df,
+#'   outcome    = y,
+#'   treatment  = is_treated,
+#'   time       = year,
+#'   timing     = 2005,
+#'   lead_range = 5,
+#'   lag_range  = 4,
+#'   covariates = c("x1", "x2", "x3"),  # or `x1 + x2 + x3`
+#'   fe         = firm_id + year,
+#'   cluster    = "state_id",
+#'   baseline   = -1,
+#'   interval   = 1
+#' )
+#'
 #' @export
 run_es <- function(data,
                    outcome,
@@ -69,6 +100,7 @@ run_es <- function(data,
                    timing,
                    lead_range,
                    lag_range,
+                   covariates = NULL,
                    fe,
                    cluster = NULL,
                    baseline = -1,
@@ -127,7 +159,42 @@ run_es <- function(data,
     )
   }
 
-  # ---- 0.3 Process fixed effects (fe) variable ----
+  # ----0.3 Process covariates (if provided) ----
+
+  cov_text <- ""
+  if (!rlang::quo_is_null(rlang::enquo(covariates))) {
+    cov_expr <- rlang::enexpr(covariates)
+
+    if (is.character(covariates)) {
+      cov_vars <- covariates
+    } else {
+      parse_cov_expr <- function(expr) {
+        if (rlang::is_symbol(expr)) {
+          return(rlang::as_string(expr))
+        } else if (rlang::is_call(expr, "+")) {
+          c(parse_cov_expr(expr[[2]]), parse_cov_expr(expr[[3]]))
+        } else {
+          stop("Invalid covariates expression. Use `x1 + x2` or `c('x1', 'x2')`.")
+        }
+      }
+
+      if (rlang::is_call(cov_expr, "+") || rlang::is_symbol(cov_expr)) {
+        cov_vars <- parse_cov_expr(cov_expr)
+      } else {
+        stop("Invalid input for covariates.")
+      }
+    }
+
+    # Check variables exist
+    missing_cov <- cov_vars[!cov_vars %in% colnames(data)]
+    if (length(missing_cov) > 0) {
+      stop("Missing covariates: ", paste(missing_cov, collapse = ", "))
+    }
+
+    cov_text <- paste(cov_vars, collapse = "+")
+  }
+
+  # ---- 0.4 Process fixed effects (fe) variable ----
   # Allow fixed effects to be specified as an additive expression (e.g., firm_id + year)
   fe_expr <- rlang::enexpr(fe)
   parse_fe_expr <- function(expr) {
@@ -228,9 +295,15 @@ run_es <- function(data,
   baseline_term <- get_term_name(baseline)
   included_terms <- setdiff(all_terms, baseline_term)
   RHS_formula <- paste(included_terms, collapse = "+")
+
+  # Add covariates
+  if (cov_text != "") {
+    RHS_formula <- paste0(RHS_formula, "+", cov_text)
+  }
+
   fe_formula <- paste(fe_vars, collapse = "+")
 
-  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+... | firm_id+year"
+  # Build the regression formula, e.g., "log(variable) ~ lead1+lead2+...+covariates | firm_id+year"
   model_formula_text <- paste0(
     outcome_expr_text, " ~ ", RHS_formula, " | ", fe_formula
   )

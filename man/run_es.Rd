@@ -12,6 +12,7 @@ run_es(
   timing,
   lead_range,
   lag_range,
+  covariates = NULL,
   fe,
   cluster = NULL,
   baseline = -1,
@@ -32,6 +33,12 @@ run_es(
 \item{lead_range}{Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.}
 
 \item{lag_range}{Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.}
+
+\item{covariates}{Optional covariates to include in the regression.
+You can specify covariates using either:
+- an additive expression (e.g., `x1 + x2 + x3`), or
+- a character vector of variable names (e.g., `c("x1", "x2", "x3")`).
+These variables are added to the right-hand side of the regression model.}
 
 \item{fe}{A vector of fixed effects variables or an additive expression (e.g., firm_id + year). These variables account for unobserved heterogeneity.}
 
@@ -66,6 +73,13 @@ Steps:
 4. Format the regression results into a tidy dataframe.
 
 If `interval > 1`, ensure that the specified `lead_range` and `lag_range` correspond to the number of time intervals, not the absolute number of years.
+
+
+You can include additional covariates using the `covariates` argument.
+These covariates will be added to the regression alongside the lead and lag dummy variables.
+You can provide:
+- an additive expression (e.g., `x1 + x2 + x3`), or
+- a character vector (e.g., `c("x1", "x2", "x3")`).
 }
 \examples{
 # Simulate panel data
@@ -74,6 +88,9 @@ df <- tibble::tibble(
   state_id = rep(sample(1:10, size = 50, replace = TRUE), each = 10),
   year = rep(2000:2009, times = 50),
   is_treated = rep(sample(c(1, 0), size = 50, replace = TRUE, prob = c(0.5, 0.5)), each = 10),
+  x1         = rnorm(500),           # Covariate 1
+  x2         = rbinom(500, 1, 0.4),  # Covariate 2 (binary)
+  x3         = runif(500, 0, 10),    # Covariate 3
   y = rnorm(500, mean = 0, sd = 1)  # Simulated outcome variable
 )
 
@@ -86,6 +103,22 @@ event_study <- run_es(
   timing     = 2005,
   lead_range = 5,              # Corresponds to years 2000-2004 (relative time: -5 to -1)
   lag_range  = 4,              # Corresponds to years 2006-2009 (relative time: 1 to 4)
+  fe         = firm_id + year,
+  cluster    = "state_id",
+  baseline   = -1,
+  interval   = 1
+)
+
+# Run event study with covariates
+event_study_cov <- run_es(
+  data       = df,
+  outcome    = y,
+  treatment  = is_treated,
+  time       = year,
+  timing     = 2005,
+  lead_range = 5,
+  lag_range  = 4,
+  covariates = c("x1", "x2", "x3"),  # or `x1 + x2 + x3`
   fe         = firm_id + year,
   cluster    = "state_id",
   baseline   = -1,
