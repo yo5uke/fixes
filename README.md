@@ -94,6 +94,7 @@ For example, a data frame like the following:
 | timing | Variable indicating treatment timing |
 | lead_range | Range of time before treatment |
 | lag_range | Range of time after treatment (excluding the year of treatment) |
+| covariates | Additional covariates to include in the regression. Can be specified as an additive expression (e.g., `x1 + x2`) or as a character vector (e.g., `c("x1", "x2")`). |
 | fe | Variable representing fixed effects |
 | cluster | A variable that specifies how to cluster the standard error (if clustering is requested) |
 | baseline | A number indicating the relative year to be dropped when performing a regression |
@@ -126,6 +127,35 @@ returned as a tidy data frame[^1].
 
 You can use this data to create your own plots, but `fixes` also
 provides convenient plotting functions.
+
+If you want to include covariates, please specify them as follows:
+
+``` r
+event_study <- run_es(
+  data       = df, 
+  outcome    = y, 
+  treatment  = is_treated, 
+  time       = year, 
+  timing     = 1998, 
+  lead_range = 5, 
+  lag_range  = 5, 
+  covariates = cov1 + cov2 + cov3, 
+  fe         = firm_id + year, 
+  cluster    = "state_id", 
+  baseline   = -1, 
+  interval   = 1
+)
+```
+
+or
+
+``` r
+event_study <- run_es(
+  ...
+  covariates = c("cov1", "cov2", "cov3"), 
+  ...
+)
+```
 
 ### `plot_es()`
 
