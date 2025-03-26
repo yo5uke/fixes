@@ -1,3 +1,14 @@
+# fixes 0.2.0 (March 26, 2025)
+
+## Major Features
+- **Support for covariates in `run_es()`**:
+  - Now accepts covariates specified as either an **additive expression** (e.g., `x1 + x2`) or a **character vector** (e.g., `c("x1", "x2")`).
+  - Automatically parses and validates covariate inputs.
+- Updated documentation and examples to reflect covariate support.
+- Improved error handling for covariates (e.g., missing column names).
+
+---
+
 # fixes 0.1.0 (March 17, 2025)
 
 ## Major Changes
