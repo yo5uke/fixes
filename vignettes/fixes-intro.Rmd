@@ -102,12 +102,13 @@ event_study <- run_es(
   timing     = 1998,
   lead_range = 18,
   lag_range  = 17,
-  covariates = x1 + x2,
-  fe         = firm_id + year,
-  cluster    = "state_id",
+  covariates = ~ x1 + x2,
+  fe         = ~ firm_id + year,
+  cluster    = ~ state_id,
   baseline   = -1,
   interval   = 1
 )
+
 
 # View the first few rows of the event study results
 head(event_study)
@@ -144,15 +145,19 @@ The **fixes** package is designed for panel data analysis and supports custom ti
 
 - `run_es()`:
     - Automatically generates lead and lag dummy variables relative to the treatment event.
-    - Constructs and estimates a fixed effects regression model using `fixest::feols()`.
-    - Accepts covariates specified either as additive expressions (e.g., `x1 + x2`) or character vectors (e.g., `c("x1", "x2")`).
+    - Constructs and estimates a fixed effects regression model.
+    - Accepts covariates specified as a one-sided formula (e.g., `~ x1 + x2`).
+    - Fixed effects must also be specified as a one-sided formula (e.g., `~ id + year`).
+    - Supports clustered standard errors:
+        - You can specify clusters using either a character vector (e.g., `c("id", "year")`) or a one-sided formula (e.g., `~ id + year` or `~ id^year`).
+        - The cluster variables are evaluated *after* subsetting the estimation sample to ensure compatibility.
     - Returns a tidy dataframe with estimated coefficients, standard errors, and confidence intervals.
 
 - `plot_es()`:
     - Provides a flexible visualization tool using `ggplot2`.
     - Offers both ribbon-style and error bar representations of confidence intervals.
     - Can be further customized with standard ggplot2 functions.
-    
+
 ## Conclusion
 
 The **fixes** package streamlines the process of performing event study analyses with fixed effects. It simplifies the estimation and visualization steps, making it easier to interpret dynamic treatment effects in panel data.

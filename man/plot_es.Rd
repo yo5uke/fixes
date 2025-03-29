@@ -87,15 +87,7 @@ If `type = "errorbar"`, ensure that the `std.error` column is present in the inp
 Missing values in the `std.error` column for any term will result in incomplete confidence intervals.
 }
 \examples{
-# Simulate panel data
-df <- tibble::tibble(
-  firm_id = rep(1:50, each = 10),  # 50 firms over 10 years
-  state_id = rep(sample(1:10, size = 50, replace = TRUE), each = 10),
-  year = rep(2000:2009, times = 50),
-  is_treated = rep(sample(c(1, 0), size = 50, replace = TRUE, prob = c(0.5, 0.5)), each = 10),
-  y = rnorm(500, mean = 0, sd = 1)  # Simulated outcome variable
-)
-
+\dontrun{
 # Run event study
 event_study <- run_es(
   data       = df,
@@ -125,5 +117,6 @@ library(ggplot2)
 plot_es(event_study, type = "errorbar") +
   ggplot2::scale_x_continuous(breaks = seq(-5, 4, by = 1)) +
   ggplot2::ggtitle("Result of Event Study")
+}
 
 }

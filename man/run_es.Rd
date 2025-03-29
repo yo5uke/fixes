@@ -20,109 +20,115 @@ run_es(
 )
 }
 \arguments{
-\item{data}{A dataframe containing the dataset.}
+\item{data}{A dataframe containing the panel dataset.}
 
-\item{outcome}{The name of the outcome variable (e.g., "y"). Should be unquoted.}
+\item{outcome}{The outcome variable, specified unquoted. You may use a raw variable name
+(e.g., `y`) or a transformation (e.g., `log(y)`).}
 
-\item{treatment}{The name of the treatment variable (e.g., "treated"). Should be unquoted.}
+\item{treatment}{The binary treatment indicator (unquoted). Typically equals 1 in and after the treated period, 0 otherwise.}
 
-\item{time}{The name of the time variable (e.g., "year"). Should be unquoted.}
+\item{time}{The time variable (unquoted). Used to calculate the relative timing.}
 
-\item{timing}{The time period when the treatment occurred. For example, if the treatment was implemented in 1995, set `timing = 1995`.}
+\item{timing}{The time period when the treatment occurs for the treated units.}
 
-\item{lead_range}{Number of time periods to include before the treatment (negative leads). For example, `lead_range = 3` includes 3 periods before the treatment.}
+\item{lead_range}{Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`).}
 
-\item{lag_range}{Number of time periods to include after the treatment (positive lags). For example, `lag_range = 2` includes 2 periods after the treatment.}
+\item{lag_range}{Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`).}
 
-\item{covariates}{Optional covariates to include in the regression.
-You can specify covariates using either:
-- an additive expression (e.g., `x1 + x2 + x3`), or
-- a character vector of variable names (e.g., `c("x1", "x2", "x3")`).
-These variables are added to the right-hand side of the regression model.}
+\item{covariates}{Optional covariates to include in the regression. Must be supplied as a one-sided formula (e.g., `~ x1 + x2`).}
 
-\item{fe}{A vector of fixed effects variables or an additive expression (e.g., firm_id + year). These variables account for unobserved heterogeneity.}
+\item{fe}{Fixed effects to control for unobserved heterogeneity. Must be a one-sided formula (e.g., `~ id + year`).}
 
-\item{cluster}{An optional variable for clustering standard errors. For example, `cluster = "state"`.}
+\item{cluster}{Clustering specification for robust standard errors. Accepts either:
+\itemize{
+  \item a character vector of column names (e.g., `c("id", "year")`), or
+  \item a one-sided formula (e.g., `~ id + year` or `~ id^year`).
+}
+Cluster variables are internally re-evaluated after filtering for the estimation window.}
 
-\item{baseline}{The relative time period to use as the baseline (default: -1). The corresponding dummy variable is excluded from the regression and treated as the reference group. For example, if `baseline = 0`, the treatment year is the baseline.}
+\item{baseline}{The relative time (e.g., `-1`) to use as the reference period.
+The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
+Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.}
 
-\item{interval}{The time interval between observations (default: 1). For example, use `interval = 5` for datasets where time steps are in 5-year intervals.}
+\item{interval}{The interval between time periods (e.g., use `5` for 5-year spaced panel). Default is `1`.}
 }
 \value{
-A tidy dataframe with regression results. This includes:
-- `term`: The lead or lag variable names.
-- `estimate`: Estimated coefficients.
-- `std.error`: Standard errors.
-- `conf.high`: Upper bound of the 95% confidence interval.
-- `conf.low`: Lower bound of the 95% confidence interval.
-- `relative_time`: Scaled relative time based on the specified `interval`.
+A tidy dataframe with the event study regression results, containing:
+\itemize{
+  \item `term`: Name of the lead or lag dummy variable.
+  \item `estimate`: Coefficient estimate.
+  \item `std.error`: Standard error.
+  \item `statistic`: t-statistic.
+  \item `p.value`: p-value.
+  \item `conf_high`: Upper bound of 95% confidence interval.
+  \item `conf_low`: Lower bound of 95% confidence interval.
+  \item `relative_time`: Time scaled relative to the treatment.
+  \item `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy).
+}
 }
 \description{
-This function performs an event study using fixed effects regression.
-It first generates lead and lag dummy variables relative to the treatment timing,
-scales the time intervals if specified, and then estimates the regression model.
+This function performs an event study using fixed effects regression based on a panel dataset.
+It generates dummy variables for each lead and lag period relative to the treatment timing,
+applies optional covariates and fixed effects, and estimates the model using `fixest::feols`.
 }
 \details{
-This function is designed for panel data and supports time intervals other than 1 (e.g., 5-year intervals).
-It automatically scales the relative time variable using the `interval` parameter.
-
-Steps:
-1. Compute the relative time for each observation as `(time - timing) / interval`.
-2. Generate lead and lag dummy variables within the specified ranges (`lead_range`, `lag_range`).
-3. Construct and estimate the fixed effects regression model using `fixest::feols`.
-4. Format the regression results into a tidy dataframe.
-
-If `interval > 1`, ensure that the specified `lead_range` and `lag_range` correspond to the number of time intervals, not the absolute number of years.
-
-
-You can include additional covariates using the `covariates` argument.
-These covariates will be added to the regression alongside the lead and lag dummy variables.
-You can provide:
-- an additive expression (e.g., `x1 + x2 + x3`), or
-- a character vector (e.g., `c("x1", "x2", "x3")`).
+This function is intended for difference-in-differences or event study designs with panel data.
+It automatically:
+\itemize{
+  \item computes relative time: \code{(time - timing) / interval},
+  \item generates dummy variables for specified leads and lags,
+  \item removes the baseline term from estimation and appends it back post-estimation,
+  \item uses `fixest::feols()` for fast and flexible estimation.
+}
+Both fixed effects and clustering are fully supported.
 }
 \examples{
-# Simulate panel data
-df <- tibble::tibble(
-  firm_id = rep(1:50, each = 10),  # 50 firms over 10 years
-  state_id = rep(sample(1:10, size = 50, replace = TRUE), each = 10),
-  year = rep(2000:2009, times = 50),
-  is_treated = rep(sample(c(1, 0), size = 50, replace = TRUE, prob = c(0.5, 0.5)), each = 10),
-  x1         = rnorm(500),           # Covariate 1
-  x2         = rbinom(500, 1, 0.4),  # Covariate 2 (binary)
-  x3         = runif(500, 0, 10),    # Covariate 3
-  y = rnorm(500, mean = 0, sd = 1)  # Simulated outcome variable
-)
+\dontrun{
+# Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2
 
-# Run event study
-event_study <- run_es(
+# Specifying two-way clustering over var1 and var2 using a character vector:
+run_es(
   data       = df,
   outcome    = y,
-  treatment  = is_treated,
+  treatment  = treat,
   time       = year,
   timing     = 2005,
-  lead_range = 5,              # Corresponds to years 2000-2004 (relative time: -5 to -1)
-  lag_range  = 4,              # Corresponds to years 2006-2009 (relative time: 1 to 4)
-  fe         = firm_id + year,
-  cluster    = "state_id",
-  baseline   = -1,
+  lead_range = 2,
+  lag_range  = 2,
+  covariates = ~ x1 + x2,
+  fe         = ~ id + year,
+  cluster    = c("var1", "var2"),
   interval   = 1
 )
 
-# Run event study with covariates
-event_study_cov <- run_es(
+# Specifying two-way clustering over var1 and var2 using a one-sided formula:
+run_es(
   data       = df,
   outcome    = y,
-  treatment  = is_treated,
+  treatment  = treat,
   time       = year,
   timing     = 2005,
-  lead_range = 5,
-  lag_range  = 4,
-  covariates = c("x1", "x2", "x3"),  # or `x1 + x2 + x3`
-  fe         = firm_id + year,
-  cluster    = "state_id",
-  baseline   = -1,
+  lead_range = 2,
+  lag_range  = 2,
+  covariates = ~ x1 + x2,
+  fe         = ~ id + year,
+  cluster    = ~ var1 + var2,
   interval   = 1
 )
 
+# Using an interaction in the clustering specification:
+run_es(
+  data       = df,
+  outcome    = y,
+  treatment  = treat,
+  time       = year,
+  timing     = 2005,
+  lead_range = 2,
+  lag_range  = 2,
+  covariates = ~ x1 + x2,
+  fe         = ~ id + year,
+  cluster    = ~ var1^var2,
+  interval   = 1
+)
+}
 }

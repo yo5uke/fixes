@@ -1,11 +1,13 @@
-# fixes 0.2.0 (March 26, 2025)
+# fixes 0.2.0 (March 29, 2025)
 
 ## Major Features
 - **Support for covariates in `run_es()`**:
-  - Now accepts covariates specified as either an **additive expression** (e.g., `x1 + x2`) or a **character vector** (e.g., `c("x1", "x2")`).
-  - Automatically parses and validates covariate inputs.
-- Updated documentation and examples to reflect covariate support.
-- Improved error handling for covariates (e.g., missing column names).
+  - Covariates must now be specified as a **one-sided formula** (e.g., `~ x1 + x2`).
+- **Fixed Effects and Clustering Interface Updated**:
+  - `fe` and `cluster` arguments must now be specified using a **one-sided formula** (e.g., `~ id + year`).
+  - Character vector input for `cluster` is still accepted.
+  - Improved internal handling and validation of fixed effects and clustering variables.
+- Improved error messages for invalid or missing variable names.
 
 ---
 
