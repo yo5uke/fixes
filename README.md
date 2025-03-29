@@ -1,12 +1,13 @@
 
-
-<!-- README.md is generated from README.qmd. Please edit that file -->
+<!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # fixes <a><img src="man/figures/logo.png" align="right" height="138" /></a>
 
 <!-- badges: start -->
 
 [![R-CMD-check](https://github.com/yo5uke/fixes/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/yo5uke/fixes/actions/workflows/R-CMD-check.yaml)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/fixes)](https://CRAN.R-project.org/package=fixes)
 <!-- badges: end -->
 
 ## Overview
@@ -39,18 +40,21 @@ You can install the package like so:
 
 ``` r
 # install.packages("pak")
-pak::pak("yo5uke/fixes")
+pak::pak("fixes")
 ```
 
 or
 
 ``` r
-# install.packages("devtools")
-devtools::install_github("yo5uke/fixes")
+install.packages("fixes")
 ```
 
-The `fixes` package is not currently available on CRAN. Please install
-it from the GitHub repository.
+If you want to install development version, please install from GitHub
+repository:
+
+``` r
+pak::pak("yo5uke/fixes")
+```
 
 ## How to use
 
@@ -85,20 +89,20 @@ For example, a data frame like the following:
 
 `run_es()` has nine arguments.
 
-| Arguments | Description |
+| Argument | Description |
 |----|----|
-| data | Data frame to be used |
-| outcome | Outcome variable |
-| treatment | Dummy variable indicating the individual being treated |
-| time | Variable that represents time |
-| timing | Variable indicating treatment timing |
-| lead_range | Range of time before treatment |
-| lag_range | Range of time after treatment (excluding the year of treatment) |
-| covariates | Additional covariates to include in the regression. Can be specified as an additive expression (e.g., `x1 + x2`) or as a character vector (e.g., `c("x1", "x2")`). |
-| fe | Variable representing fixed effects |
-| cluster | A variable that specifies how to cluster the standard error (if clustering is requested) |
-| baseline | A number indicating the relative year to be dropped when performing a regression |
-| interval | Parameter to specify the time step between observations (e.g., 1 for yearly data, 5 for 5-year intervals) |
+| `data` | Data frame to be used. |
+| `outcome` | Outcome variable. Can be specified as a raw variable or a transformation (e.g., `log(y)`). Provide it unquoted. |
+| `treatment` | Dummy variable indicating the treated units. Provide it unquoted. |
+| `time` | Time variable. Provide it unquoted. |
+| `timing` | Time value indicating when the treatment occurs. |
+| `lead_range` | Number of pre-treatment periods to include (e.g., 3 = `lead3`, `lead2`, `lead1`). |
+| `lag_range` | Number of post-treatment periods to include (e.g., 2 = `lag0`, `lag1`, `lag2`). |
+| `covariates` | Additional covariates to include in the regression. **Must be a one-sided formula** (e.g., `~ x1 + x2`). |
+| `fe` | Fixed effects to control for unobserved heterogeneity. **Must be a one-sided formula** (e.g., `~ id + year`). |
+| `cluster` | Specifies clustering for standard errors. Can be a **character vector** (e.g., `c("id", "year")`) or a **formula** (e.g., `~ id + year`). |
+| `baseline` | Relative time value to be used as the reference category. The corresponding dummy is excluded from the regression. Must lie within the lead/lag range. |
+| `interval` | Time interval between observations (e.g., `1` for yearly data, `5` for 5-year intervals). |
 
 Then, perform the analysis as follows:
 
@@ -111,8 +115,8 @@ event_study <- run_es(
   timing     = 1998, 
   lead_range = 5, 
   lag_range  = 5, 
-  fe         = firm_id + year, 
-  cluster    = "state_id", 
+  fe         = ~ firm_id + year, 
+  cluster    = ~ state_id, 
   baseline   = -1, 
   interval   = 1
 )
@@ -139,21 +143,11 @@ event_study <- run_es(
   timing     = 1998, 
   lead_range = 5, 
   lag_range  = 5, 
-  covariates = cov1 + cov2 + cov3, 
-  fe         = firm_id + year, 
-  cluster    = "state_id", 
+  covariates = ~ cov1 + cov2 + cov3, 
+  fe         = ~ firm_id + year, 
+  cluster    = ~ state_id, 
   baseline   = -1, 
   interval   = 1
-)
-```
-
-or
-
-``` r
-event_study <- run_es(
-  ...
-  covariates = c("cov1", "cov2", "cov3"), 
-  ...
 )
 ```
 
@@ -185,19 +179,19 @@ created with `run_es()` and the plot will be complete.
 plot_es(event_study)
 ```
 
-![](README_files/figure-commonmark/unnamed-chunk-4-1.png)
+![](README_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 ``` r
 plot_es(event_study, type = "errorbar")
 ```
 
-![](README_files/figure-commonmark/unnamed-chunk-5-1.png)
+![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 ``` r
 plot_es(event_study, type = "errorbar", vline_val = -.5)
 ```
 
-![](README_files/figure-commonmark/unnamed-chunk-6-1.png)
+![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 Since it is created on a `ggplot2` basis, it is possible to modify minor
 details.
@@ -208,7 +202,7 @@ plot_es(event_study, type = "errorbar") +
   ggplot2::ggtitle("Result of Event Study")
 ```
 
-![](README_files/figure-commonmark/unnamed-chunk-7-1.png)
+![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ## Debugging
 
