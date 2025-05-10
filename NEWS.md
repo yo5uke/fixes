@@ -1,3 +1,18 @@
+# fixes 0.2.1 (May 11, 2025)
+
+## Minor Improvements
+- Added a warning when lead/lag dummy variable names (e.g., `lead1`, `lag0`) already exist in the dataset to prevent accidental overwriting.
+- Added a warning when filtered data (based on `lead_range`, `lag_range`, and `interval`) has fewer than 10 rows, helping users identify overly narrow estimation windows.
+- Improved handling of the `treatment` variable: it is now coerced to logical using `as.logical()` to support both binary numeric (`0/1`) and logical (`TRUE/FALSE`) formats.
+- Fixed internal bug in model formula construction:
+  - Previously, fixed effects specified via the `fe` argument (e.g., `~ id + year`) were combined using `model_formula | fe_text`, which caused evaluation errors during tests.
+  - Now, the full model formula is safely constructed as a string and parsed with `as.formula()` to ensure compatibility with `fixest::feols()`.
+
+## Compatibility
+- No breaking changes. This is a backward-compatible patch release with internal robustness improvements and enhanced error handling.
+
+---
+
 # fixes 0.2.0 (March 29, 2025)
 
 ## Major Features
@@ -8,8 +23,6 @@
   - Character vector input for `cluster` is still accepted.
   - Improved internal handling and validation of fixed effects and clustering variables.
 - Improved error messages for invalid or missing variable names.
-
----
 
 # fixes 0.1.0 (March 17, 2025)
 

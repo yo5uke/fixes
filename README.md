@@ -87,24 +87,27 @@ For example, a data frame like the following:
 
 ### `run_es()`
 
-`run_es()` has nine arguments.
+`run_es()` takes 11 arguments, including required variables and optional
+specifications like covariates and clustering.
 
 | Argument | Description |
 |----|----|
 | `data` | Data frame to be used. |
 | `outcome` | Outcome variable. Can be specified as a raw variable or a transformation (e.g., `log(y)`). Provide it unquoted. |
-| `treatment` | Dummy variable indicating the treated units. Provide it unquoted. |
+| `treatment` | Dummy variable indicating the treated units. Provide it unquoted. Accepts both `0/1` and `TRUE/FALSE`. |
 | `time` | Time variable. Provide it unquoted. |
 | `timing` | Time value indicating when the treatment occurs. |
 | `lead_range` | Number of pre-treatment periods to include (e.g., 3 = `lead3`, `lead2`, `lead1`). |
 | `lag_range` | Number of post-treatment periods to include (e.g., 2 = `lag0`, `lag1`, `lag2`). |
 | `covariates` | Additional covariates to include in the regression. **Must be a one-sided formula** (e.g., `~ x1 + x2`). |
 | `fe` | Fixed effects to control for unobserved heterogeneity. **Must be a one-sided formula** (e.g., `~ id + year`). |
-| `cluster` | Specifies clustering for standard errors. Can be a **character vector** (e.g., `c("id", "year")`) or a **formula** (e.g., `~ id + year`). |
-| `baseline` | Relative time value to be used as the reference category. The corresponding dummy is excluded from the regression. Must lie within the lead/lag range. |
+| `cluster` | Specifies clustering for standard errors. Can be a **character vector** (e.g., `c("id", "year")`) or a **formula** (e.g., `~ id + year`, `~ id^year`). |
+| `baseline` | Relative time value to be used as the reference category. The corresponding dummy is excluded from the regression. **Must be within the specified lead/lag range.** |
 | `interval` | Time interval between observations (e.g., `1` for yearly data, `5` for 5-year intervals). |
 
-Then, perform the analysis as follows:
+------------------------------------------------------------------------
+
+#### Example: Without Covariates
 
 ``` r
 event_study <- run_es(
@@ -122,17 +125,17 @@ event_study <- run_es(
 )
 ```
 
-***Note:*** The `fe` argument should be specified using additive
-notation (e.g., `firm_id + year`), while the `cluster` argument should
-be enclosed in double quotation marks.
+***Note:*** The `fe` argument must be specified as a one-sided formula
+(e.g., `~ firm_id + year`).  
+The `cluster` argument can be specified either as a one-sided formula
+(e.g., `~ state_id`) or as a character vector (e.g.,
+`c("firm_id", "year")`).
 
-By executing `run_es()`, the event study analysis results will be
-returned as a tidy data frame[^1].
+The `run_es()` function returns a tidy data frame with estimated
+event-study coefficients, confidence intervals, and metadata such as
+relative timing and baseline identification[^1].
 
-You can use this data to create your own plots, but `fixes` also
-provides convenient plotting functions.
-
-If you want to include covariates, please specify them as follows:
+#### Example: With Covariates
 
 ``` r
 event_study <- run_es(
@@ -150,6 +153,10 @@ event_study <- run_es(
   interval   = 1
 )
 ```
+
+You can use this result to create custom plots, or take advantage of the
+built-in `plot_es()` function to visualize the estimates and confidence
+intervals with minimal code.
 
 ### `plot_es()`
 
@@ -204,8 +211,15 @@ plot_es(event_study, type = "errorbar") +
 
 ![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
+## Planned Features
+
+- Support for custom confidence level in `plot_es()` (e.g.,
+  `conf_level = 0.90`)
+- Support for faceted plots by subgroup (e.g., `facet_by = "group"`)
+
 ## Debugging
 
 If you find an issue, please report it on the GitHub Issues page.
 
-[^1]: Behind the scenes, `fixest::feols()` is used for estimation.
+[^1]: Behind the scenes, estimation is performed using
+    `fixest::feols()`.

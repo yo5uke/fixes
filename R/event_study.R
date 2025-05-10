@@ -4,10 +4,10 @@
 #' It generates dummy variables for each lead and lag period relative to the treatment timing,
 #' applies optional covariates and fixed effects, and estimates the model using `fixest::feols`.
 #'
-#' @param data A dataframe containing the panel dataset.
+#' @param data A data frame containing the panel dataset.
 #' @param outcome The outcome variable, specified unquoted. You may use a raw variable name
 #' (e.g., `y`) or a transformation (e.g., `log(y)`).
-#' @param treatment The binary treatment indicator (unquoted). Typically equals 1 in and after the treated period, 0 otherwise.
+#' @param treatment The treatment indicator (unquoted). Can be binary numeric (`0/1`) or logical (`TRUE/FALSE`). Typically equals 1 (or `TRUE`) in and after the treated period, 0 otherwise.
 #' @param time The time variable (unquoted). Used to calculate the relative timing.
 #' @param timing The time period when the treatment occurs for the treated units.
 #' @param lead_range Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`).
@@ -23,35 +23,47 @@
 #' @param baseline The relative time (e.g., `-1`) to use as the reference period.
 #' The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
 #' Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.
-#' @param interval The interval between time periods (e.g., use `5` for 5-year spaced panel). Default is `1`.
+#' @param interval The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.
 #'
-#' @return A tidy dataframe with the event study regression results, containing:
-#' \itemize{
-#'   \item `term`: Name of the lead or lag dummy variable.
-#'   \item `estimate`: Coefficient estimate.
-#'   \item `std.error`: Standard error.
-#'   \item `statistic`: t-statistic.
-#'   \item `p.value`: p-value.
-#'   \item `conf_high`: Upper bound of 95% confidence interval.
-#'   \item `conf_low`: Lower bound of 95% confidence interval.
-#'   \item `relative_time`: Time scaled relative to the treatment.
-#'   \item `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy).
-#' }
+#' @return A tibble with the event study regression results, including:
+#' - `term`: Name of the lead or lag dummy variable
+#' - `estimate`: Coefficient estimate
+#' - `std.error`: Standard error
+#' - `statistic`: t-statistic
+#' - `p.value`: p-value
+#' - `conf_high`: Upper bound of 95% confidence interval
+#' - `conf_low`: Lower bound of 95% confidence interval
+#' - `relative_time`: Time scaled relative to the treatment
+#' - `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy)
 #'
 #' @details
 #' This function is intended for difference-in-differences or event study designs with panel data.
 #' It automatically:
-#' \itemize{
-#'   \item computes relative time: \code{(time - timing) / interval},
-#'   \item generates dummy variables for specified leads and lags,
-#'   \item removes the baseline term from estimation and appends it back post-estimation,
-#'   \item uses `fixest::feols()` for fast and flexible estimation.
-#' }
+#' - Computes relative time: \code{(time - timing) / interval}
+#' - Generates dummy variables for specified leads and lags
+#' - Removes the baseline term from estimation and appends it back post-estimation
+#' - Uses \code{fixest::feols()} for fast and flexible estimation
+#'
 #' Both fixed effects and clustering are fully supported.
 #'
 #' @examples
 #' \dontrun{
 #' # Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2
+#'
+#' # Minimal example without covariates
+#' run_es(
+#'   data       = df,
+#'   outcome    = y,
+#'   treatment  = treat,
+#'   time       = year,
+#'   timing     = 2005,
+#'   lead_range = 2,
+#'   lag_range  = 2,
+#'   fe         = ~ id + year,
+#'   cluster    = ~ id,
+#'   baseline   = -1,
+#'   interval   = 1
+#' )
 #'
 #' # Specifying two-way clustering over var1 and var2 using a character vector:
 #' run_es(
@@ -98,6 +110,7 @@
 #'   interval   = 1
 #' )
 #' }
+#' @importFrom stats as.formula
 #' @export
 run_es <- function(data,
                    outcome,
@@ -208,6 +221,14 @@ run_es <- function(data,
          ") and lag_range (", lag_range, ").")
   }
 
+  # ---- 0.6 Check for existing columns to be overwritten ----
+  existing_terms <- vapply(seq(-lead_range, lag_range), get_term_name, character(1))
+  overwritten <- existing_terms[existing_terms %in% names(data)]
+  if (length(overwritten) > 0) {
+    warning("The following columns already exist in the data and will be overwritten: ",
+            paste(overwritten, collapse = ", "))
+  }
+
   # ---- 1. Create lead and lag variables ----
   data <- data |>
     dplyr::mutate(
@@ -229,23 +250,26 @@ run_es <- function(data,
   data <- data |>
     dplyr::filter(dplyr::between(relative_time, -lead_range, lag_range))
 
+  if (nrow(data) < 10) {
+    warning("Filtered data has only ", nrow(data), " rows. Please check your time window and interval settings.")
+  }
+
   for (i in seq(-lead_range, lag_range, by = 1)) {
     col_name <- get_term_name(i)
     data <- data |>
       dplyr::mutate(
-        !!col_name := dplyr::if_else(!!treatment_sym == 1 & (relative_time == i), 1, 0)
+        !!col_name := dplyr::if_else(as.logical(!!treatment_sym) & (relative_time == i), 1, 0)
       )
   }
 
   # ---- 2. Construct and estimate the regression model ----
-  outcome_expr_text <- rlang::expr_text(outcome_expr)
+  outcome_expr_text <- rlang::expr_deparse(outcome_expr)
   all_terms <- c(
     paste0("lead", seq(lead_range, 1)),
     paste0("lag", seq(0, lag_range))
   )
 
   baseline_term <- get_term_name(baseline)
-
   included_terms <- setdiff(all_terms, baseline_term)
 
   RHS_formula <- paste(included_terms, collapse = "+")
@@ -253,14 +277,17 @@ run_es <- function(data,
     RHS_formula <- paste0(RHS_formula, "+", cov_text)
   }
 
-  model_formula_text <- paste0(outcome_expr_text, " ~ ", RHS_formula, " | ", fe_text)
-  model_formula <- stats::as.formula(model_formula_text)
+  # Construct full formula as string and convert to formula
+  formula_string <- paste0(outcome_expr_text, " ~ ", RHS_formula, " | ", fe_text)
+  model_formula <- as.formula(formula_string)
 
+  # Estimate
   if (!is.null(cluster)) {
     model <- fixest::feols(model_formula, data = data, cluster = cluster)
   } else {
     model <- fixest::feols(model_formula, data = data)
   }
+
 
   # ---- 3. Format the results ----
   result <- broom::tidy(model)

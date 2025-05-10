@@ -20,12 +20,12 @@ run_es(
 )
 }
 \arguments{
-\item{data}{A dataframe containing the panel dataset.}
+\item{data}{A data frame containing the panel dataset.}
 
 \item{outcome}{The outcome variable, specified unquoted. You may use a raw variable name
 (e.g., `y`) or a transformation (e.g., `log(y)`).}
 
-\item{treatment}{The binary treatment indicator (unquoted). Typically equals 1 in and after the treated period, 0 otherwise.}
+\item{treatment}{The treatment indicator (unquoted). Can be binary numeric (`0/1`) or logical (`TRUE/FALSE`). Typically equals 1 (or `TRUE`) in and after the treated period, 0 otherwise.}
 
 \item{time}{The time variable (unquoted). Used to calculate the relative timing.}
 
@@ -50,21 +50,19 @@ Cluster variables are internally re-evaluated after filtering for the estimation
 The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
 Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.}
 
-\item{interval}{The interval between time periods (e.g., use `5` for 5-year spaced panel). Default is `1`.}
+\item{interval}{The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.}
 }
 \value{
-A tidy dataframe with the event study regression results, containing:
-\itemize{
-  \item `term`: Name of the lead or lag dummy variable.
-  \item `estimate`: Coefficient estimate.
-  \item `std.error`: Standard error.
-  \item `statistic`: t-statistic.
-  \item `p.value`: p-value.
-  \item `conf_high`: Upper bound of 95% confidence interval.
-  \item `conf_low`: Lower bound of 95% confidence interval.
-  \item `relative_time`: Time scaled relative to the treatment.
-  \item `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy).
-}
+A tibble with the event study regression results, including:
+- `term`: Name of the lead or lag dummy variable
+- `estimate`: Coefficient estimate
+- `std.error`: Standard error
+- `statistic`: t-statistic
+- `p.value`: p-value
+- `conf_high`: Upper bound of 95% confidence interval
+- `conf_low`: Lower bound of 95% confidence interval
+- `relative_time`: Time scaled relative to the treatment
+- `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy)
 }
 \description{
 This function performs an event study using fixed effects regression based on a panel dataset.
@@ -74,17 +72,31 @@ applies optional covariates and fixed effects, and estimates the model using `fi
 \details{
 This function is intended for difference-in-differences or event study designs with panel data.
 It automatically:
-\itemize{
-  \item computes relative time: \code{(time - timing) / interval},
-  \item generates dummy variables for specified leads and lags,
-  \item removes the baseline term from estimation and appends it back post-estimation,
-  \item uses `fixest::feols()` for fast and flexible estimation.
-}
+- Computes relative time: \code{(time - timing) / interval}
+- Generates dummy variables for specified leads and lags
+- Removes the baseline term from estimation and appends it back post-estimation
+- Uses \code{fixest::feols()} for fast and flexible estimation
+
 Both fixed effects and clustering are fully supported.
 }
 \examples{
 \dontrun{
 # Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2
+
+# Minimal example without covariates
+run_es(
+  data       = df,
+  outcome    = y,
+  treatment  = treat,
+  time       = year,
+  timing     = 2005,
+  lead_range = 2,
+  lag_range  = 2,
+  fe         = ~ id + year,
+  cluster    = ~ id,
+  baseline   = -1,
+  interval   = 1
+)
 
 # Specifying two-way clustering over var1 and var2 using a character vector:
 run_es(
