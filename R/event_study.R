@@ -10,6 +10,7 @@
 #' @param treatment The treatment indicator (unquoted). Can be binary numeric (`0/1`) or logical (`TRUE/FALSE`). Typically equals 1 (or `TRUE`) in and after the treated period, 0 otherwise.
 #' @param time The time variable (unquoted). Used to calculate the relative timing.
 #' @param timing The time period when the treatment occurs for the treated units.
+#' If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed time index within each unit (e.g., 5 for the fifth time point).
 #' @param lead_range Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`).
 #' @param lag_range Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`).
 #' @param covariates Optional covariates to include in the regression. Must be supplied as a one-sided formula (e.g., `~ x1 + x2`).
@@ -24,6 +25,8 @@
 #' The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
 #' Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.
 #' @param interval The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.
+#' @param time_transform Logical. If TRUE, the time variable will be converted to a unit-level sequence (1, 2, 3, ...) based on its order within each unit. Useful for panel data with non-continuous time variables. Default is FALSE.
+#' @param unit The unit (individual) identifier for panel data. Required when time_transform = TRUE. Must be an unquoted variable name (e.g., `id`).
 #'
 #' @return A tibble with the event study regression results, including:
 #' - `term`: Name of the lead or lag dummy variable
@@ -45,6 +48,12 @@
 #' - Uses \code{fixest::feols()} for fast and flexible estimation
 #'
 #' Both fixed effects and clustering are fully supported.
+#'
+#' If `time_transform = TRUE`, the time variable is internally replaced with a unit-level sequence
+#' (e.g., 1, 2, 3, ...) based on its order within each unit (as specified by the `unit` argument).
+#' This is useful when the time variable is irregular (e.g., Date-type data or monthly data with gaps).
+#' Note that in this case, the `timing` argument must be specified based on the transformed index
+#' (e.g., 5 corresponds to the fifth time point in the sorted order within each unit).
 #'
 #' @examples
 #' \dontrun{
@@ -80,34 +89,21 @@
 #'   interval   = 1
 #' )
 #'
-#' # Specifying two-way clustering over var1 and var2 using a one-sided formula:
+#' # Example with time_transform = TRUE (e.g., irregular time variable)
+#' # Suppose `date` is a Date variable, irregular by individual:
 #' run_es(
-#'   data       = df,
-#'   outcome    = y,
-#'   treatment  = treat,
-#'   time       = year,
-#'   timing     = 2005,
-#'   lead_range = 2,
-#'   lag_range  = 2,
-#'   covariates = ~ x1 + x2,
-#'   fe         = ~ id + year,
-#'   cluster    = ~ var1 + var2,
-#'   interval   = 1
-#' )
-#'
-#' # Using an interaction in the clustering specification:
-#' run_es(
-#'   data       = df,
-#'   outcome    = y,
-#'   treatment  = treat,
-#'   time       = year,
-#'   timing     = 2005,
-#'   lead_range = 2,
-#'   lag_range  = 2,
-#'   covariates = ~ x1 + x2,
-#'   fe         = ~ id + year,
-#'   cluster    = ~ var1^var2,
-#'   interval   = 1
+#'   data            = df,
+#'   outcome         = y,
+#'   treatment       = treat,
+#'   time            = date,
+#'   timing          = 5,  # This refers to the 5th time point in each unit after time_transform.
+#'   lead_range      = 2,
+#'   lag_range       = 2,
+#'   fe              = ~ id + year,
+#'   cluster         = ~ id,
+#'   baseline        = -1,
+#'   time_transform  = TRUE,
+#'   unit            = id
 #' )
 #' }
 #' @importFrom stats as.formula
@@ -123,7 +119,9 @@ run_es <- function(data,
                    fe,
                    cluster = NULL,
                    baseline = -1,
-                   interval = 1) {
+                   interval = 1,
+                   time_transform = FALSE,
+                   unit = NULL) {
 
   # ---- 0. Helper function: generate lead/lag term name ----
   get_term_name <- function(i) {
@@ -158,7 +156,7 @@ run_es <- function(data,
     }
   }
 
-  # ---- 0.2 Process outcome, treatment, time ----
+  # ---- 0.2.1 Process outcome, treatment, time ----
   outcome_expr <- rlang::enexpr(outcome)
   treatment_sym <- rlang::ensym(treatment)
   time_sym <- rlang::ensym(time)
@@ -180,6 +178,40 @@ run_es <- function(data,
   time_chr <- rlang::as_string(time_sym)
   if (!time_chr %in% colnames(data)) {
     stop("The specified time ('", time_chr, "') does not exist in the dataframe.")
+  }
+
+  if (inherits(data[[time_chr]], "Date")) {
+    data[[time_chr]] <- as.numeric(data[[time_chr]])
+  }
+
+  if (!is.numeric(data[[time_chr]])) {
+    stop("The `time` variable must be either numeric or Date. Please convert it before passing to `run_es()`.")
+  }
+
+  if (!time_transform && !is.null(unit)) {
+    warning("The `unit` argument is ignored because `time_transform = FALSE`.")
+  }
+
+  # ---- 0.2.2 Process time_transform ----
+  if (time_transform) {
+    if (missing(unit)) {
+      stop("When time_transform = TRUE, you must specify the `unit` argument (e.g., unit = id).")
+    }
+
+    id_sym <- rlang::ensym(unit)
+
+    id_chr <- rlang::as_string(id_sym)
+    if (!id_chr %in% colnames(data)) {
+      stop("The specified unit variable ('", id_chr, "') does not exist in the dataframe.")
+    }
+
+    data <- data |>
+      dplyr::group_by(!!id_sym) |>
+      dplyr::arrange(!!time_sym, .by_group = TRUE) |>
+      dplyr::mutate(time_index = dplyr::row_number()) |>
+      dplyr::ungroup()
+
+    time_sym <- rlang::sym("time_index")
   }
 
   # ---- 0.3 Process covariates ----

@@ -1,3 +1,28 @@
+# fixes 0.3.0 (May 18, 2025)
+
+## New Features
+- Added support for irregular and non-numeric time variables such as `Date`:
+  - Introduced `time_transform = TRUE` to automatically convert the `time` variable into a unit-level sequential index (1, 2, 3, ...) for event study estimation.
+  - Added `unit` argument to specify the panel unit identifier required when `time_transform = TRUE`.
+  - This enables seamless analysis of panel data with monthly, quarterly, or irregular time formats.
+
+## Improvements
+- Updated input validation:
+  - Now accepts `Date` class in the `time` variable and converts it automatically to numeric if `time_transform = FALSE`.
+  - Improved error messages and warnings for better user feedback when `unit` is missing or `time` is of unsupported type.
+- Enhanced documentation:
+  - Updated `@examples` in the function documentation to include `Date`-based examples.
+  - Extended vignette to illustrate `time_transform` usage.
+  - Expanded `README.md` to describe irregular time handling and demonstrate new use cases.
+- Strengthened test coverage:
+  - Added new unit tests for `time_transform`, `unit` handling, and `Date` conversion edge cases.
+
+## Compatibility
+- No breaking changes.
+- This is a backward-compatible **minor release** introducing significant new functionality for irregular time formats.
+
+---
+
 # fixes 0.2.1 (May 11, 2025)
 
 ## Minor Improvements
@@ -10,8 +35,6 @@
 
 ## Compatibility
 - No breaking changes. This is a backward-compatible patch release with internal robustness improvements and enhanced error handling.
-
----
 
 # fixes 0.2.0 (March 29, 2025)
 

@@ -1,7 +1,7 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
-Version: 0.2.1
+Version: 0.3.0
 Authors@R: c(
     person(
       "Yosuke", "Abe",
@@ -25,3 +25,5 @@ Suggests:
     knitr,
     rmarkdown
 VignetteBuilder: knitr
+URL: https://github.com/yo5uke/fixes
+BugReports: https://github.com/yo5uke/fixes/issues

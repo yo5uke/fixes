@@ -139,6 +139,38 @@ p4 <- plot_es(event_study, type = "errorbar") +
 print(p4)
 ```
 
+## Handling Irregular Time Data
+
+In some panel datasets, the time variable may not be regularly spaced — for example, it may be a `Date` column or have gaps between observations. In such cases, `run_es()` provides a convenient option: `time_transform = TRUE`.
+
+When `time_transform` is set to `TRUE`, the function automatically creates a sequential time index (1, 2, 3, ...) within each unit (specified by the `unit` argument) and uses that index for the event study analysis. This is particularly useful when your original time variable is not integer-valued or has irregular spacing.
+
+### Example using `Date` and `time_transform`
+
+```r
+df_alt <- df |>
+  dplyr::mutate(date = as.Date(paste0(year, "-01-01")))
+
+event_study_alt <- run_es(
+  data           = df_alt,
+  outcome        = y,
+  treatment      = is_treated,
+  time           = date,
+  timing         = 19,        # Corresponds to the 19th time point per unit
+  lead_range     = 3,
+  lag_range      = 3,
+  fe             = ~ firm_id + year,
+  cluster        = ~ state_id,
+  baseline       = -1,
+  time_transform = TRUE,
+  unit           = firm_id
+)
+
+head(event_study_alt)
+```
+
+***Note:*** when `time_transform = TRUE`, the `timing` argument must be specified as the index of the treated time point within each unit.
+
 ## Package Details
 
 The **fixes** package is designed for panel data analysis and supports custom time intervals. Key functions include:
@@ -152,6 +184,9 @@ The **fixes** package is designed for panel data analysis and supports custom ti
         - You can specify clusters using either a character vector (e.g., `c("id", "year")`) or a one-sided formula (e.g., `~ id + year` or `~ id^year`).
         - The cluster variables are evaluated *after* subsetting the estimation sample to ensure compatibility.
     - Returns a tidy dataframe with estimated coefficients, standard errors, and confidence intervals.
+    - `time_transform`: If `TRUE`, replaces the time variable with a sequential index within each unit (e.g., for irregular time variables like `Date`).
+    - `unit`: Required when `time_transform = TRUE`. Specifies the panel unit ID (e.g., `firm_id`).
+
 
 - `plot_es()`:
     - Provides a flexible visualization tool using `ggplot2`.

@@ -138,4 +138,75 @@ test_that("Error when cluster input is invalid type", {
   )
 })
 
+test_that("run_es works with time_transform = TRUE and unit", {
+  panel_data_alt <- panel_data |>
+    dplyr::mutate(date = as.Date(paste0(year, "-01-01")))
+
+  result <- run_es(
+    data            = panel_data_alt,
+    outcome         = y,
+    treatment       = treated_1998,
+    time            = date,
+    timing          = 19,
+    lead_range      = 3,
+    lag_range       = 3,
+    fe              = ~ firm_id + year,
+    cluster         = ~ state_id,
+    baseline        = -1,
+    interval        = 1,
+    time_transform  = TRUE,
+    unit            = firm_id
+  )
+
+  expect_s3_class(result, "data.frame")
+  expect_true("relative_time" %in% names(result))
+  expect_true(any(result$is_baseline))
+  expect_equal(result[result$is_baseline, ]$estimate, 0)
+})
+
+test_that("Error when time_transform = TRUE and unit is missing", {
+  panel_data_alt <- panel_data |>
+    dplyr::mutate(date = as.Date(paste0(year, "-01-01")))
+
+  expect_error(
+    run_es(
+      data            = panel_data_alt,
+      outcome         = y,
+      treatment       = treated_1998,
+      time            = date,
+      timing          = 19,
+      lead_range      = 3,
+      lag_range       = 3,
+      fe              = ~ firm_id + year,
+      cluster         = ~ state_id,
+      baseline        = -1,
+      interval        = 1,
+      time_transform  = TRUE
+      # unit is missing
+    ),
+    regexp = "must specify the `unit` argument"
+  )
+})
+
+test_that("Warning when unit is given but time_transform = FALSE", {
+  expect_warning(
+    run_es(
+      data       = panel_data,
+      outcome    = y,
+      treatment  = treated_1998,
+      time       = year,
+      timing     = 1998,
+      lead_range = 2,
+      lag_range  = 2,
+      covariates = NULL,
+      fe         = ~ firm_id + year,
+      cluster    = ~ state_id,
+      baseline   = -1,
+      interval   = 1,
+      time_transform = FALSE,
+      unit = firm_id
+    ),
+    regexp = "unit.*ignored"
+  )
+})
 

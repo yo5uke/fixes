@@ -13,12 +13,11 @@ status](https://www.r-pkg.org/badges/version/fixes)](https://CRAN.R-project.org/
 ## Overview
 
 > **Note**  
-> The `fixes` package currently supports data with annual time intervals
-> only.  
-> For datasets with finer time intervals, such as monthly or quarterly
-> data, I recommend creating a new column with sequential time numbers
-> (e.g., 1, 2, 3, …) representing the time order.  
-> This column can then be used for analysis.
+> By default, the `fixes` package assumes time is a regularly spaced
+> numeric variable (e.g., year = 1995, 1996, …).  
+> However, if your time variable is irregular or non-numeric (e.g.,
+> `Date` type), you can enable `time_transform = TRUE` to automatically
+> convert it to a sequential index within each unit.
 
 The `fixes` package is designed for conducting analysis and creating
 plots for event studies, a method used to verify the parallel trends
@@ -104,6 +103,8 @@ specifications like covariates and clustering.
 | `cluster` | Specifies clustering for standard errors. Can be a **character vector** (e.g., `c("id", "year")`) or a **formula** (e.g., `~ id + year`, `~ id^year`). |
 | `baseline` | Relative time value to be used as the reference category. The corresponding dummy is excluded from the regression. **Must be within the specified lead/lag range.** |
 | `interval` | Time interval between observations (e.g., `1` for yearly data, `5` for 5-year intervals). |
+| `time_transform` | Logical. If TRUE, converts the `time` variable into a sequential index (1, 2, 3, …) per unit. Useful for irregular time variables like `Date`. Default is FALSE. |
+| `unit` | Required if `time_transform = TRUE`. Specifies the panel unit identifier (e.g., `firm_id`). Must be unquoted. |
 
 ------------------------------------------------------------------------
 
@@ -151,6 +152,27 @@ event_study <- run_es(
   cluster    = ~ state_id, 
   baseline   = -1, 
   interval   = 1
+)
+```
+
+``` r
+# Example using Date-type time variable and time_transform
+df_alt <- df |> 
+  dplyr::mutate(date = as.Date(paste0(year, "-01-01")))
+
+event_study_alt <- run_es(
+  data           = df_alt,
+  outcome        = y,
+  treatment      = is_treated,
+  time           = date,
+  timing         = 19,  # Corresponds to 19th time point in each unit
+  lead_range     = 3,
+  lag_range      = 3,
+  fe             = ~ firm_id + year,
+  cluster        = ~ state_id,
+  baseline       = -1,
+  time_transform = TRUE,
+  unit           = firm_id
 )
 ```
 

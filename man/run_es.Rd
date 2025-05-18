@@ -16,7 +16,9 @@ run_es(
   fe,
   cluster = NULL,
   baseline = -1,
-  interval = 1
+  interval = 1,
+  time_transform = FALSE,
+  unit = NULL
 )
 }
 \arguments{
@@ -29,7 +31,8 @@ run_es(
 
 \item{time}{The time variable (unquoted). Used to calculate the relative timing.}
 
-\item{timing}{The time period when the treatment occurs for the treated units.}
+\item{timing}{The time period when the treatment occurs for the treated units.
+If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed time index within each unit (e.g., 5 for the fifth time point).}
 
 \item{lead_range}{Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`).}
 
@@ -51,6 +54,10 @@ The corresponding dummy variable will be excluded from the regression and added 
 Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.}
 
 \item{interval}{The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.}
+
+\item{time_transform}{Logical. If TRUE, the time variable will be converted to a unit-level sequence (1, 2, 3, ...) based on its order within each unit. Useful for panel data with non-continuous time variables. Default is FALSE.}
+
+\item{unit}{The unit (individual) identifier for panel data. Required when time_transform = TRUE. Must be an unquoted variable name (e.g., `id`).}
 }
 \value{
 A tibble with the event study regression results, including:
@@ -78,6 +85,12 @@ It automatically:
 - Uses \code{fixest::feols()} for fast and flexible estimation
 
 Both fixed effects and clustering are fully supported.
+
+If `time_transform = TRUE`, the time variable is internally replaced with a unit-level sequence
+(e.g., 1, 2, 3, ...) based on its order within each unit (as specified by the `unit` argument).
+This is useful when the time variable is irregular (e.g., Date-type data or monthly data with gaps).
+Note that in this case, the `timing` argument must be specified based on the transformed index
+(e.g., 5 corresponds to the fifth time point in the sorted order within each unit).
 }
 \examples{
 \dontrun{
@@ -113,34 +126,21 @@ run_es(
   interval   = 1
 )
 
-# Specifying two-way clustering over var1 and var2 using a one-sided formula:
+# Example with time_transform = TRUE (e.g., irregular time variable)
+# Suppose `date` is a Date variable, irregular by individual:
 run_es(
-  data       = df,
-  outcome    = y,
-  treatment  = treat,
-  time       = year,
-  timing     = 2005,
-  lead_range = 2,
-  lag_range  = 2,
-  covariates = ~ x1 + x2,
-  fe         = ~ id + year,
-  cluster    = ~ var1 + var2,
-  interval   = 1
-)
-
-# Using an interaction in the clustering specification:
-run_es(
-  data       = df,
-  outcome    = y,
-  treatment  = treat,
-  time       = year,
-  timing     = 2005,
-  lead_range = 2,
-  lag_range  = 2,
-  covariates = ~ x1 + x2,
-  fe         = ~ id + year,
-  cluster    = ~ var1^var2,
-  interval   = 1
+  data            = df,
+  outcome         = y,
+  treatment       = treat,
+  time            = date,
+  timing          = 5,  # This refers to the 5th time point in each unit after time_transform.
+  lead_range      = 2,
+  lag_range       = 2,
+  fe              = ~ id + year,
+  cluster         = ~ id,
+  baseline        = -1,
+  time_transform  = TRUE,
+  unit            = id
 )
 }
 }
