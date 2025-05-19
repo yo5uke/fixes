@@ -482,6 +482,11 @@ plot_es <- function(data,
       size = pointsize,
       color = color
     ) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(floor(min(data$relative_time, na.rm = TRUE)),
+                   ceiling(max(data$relative_time, na.rm = TRUE)),
+                   by = 1)
+    ) +
     ggplot2::labs(
       x = "Relative Time to Treatment",
       y = "Estimate and 95% Confidence Interval"
