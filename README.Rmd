@@ -82,7 +82,9 @@ These datasets already contain the necessary structure and can be used directly 
 # Load example data
 df1 <- fixest::base_did      # Basic DID example
 df2 <- fixest::base_stagg    # Staggered treatment example
+```
 
+```{r, echo=FALSE}
 head(df1) |> 
   knitr::kable()
 head(df2) |> 

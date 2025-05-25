@@ -97,9 +97,6 @@ directly with `run_es()`.
 # Load example data
 df1 <- fixest::base_did      # Basic DID example
 df2 <- fixest::base_stagg    # Staggered treatment example
-
-head(df1) |> 
-  knitr::kable()
 ```
 
 |          y |         x1 |  id | period | post | treat |
@@ -110,11 +107,6 @@ head(df1) |>
 |  3.7814749 | -2.8300587 |   1 |      4 |    0 |     1 |
 | -2.5581996 | -5.0443544 |   1 |      5 |    0 |     1 |
 |  1.7287324 | -0.6363849 |   1 |      6 |    1 |     1 |
-
-``` r
-head(df2) |> 
-  knitr::kable()
-```
 
 |  | id | year | year_treated | time_to_treatment | treated | treatment_effect_true | x1 | y |
 |:---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -273,19 +265,19 @@ created with `run_es()` and the plot will be complete.
 plot_es(event_study)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 ``` r
 plot_es(event_study, type = "errorbar")
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 ``` r
 plot_es(event_study, type = "errorbar", vline_val = -.5)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 Since it is created on a `ggplot2` basis, it is possible to modify minor
 details.
@@ -296,7 +288,7 @@ plot_es(event_study, type = "errorbar") +
   ggplot2::ggtitle("Result of Event Study")
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
 
 ## Planned Features
 
