@@ -1,3 +1,32 @@
+# fixes 0.4.0 (May 25, 2025)
+
+## New Features
+- Added support for **staggered treatment timing**:
+  - New `staggered = TRUE` option allows `timing` to vary by unit (e.g., treatment year column).
+  - Units with `NA` in `timing` are safely retained as untreated.
+
+- Added support for **observation weights**:
+  - Use the `weights` argument (e.g., `~ popwt`) to run weighted regressions.
+
+- **Automatic lead/lag range detection**:
+  - If `lead_range` or `lag_range` is `NULL`, the function computes the maximum feasible range from the data.
+
+## Improvements
+- Safer handling of collinearity and untreated units.
+- Warning is issued when `unit` is specified without `time_transform = TRUE`.
+- Input validation and internal structure cleaned up for better robustness.
+
+## Compatibility
+- Backward compatible with previous versions.
+
+
+# fixes 0.3.1 (May 18, 2025)
+
+## Improvements
+- Improved default x-axis scaling in `plot_es()`:
+  - The x-axis now uses `ggplot2::scale_x_continuous()` with integer breaks spaced by 1, aligned to the `relative_time` range.
+  - This provides more readable and consistent event time labeling in plots.
+
 # fixes 0.3.0 (May 18, 2025)
 
 ## New Features
