@@ -1,3 +1,15 @@
+# ------------------------------------------------------------------------------
+# Test data source note:
+# The following test uses the 'castle.dta' dataset from the "Mixtape" book by
+# Scott Cunningham, available at: https://github.com/scunning1975/mixtape
+#
+# License: MIT License
+# Copyright (c) Scott Cunningham
+#
+# Permission is hereby granted, free of charge, to use this dataset for testing
+# purposes, including within this R package, under the terms of the MIT license.
+# ------------------------------------------------------------------------------
+
 library(dplyr)
 
 set.seed(123)
@@ -209,4 +221,46 @@ test_that("Warning when unit is given but time_transform = FALSE", {
     regexp = "unit.*ignored"
   )
 })
+
+
+test_that("run_es works with staggered treatment timing and real covariates", {
+  skip_if_offline()
+  skip_on_cran()
+
+  castle <- haven::read_dta("https://github.com/scunning1975/mixtape/raw/master/castle.dta") |>
+    dplyr::mutate(treatment = ifelse(!is.na(treatment_date), 1, 0)) |>
+    dplyr::select(
+      state, sid, year, l_homicide, popwt, treatment, treatment_date,
+      dplyr::starts_with("r20")
+    )
+
+  covariate_vars <- castle |>
+    dplyr::select(dplyr::starts_with("r20")) |>
+    names()
+
+  covariate_formula <- stats::as.formula(paste("~", paste(covariate_vars, collapse = " + ")))
+
+  result <- run_es(
+    data       = castle,
+    outcome    = l_homicide,
+    treatment  = treatment,
+    time       = year,
+    staggered  = TRUE,
+    timing     = treatment_date,
+    covariates = covariate_formula,
+    fe         = ~ state + year,
+    cluster    = ~ sid,
+    weights    = ~ popwt,
+    baseline   = 0
+  )
+
+  expect_s3_class(result, "data.frame")
+  expect_true("relative_time" %in% names(result))
+  expect_true("conf_low" %in% names(result))
+  expect_true("conf_high" %in% names(result))
+  expect_true(any(result$is_baseline))
+  expect_equal(result[result$is_baseline, ]$estimate, 0)
+})
+
+
 

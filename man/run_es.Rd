@@ -9,12 +9,14 @@ run_es(
   outcome,
   treatment,
   time,
+  staggered = FALSE,
   timing,
-  lead_range,
-  lag_range,
+  lead_range = NULL,
+  lag_range = NULL,
   covariates = NULL,
   fe,
   cluster = NULL,
+  weights = NULL,
   baseline = -1,
   interval = 1,
   time_transform = FALSE,
@@ -31,23 +33,25 @@ run_es(
 
 \item{time}{The time variable (unquoted). Used to calculate the relative timing.}
 
-\item{timing}{The time period when the treatment occurs for the treated units.
+\item{staggered}{Logical. If `TRUE`, allows treatment timing to vary across units. Requires `timing` to be a column name. Default is `FALSE`.}
+
+\item{timing}{The time period when the treatment occurs. If `staggered = FALSE`, must be a single numeric value (e.g., `2005`). If `staggered = TRUE`, must be an unquoted variable name representing the treatment timing for each unit.
 If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed time index within each unit (e.g., 5 for the fifth time point).}
 
-\item{lead_range}{Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`).}
+\item{lead_range}{Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`). If `NULL`, the function will automatically determine the maximum possible lead across all units.}
 
-\item{lag_range}{Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`).}
+\item{lag_range}{Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, the function will automatically determine the maximum possible lag across all units.}
 
 \item{covariates}{Optional covariates to include in the regression. Must be supplied as a one-sided formula (e.g., `~ x1 + x2`).}
 
 \item{fe}{Fixed effects to control for unobserved heterogeneity. Must be a one-sided formula (e.g., `~ id + year`).}
 
 \item{cluster}{Clustering specification for robust standard errors. Accepts either:
-\itemize{
-  \item a character vector of column names (e.g., `c("id", "year")`), or
-  \item a one-sided formula (e.g., `~ id + year` or `~ id^year`).
-}
+- a character vector of column names (e.g., `c("id", "year")`), or
+- a one-sided formula (e.g., `~ id + year` or `~ id^year`).
 Cluster variables are internally re-evaluated after filtering for the estimation window.}
+
+\item{weights}{Optional observation weights. Must be supplied as a one-sided formula (e.g., `~ popwt`). If `NULL`, unweighted regression is performed.}
 
 \item{baseline}{The relative time (e.g., `-1`) to use as the reference period.
 The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
@@ -57,7 +61,7 @@ Must lie within the specified `lead_range` and `lag_range`. If not, an error wil
 
 \item{time_transform}{Logical. If TRUE, the time variable will be converted to a unit-level sequence (1, 2, 3, ...) based on its order within each unit. Useful for panel data with non-continuous time variables. Default is FALSE.}
 
-\item{unit}{The unit (individual) identifier for panel data. Required when time_transform = TRUE. Must be an unquoted variable name (e.g., `id`).}
+\item{unit}{The unit (individual) identifier for panel data. Required when `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).}
 }
 \value{
 A tibble with the event study regression results, including:
@@ -84,7 +88,7 @@ It automatically:
 - Removes the baseline term from estimation and appends it back post-estimation
 - Uses \code{fixest::feols()} for fast and flexible estimation
 
-Both fixed effects and clustering are fully supported.
+Both fixed effects and clustering are fully supported. Observation weights can be specified using the `weights` argument.
 
 If `time_transform = TRUE`, the time variable is internally replaced with a unit-level sequence
 (e.g., 1, 2, 3, ...) based on its order within each unit (as specified by the `unit` argument).
@@ -94,7 +98,7 @@ Note that in this case, the `timing` argument must be specified based on the tra
 }
 \examples{
 \dontrun{
-# Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2
+# Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2, popwt
 
 # Minimal example without covariates
 run_es(
@@ -107,11 +111,10 @@ run_es(
   lag_range  = 2,
   fe         = ~ id + year,
   cluster    = ~ id,
-  baseline   = -1,
-  interval   = 1
+  baseline   = -1
 )
 
-# Specifying two-way clustering over var1 and var2 using a character vector:
+# Weighted regression
 run_es(
   data       = df,
   outcome    = y,
@@ -122,25 +125,25 @@ run_es(
   lag_range  = 2,
   covariates = ~ x1 + x2,
   fe         = ~ id + year,
-  cluster    = c("var1", "var2"),
-  interval   = 1
+  cluster    = ~ id,
+  weights    = ~ wt,
+  baseline   = -1
 )
 
-# Example with time_transform = TRUE (e.g., irregular time variable)
-# Suppose `date` is a Date variable, irregular by individual:
+# Example with staggered treatment timing
+# Suppose `treat_time` indicates the year each unit was treated
 run_es(
-  data            = df,
-  outcome         = y,
-  treatment       = treat,
-  time            = date,
-  timing          = 5,  # This refers to the 5th time point in each unit after time_transform.
-  lead_range      = 2,
-  lag_range       = 2,
-  fe              = ~ id + year,
-  cluster         = ~ id,
-  baseline        = -1,
-  time_transform  = TRUE,
-  unit            = id
+  data       = df,
+  outcome    = y,
+  treatment  = is_treated,
+  time       = year,
+  staggered  = TRUE,
+  timing     = treat_time,  # a variable with treatment years per unit
+  lead_range = 3,
+  lag_range  = 4,
+  fe         = ~ id + year,
+  cluster    = ~ id,
+  baseline   = -1
 )
 }
 }

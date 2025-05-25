@@ -9,24 +9,24 @@
 #' (e.g., `y`) or a transformation (e.g., `log(y)`).
 #' @param treatment The treatment indicator (unquoted). Can be binary numeric (`0/1`) or logical (`TRUE/FALSE`). Typically equals 1 (or `TRUE`) in and after the treated period, 0 otherwise.
 #' @param time The time variable (unquoted). Used to calculate the relative timing.
-#' @param timing The time period when the treatment occurs for the treated units.
+#' @param staggered Logical. If `TRUE`, allows treatment timing to vary across units. Requires `timing` to be a column name. Default is `FALSE`.
+#' @param timing The time period when the treatment occurs. If `staggered = FALSE`, must be a single numeric value (e.g., `2005`). If `staggered = TRUE`, must be an unquoted variable name representing the treatment timing for each unit.
 #' If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed time index within each unit (e.g., 5 for the fifth time point).
-#' @param lead_range Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`).
-#' @param lag_range Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`).
+#' @param lead_range Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`). If `NULL`, the function will automatically determine the maximum possible lead across all units.
+#' @param lag_range Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, the function will automatically determine the maximum possible lag across all units.
 #' @param covariates Optional covariates to include in the regression. Must be supplied as a one-sided formula (e.g., `~ x1 + x2`).
 #' @param fe Fixed effects to control for unobserved heterogeneity. Must be a one-sided formula (e.g., `~ id + year`).
 #' @param cluster Clustering specification for robust standard errors. Accepts either:
-#' \itemize{
-#'   \item a character vector of column names (e.g., `c("id", "year")`), or
-#'   \item a one-sided formula (e.g., `~ id + year` or `~ id^year`).
-#' }
+#' - a character vector of column names (e.g., `c("id", "year")`), or
+#' - a one-sided formula (e.g., `~ id + year` or `~ id^year`).
 #' Cluster variables are internally re-evaluated after filtering for the estimation window.
+#' @param weights Optional observation weights. Must be supplied as a one-sided formula (e.g., `~ popwt`). If `NULL`, unweighted regression is performed.
 #' @param baseline The relative time (e.g., `-1`) to use as the reference period.
 #' The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
 #' Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.
 #' @param interval The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.
 #' @param time_transform Logical. If TRUE, the time variable will be converted to a unit-level sequence (1, 2, 3, ...) based on its order within each unit. Useful for panel data with non-continuous time variables. Default is FALSE.
-#' @param unit The unit (individual) identifier for panel data. Required when time_transform = TRUE. Must be an unquoted variable name (e.g., `id`).
+#' @param unit The unit (individual) identifier for panel data. Required when `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).
 #'
 #' @return A tibble with the event study regression results, including:
 #' - `term`: Name of the lead or lag dummy variable
@@ -47,7 +47,7 @@
 #' - Removes the baseline term from estimation and appends it back post-estimation
 #' - Uses \code{fixest::feols()} for fast and flexible estimation
 #'
-#' Both fixed effects and clustering are fully supported.
+#' Both fixed effects and clustering are fully supported. Observation weights can be specified using the `weights` argument.
 #'
 #' If `time_transform = TRUE`, the time variable is internally replaced with a unit-level sequence
 #' (e.g., 1, 2, 3, ...) based on its order within each unit (as specified by the `unit` argument).
@@ -57,7 +57,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2
+#' # Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2, popwt
 #'
 #' # Minimal example without covariates
 #' run_es(
@@ -70,11 +70,10 @@
 #'   lag_range  = 2,
 #'   fe         = ~ id + year,
 #'   cluster    = ~ id,
-#'   baseline   = -1,
-#'   interval   = 1
+#'   baseline   = -1
 #' )
 #'
-#' # Specifying two-way clustering over var1 and var2 using a character vector:
+#' # Weighted regression
 #' run_es(
 #'   data       = df,
 #'   outcome    = y,
@@ -85,25 +84,25 @@
 #'   lag_range  = 2,
 #'   covariates = ~ x1 + x2,
 #'   fe         = ~ id + year,
-#'   cluster    = c("var1", "var2"),
-#'   interval   = 1
+#'   cluster    = ~ id,
+#'   weights    = ~ wt,
+#'   baseline   = -1
 #' )
 #'
-#' # Example with time_transform = TRUE (e.g., irregular time variable)
-#' # Suppose `date` is a Date variable, irregular by individual:
+#' # Example with staggered treatment timing
+#' # Suppose `treat_time` indicates the year each unit was treated
 #' run_es(
-#'   data            = df,
-#'   outcome         = y,
-#'   treatment       = treat,
-#'   time            = date,
-#'   timing          = 5,  # This refers to the 5th time point in each unit after time_transform.
-#'   lead_range      = 2,
-#'   lag_range       = 2,
-#'   fe              = ~ id + year,
-#'   cluster         = ~ id,
-#'   baseline        = -1,
-#'   time_transform  = TRUE,
-#'   unit            = id
+#'   data       = df,
+#'   outcome    = y,
+#'   treatment  = is_treated,
+#'   time       = year,
+#'   staggered  = TRUE,
+#'   timing     = treat_time,  # a variable with treatment years per unit
+#'   lead_range = 3,
+#'   lag_range  = 4,
+#'   fe         = ~ id + year,
+#'   cluster    = ~ id,
+#'   baseline   = -1
 #' )
 #' }
 #' @importFrom stats as.formula
@@ -112,12 +111,14 @@ run_es <- function(data,
                    outcome,
                    treatment,
                    time,
+                   staggered = FALSE,
                    timing,
-                   lead_range,
-                   lag_range,
+                   lead_range = NULL,
+                   lag_range = NULL,
                    covariates = NULL,
                    fe,
                    cluster = NULL,
+                   weights = NULL,
                    baseline = -1,
                    interval = 1,
                    time_transform = FALSE,
@@ -125,17 +126,12 @@ run_es <- function(data,
 
   # ---- 0. Helper function: generate lead/lag term name ----
   get_term_name <- function(i) {
-    if (i < 0) {
-      paste0("lead", abs(i))
-    } else {
-      paste0("lag", i)
-    }
+    if (i < 0) paste0("lead", abs(i)) else paste0("lag", i)
   }
 
-  # ---- 0.1 Helper function: process cluster argument ----
+  # ---- 1. Helper function: process cluster argument ----
   process_cluster <- function(cluster, data) {
     if (is.null(cluster)) return(NULL)
-
     if (inherits(cluster, "formula")) {
       cl_vars <- all.vars(cluster)
       missing_vars <- cl_vars[!cl_vars %in% colnames(data)]
@@ -152,11 +148,11 @@ run_es <- function(data,
       }
       return(cluster)
     } else {
-      stop("Invalid type for cluster argument. Please supply either a formula (e.g., ~ var1 + var2) or a character vector (e.g., c('var1', 'var2')).")
+      stop("Invalid type for cluster argument. Please supply either a formula or character vector.")
     }
   }
 
-  # ---- 0.2.1 Process outcome, treatment, time ----
+  # ---- 2. Process outcome, treatment, time ----
   outcome_expr <- rlang::enexpr(outcome)
   treatment_sym <- rlang::ensym(treatment)
   time_sym <- rlang::ensym(time)
@@ -188,18 +184,33 @@ run_es <- function(data,
     stop("The `time` variable must be either numeric or Date. Please convert it before passing to `run_es()`.")
   }
 
-  if (!time_transform && !is.null(unit)) {
-    warning("The `unit` argument is ignored because `time_transform = FALSE`.")
+  # ---- 3. Process timing ----
+  if (staggered && time_transform) {
+    stop("The combination of staggered = TRUE and time_transform = TRUE is not currently supported.")
   }
 
-  # ---- 0.2.2 Process time_transform ----
+  timing_sym <- NULL
+
+  if (staggered) {
+    timing_sym <- rlang::ensym(timing)
+    timing_chr <- rlang::as_string(timing_sym)
+    if (!timing_chr %in% colnames(data)) {
+      stop("The specified timing variable ('", timing_chr, "') does not exist in the dataframe.")
+    }
+  } else {
+    timing_sym <- rlang::enexpr(timing)
+    if (!is.numeric(eval(timing_sym))) {
+      stop("When staggered = FALSE, timing must be a single numeric value.")
+    }
+  }
+
+  # ---- 4. Process time_transform ----
   if (time_transform) {
     if (missing(unit)) {
       stop("When time_transform = TRUE, you must specify the `unit` argument (e.g., unit = id).")
     }
 
     id_sym <- rlang::ensym(unit)
-
     id_chr <- rlang::as_string(id_sym)
     if (!id_chr %in% colnames(data)) {
       stop("The specified unit variable ('", id_chr, "') does not exist in the dataframe.")
@@ -214,7 +225,11 @@ run_es <- function(data,
     time_sym <- rlang::sym("time_index")
   }
 
-  # ---- 0.3 Process covariates ----
+  if (!time_transform && !is.null(unit)) {
+    warning("The `unit` argument is ignored because `time_transform = FALSE`.")
+  }
+
+  # ---- 5. Process covariates ----
   cov_text <- ""
   if (!rlang::quo_is_null(rlang::enquo(covariates))) {
     if (!inherits(covariates, "formula")) {
@@ -229,31 +244,50 @@ run_es <- function(data,
     }
   }
 
-  # ---- 0.4 Process fixed effects (fe) ----
+  # ---- 6. Process fixed effects (fe) ----
   if (!inherits(fe, "formula")) {
     stop("Invalid input for fe. Please supply a one-sided formula (e.g., ~ id + year).")
   }
+
   fe_rhs <- rlang::f_rhs(fe)
   fe_vars <- all.vars(fe_rhs)
   missing_fes <- fe_vars[!fe_vars %in% colnames(data)]
   if (length(missing_fes) > 0) {
     stop("The specified fixed effects variable(s) (", paste(missing_fes, collapse = ", "), ") do not exist in the dataframe.")
   }
+
   fe_text <- paste(fe_vars, collapse = "+")
 
-  # ---- 0.5 Process cluster if provided ----
+  # ---- 7. Process cluster if provided ----
   if (!is.null(cluster)) {
     cluster <- process_cluster(cluster, data)
   }
 
-  # ---- Check that baseline is within the lead/lag range ----
+  # ---- 8. Create relative time ----
+  data <- data |>
+    dplyr::mutate(
+      relative_time = if (staggered)
+        (!!time_sym - !!timing_sym) / interval
+      else
+        (!!time_sym - timing) / interval
+    )
+
+  # ---- 9. Auto set lead/lag range if NULL ----
+  if (is.null(lead_range) || is.null(lag_range)) {
+    min_rt <- floor(min(data$relative_time, na.rm = TRUE))
+    max_rt <- ceiling(max(data$relative_time, na.rm = TRUE))
+    if (is.null(lead_range)) lead_range <- abs(min_rt)
+    if (is.null(lag_range))  lag_range  <- max_rt
+  }
+
+  # ---- 10. Check that baseline is within range ----
   if (baseline < -lead_range || baseline > lag_range) {
     stop("The specified baseline (", baseline,
          ") is outside the range defined by lead_range (", -lead_range,
          ") and lag_range (", lag_range, ").")
   }
 
-  # ---- 0.6 Check for existing columns to be overwritten ----
+  # ---- 11. Check for existing columns to be overwritten ----
   existing_terms <- vapply(seq(-lead_range, lag_range), get_term_name, character(1))
   overwritten <- existing_terms[existing_terms %in% names(data)]
   if (length(overwritten) > 0) {
@@ -261,46 +295,26 @@ run_es <- function(data,
             paste(overwritten, collapse = ", "))
   }
 
-  # ---- 1. Create lead and lag variables ----
-  data <- data |>
-    dplyr::mutate(
-      relative_time = ( !!time_sym - timing ) / interval
-    )
-
-  min_relative_time <- min(data$relative_time, na.rm = TRUE)
-  max_relative_time <- max(data$relative_time, na.rm = TRUE)
-
-  if (lead_range > abs(min_relative_time)) {
-    warning("The specified lead_range (", lead_range,
-            ") exceeds the available range in the data on the lead side (", abs(min_relative_time), ").")
-  }
-  if (lag_range > max_relative_time) {
-    warning("The specified lag_range (", lag_range,
-            ") exceeds the available range in the data on the lag side (", max_relative_time, ").")
-  }
-
-  data <- data |>
-    dplyr::filter(dplyr::between(relative_time, -lead_range, lag_range))
-
-  if (nrow(data) < 10) {
-    warning("Filtered data has only ", nrow(data), " rows. Please check your time window and interval settings.")
-  }
-
+  # ---- 12. Create lead and lag dummy variables ----
   for (i in seq(-lead_range, lag_range, by = 1)) {
     col_name <- get_term_name(i)
     data <- data |>
       dplyr::mutate(
-        !!col_name := dplyr::if_else(as.logical(!!treatment_sym) & (relative_time == i), 1, 0)
+        !!col_name := dplyr::if_else(
+          !is.na(relative_time) &
+            !!treatment_sym &
+            round(relative_time, 5) == i, 1L, 0L
+        )
       )
   }
 
-  # ---- 2. Construct and estimate the regression model ----
+  # ---- 13. Construct and estimate the regression model ----
   outcome_expr_text <- rlang::expr_deparse(outcome_expr)
+
   all_terms <- c(
     paste0("lead", seq(lead_range, 1)),
     paste0("lag", seq(0, lag_range))
   )
-
   baseline_term <- get_term_name(baseline)
   included_terms <- setdiff(all_terms, baseline_term)
 
@@ -309,19 +323,18 @@ run_es <- function(data,
     RHS_formula <- paste0(RHS_formula, "+", cov_text)
   }
 
-  # Construct full formula as string and convert to formula
   formula_string <- paste0(outcome_expr_text, " ~ ", RHS_formula, " | ", fe_text)
   model_formula <- as.formula(formula_string)
 
-  # Estimate
-  if (!is.null(cluster)) {
-    model <- fixest::feols(model_formula, data = data, cluster = cluster)
+  # ---- 14. Estimate model (with optional weights) ----
+  if (!is.null(weights)) {
+    weights_formula <- rlang::enexpr(weights)
+    model <- fixest::feols(model_formula, data = data, cluster = cluster, weights = weights_formula)
   } else {
-    model <- fixest::feols(model_formula, data = data)
+    model <- fixest::feols(model_formula, data = data, cluster = cluster)
   }
 
-
-  # ---- 3. Format the results ----
+  # ---- 15. Format the results ----
   result <- broom::tidy(model)
 
   baseline_row <- tibble::tibble(
@@ -346,6 +359,7 @@ run_es <- function(data,
     ) |>
     dplyr::filter(!is.na(term))
 
+  # ---- 16. Attach relative_time mapping ----
   rel_times <- c(seq(-lead_range, -1), seq(0, lag_range)) * interval
   rel_map <- tibble::tibble(
     term = factor(full_order, levels = full_order),
@@ -491,7 +505,10 @@ plot_es <- function(data,
       x = "Relative Time to Treatment",
       y = "Estimate and 95% Confidence Interval"
     ) +
-    ggplot2::theme_minimal()
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank()
+    )
 
   # Add ribbon-style confidence intervals
   if (type == "ribbon") {
