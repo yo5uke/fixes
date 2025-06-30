@@ -26,124 +26,109 @@ run_es(
 \arguments{
 \item{data}{A data frame containing the panel dataset.}
 
-\item{outcome}{The outcome variable, specified unquoted. You may use a raw variable name
-(e.g., `y`) or a transformation (e.g., `log(y)`).}
+\item{outcome}{The outcome variable, unquoted. You can supply a raw variable (e.g., `y`) or a function call (e.g., `log(y)`).}
 
-\item{treatment}{The treatment indicator (unquoted). Can be binary numeric (`0/1`) or logical (`TRUE/FALSE`). Typically equals 1 (or `TRUE`) in and after the treated period, 0 otherwise.}
+\item{treatment}{Treatment assignment indicator (unquoted). Should be binary (`0/1` or logical). Typically equals 1 in and after the treated period, 0 otherwise.}
 
-\item{time}{The time variable (unquoted). Used to calculate the relative timing.}
+\item{time}{The time variable (unquoted). Used for relative period calculation.}
 
-\item{staggered}{Logical. If `TRUE`, allows treatment timing to vary across units. Requires `timing` to be a column name. Default is `FALSE`.}
+\item{staggered}{Logical. If `TRUE`, allows each unit to have its own treatment timing (supports staggered adoption). If so, supply `timing` as a variable name. Default is `FALSE`.}
 
-\item{timing}{The time period when the treatment occurs. If `staggered = FALSE`, must be a single numeric value (e.g., `2005`). If `staggered = TRUE`, must be an unquoted variable name representing the treatment timing for each unit.
-If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed time index within each unit (e.g., 5 for the fifth time point).}
+\item{timing}{If `staggered = FALSE`, supply a single numeric or date value (e.g., `2005` or `"2005-01-01"`). If `staggered = TRUE`, supply the unquoted variable indicating each unit's treatment time. Never-treated units (with `NA`) are allowed and automatically included as controls.
+If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed index.}
 
-\item{lead_range}{Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`). If `NULL`, the function will automatically determine the maximum possible lead across all units.}
+\item{lead_range}{Number of pre-treatment periods (leads) to include (e.g., 5 creates `lead5`, ..., `lead1`). If `NULL`, automatically determined.}
 
-\item{lag_range}{Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, the function will automatically determine the maximum possible lag across all units.}
+\item{lag_range}{Number of post-treatment periods (lags) to include (e.g., 3 creates `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, automatically determined.}
 
-\item{covariates}{Optional covariates to include in the regression. Must be supplied as a one-sided formula (e.g., `~ x1 + x2`).}
+\item{covariates}{Optional covariates for the regression. Must be a one-sided formula (e.g., `~ x1 + x2`). Default is `NULL`.}
 
-\item{fe}{Fixed effects to control for unobserved heterogeneity. Must be a one-sided formula (e.g., `~ id + year`).}
+\item{fe}{Fixed effects specification, as a one-sided formula (e.g., `~ id + year`). Required.}
 
-\item{cluster}{Clustering specification for robust standard errors. Accepts either:
-- a character vector of column names (e.g., `c("id", "year")`), or
-- a one-sided formula (e.g., `~ id + year` or `~ id^year`).
-Cluster variables are internally re-evaluated after filtering for the estimation window.}
+\item{cluster}{Cluster-robust standard errors. Accepts a one-sided formula (e.g., `~ id`), or a character vector of column names. Default is `NULL`.}
 
-\item{weights}{Optional observation weights. Must be supplied as a one-sided formula (e.g., `~ popwt`). If `NULL`, unweighted regression is performed.}
+\item{weights}{Optional observation weights. Accepts a one-sided formula (e.g., `~ wt`), character string, or bare variable name. Default is `NULL`.}
 
-\item{baseline}{The relative time (e.g., `-1`) to use as the reference period.
-The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
-Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.}
+\item{baseline}{Which relative period to use as the omitted (reference) period (e.g., `-1`). This dummy is excluded from estimation and added to the results with estimate 0.}
 
-\item{interval}{The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.}
+\item{interval}{The interval between time periods (e.g., `1` for yearly data, `5` for 5-year periods). Default is `1`.}
 
-\item{time_transform}{Logical. If TRUE, the time variable will be converted to a unit-level sequence (1, 2, 3, ...) based on its order within each unit. Useful for panel data with non-continuous time variables. Default is FALSE.}
+\item{time_transform}{Logical. If `TRUE`, time is replaced by a sequential integer per unit (useful for irregular panels). Default is `FALSE`.}
 
-\item{unit}{The unit (individual) identifier for panel data. Required when `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).}
+\item{unit}{Panel unit identifier. Required if `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).}
 }
 \value{
-A tibble with the event study regression results, including:
-- `term`: Name of the lead or lag dummy variable
+A tibble containing the event study estimates:
+- `term`: Lead or lag dummy name (e.g., `"lead3"`, `"lag0"`)
 - `estimate`: Coefficient estimate
 - `std.error`: Standard error
 - `statistic`: t-statistic
 - `p.value`: p-value
-- `conf_high`: Upper bound of 95% confidence interval
-- `conf_low`: Lower bound of 95% confidence interval
-- `relative_time`: Time scaled relative to the treatment
-- `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy)
+- `conf_high`: Upper 95% confidence bound
+- `conf_low`: Lower 95% confidence bound
+- `relative_time`: Relative period (scaled by `interval`)
+- `is_baseline`: Logical, `TRUE` only for the omitted baseline period
 }
 \description{
-This function performs an event study using fixed effects regression based on a panel dataset.
-It generates dummy variables for each lead and lag period relative to the treatment timing,
-applies optional covariates and fixed effects, and estimates the model using `fixest::feols`.
+Performs an event study analysis using fixed effects regression on panel data.
+The function automatically generates lead and lag dummies for each relative period around treatment, supports covariates and flexible fixed effects, and allows for clustered standard errors and observation weights.
 }
 \details{
-This function is intended for difference-in-differences or event study designs with panel data.
-It automatically:
-- Computes relative time: \code{(time - timing) / interval}
-- Generates dummy variables for specified leads and lags
-- Removes the baseline term from estimation and appends it back post-estimation
-- Uses \code{fixest::feols()} for fast and flexible estimation
+This function streamlines event study regression for panel data with flexible support for:
 
-Both fixed effects and clustering are fully supported. Observation weights can be specified using the `weights` argument.
+- Staggered adoption: units with `NA` in `timing` are included as controls (all event dummies zero).
+- Relative time calculation: `(time - timing) / interval`.
+- Automatic dummy generation for specified leads and lags.
+- Omission of the baseline period from estimation and its re-addition with estimate 0.
+- Optional transformation of time to a unit-specific sequence (`time_transform = TRUE`), allowing for irregular or gapped panel structures.
 
-If `time_transform = TRUE`, the time variable is internally replaced with a unit-level sequence
-(e.g., 1, 2, 3, ...) based on its order within each unit (as specified by the `unit` argument).
-This is useful when the time variable is irregular (e.g., Date-type data or monthly data with gaps).
-Note that in this case, the `timing` argument must be specified based on the transformed index
-(e.g., 5 corresponds to the fifth time point in the sorted order within each unit).
+**Collinearity:**
+If some covariates are perfectly collinear with fixed effects or other regressors, they are automatically dropped from the regression. A message will be displayed listing dropped variables.
 }
 \examples{
 \dontrun{
-# Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2, popwt
-
-# Minimal example without covariates
+# Minimal use: simple DiD with two-way fixed effects
 run_es(
-  data       = df,
-  outcome    = y,
-  treatment  = treat,
-  time       = year,
-  timing     = 2005,
+  data = df,
+  outcome = y,
+  treatment = treat,
+  time = year,
+  timing = 2000,
   lead_range = 2,
-  lag_range  = 2,
-  fe         = ~ id + year,
-  cluster    = ~ id,
-  baseline   = -1
+  lag_range = 2,
+  fe = ~ id + year,
+  baseline = -1
 )
 
-# Weighted regression
+# With weights, cluster, and covariates
 run_es(
-  data       = df,
-  outcome    = y,
-  treatment  = treat,
-  time       = year,
-  timing     = 2005,
+  data = df,
+  outcome = y,
+  treatment = treat,
+  time = year,
+  timing = 2000,
   lead_range = 2,
-  lag_range  = 2,
+  lag_range = 3,
   covariates = ~ x1 + x2,
-  fe         = ~ id + year,
-  cluster    = ~ id,
-  weights    = ~ wt,
-  baseline   = -1
+  fe = ~ id + year,
+  cluster = ~ id,
+  weights = ~ popwt,
+  baseline = -1
 )
 
-# Example with staggered treatment timing
-# Suppose `treat_time` indicates the year each unit was treated
+# Staggered adoption: timing is unit-specific
 run_es(
-  data       = df,
-  outcome    = y,
-  treatment  = is_treated,
-  time       = year,
-  staggered  = TRUE,
-  timing     = treat_time,  # a variable with treatment years per unit
+  data = df,
+  outcome = y,
+  treatment = treat,
+  time = year,
+  staggered = TRUE,
+  timing = treat_time,
   lead_range = 3,
-  lag_range  = 4,
-  fe         = ~ id + year,
-  cluster    = ~ id,
-  baseline   = -1
+  lag_range = 4,
+  fe = ~ id + year,
+  cluster = ~ id,
+  baseline = -1
 )
 }
 }

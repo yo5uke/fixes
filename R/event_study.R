@@ -1,135 +1,121 @@
 #' Run Event Study with Fixed Effects
 #'
-#' This function performs an event study using fixed effects regression based on a panel dataset.
-#' It generates dummy variables for each lead and lag period relative to the treatment timing,
-#' applies optional covariates and fixed effects, and estimates the model using `fixest::feols`.
+#' Performs an event study analysis using fixed effects regression on panel data.
+#' The function automatically generates lead and lag dummies for each relative period around treatment, supports covariates and flexible fixed effects, and allows for clustered standard errors and observation weights.
 #'
 #' @param data A data frame containing the panel dataset.
-#' @param outcome The outcome variable, specified unquoted. You may use a raw variable name
-#' (e.g., `y`) or a transformation (e.g., `log(y)`).
-#' @param treatment The treatment indicator (unquoted). Can be binary numeric (`0/1`) or logical (`TRUE/FALSE`). Typically equals 1 (or `TRUE`) in and after the treated period, 0 otherwise.
-#' @param time The time variable (unquoted). Used to calculate the relative timing.
-#' @param staggered Logical. If `TRUE`, allows treatment timing to vary across units. Requires `timing` to be a column name. Default is `FALSE`.
-#' @param timing The time period when the treatment occurs. If `staggered = FALSE`, must be a single numeric value (e.g., `2005`). If `staggered = TRUE`, must be an unquoted variable name representing the treatment timing for each unit.
-#' If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed time index within each unit (e.g., 5 for the fifth time point).
-#' @param lead_range Number of pre-treatment periods to include as leads (e.g., 5 = `lead5`, `lead4`, ..., `lead1`). If `NULL`, the function will automatically determine the maximum possible lead across all units.
-#' @param lag_range Number of post-treatment periods to include as lags (e.g., 3 = `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, the function will automatically determine the maximum possible lag across all units.
-#' @param covariates Optional covariates to include in the regression. Must be supplied as a one-sided formula (e.g., `~ x1 + x2`).
-#' @param fe Fixed effects to control for unobserved heterogeneity. Must be a one-sided formula (e.g., `~ id + year`).
-#' @param cluster Clustering specification for robust standard errors. Accepts either:
-#' - a character vector of column names (e.g., `c("id", "year")`), or
-#' - a one-sided formula (e.g., `~ id + year` or `~ id^year`).
-#' Cluster variables are internally re-evaluated after filtering for the estimation window.
-#' @param weights Optional observation weights. Must be supplied as a one-sided formula (e.g., `~ popwt`). If `NULL`, unweighted regression is performed.
-#' @param baseline The relative time (e.g., `-1`) to use as the reference period.
-#' The corresponding dummy variable will be excluded from the regression and added manually to the results with estimate 0.
-#' Must lie within the specified `lead_range` and `lag_range`. If not, an error will be thrown.
-#' @param interval The interval between time periods. Use `1` for annual data (default), `5` for 5-year intervals, etc.
-#' @param time_transform Logical. If TRUE, the time variable will be converted to a unit-level sequence (1, 2, 3, ...) based on its order within each unit. Useful for panel data with non-continuous time variables. Default is FALSE.
-#' @param unit The unit (individual) identifier for panel data. Required when `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).
+#' @param outcome The outcome variable, unquoted. You can supply a raw variable (e.g., `y`) or a function call (e.g., `log(y)`).
+#' @param treatment Treatment assignment indicator (unquoted). Should be binary (`0/1` or logical). Typically equals 1 in and after the treated period, 0 otherwise.
+#' @param time The time variable (unquoted). Used for relative period calculation.
+#' @param staggered Logical. If `TRUE`, allows each unit to have its own treatment timing (supports staggered adoption). If so, supply `timing` as a variable name. Default is `FALSE`.
+#' @param timing If `staggered = FALSE`, supply a single numeric or date value (e.g., `2005` or `"2005-01-01"`). If `staggered = TRUE`, supply the unquoted variable indicating each unit's treatment time. Never-treated units (with `NA`) are allowed and automatically included as controls.
+#'   If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed index.
+#' @param lead_range Number of pre-treatment periods (leads) to include (e.g., 5 creates `lead5`, ..., `lead1`). If `NULL`, automatically determined.
+#' @param lag_range Number of post-treatment periods (lags) to include (e.g., 3 creates `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, automatically determined.
+#' @param covariates Optional covariates for the regression. Must be a one-sided formula (e.g., `~ x1 + x2`). Default is `NULL`.
+#' @param fe Fixed effects specification, as a one-sided formula (e.g., `~ id + year`). Required.
+#' @param cluster Cluster-robust standard errors. Accepts a one-sided formula (e.g., `~ id`), or a character vector of column names. Default is `NULL`.
+#' @param weights Optional observation weights. Accepts a one-sided formula (e.g., `~ wt`), character string, or bare variable name. Default is `NULL`.
+#' @param baseline Which relative period to use as the omitted (reference) period (e.g., `-1`). This dummy is excluded from estimation and added to the results with estimate 0.
+#' @param interval The interval between time periods (e.g., `1` for yearly data, `5` for 5-year periods). Default is `1`.
+#' @param time_transform Logical. If `TRUE`, time is replaced by a sequential integer per unit (useful for irregular panels). Default is `FALSE`.
+#' @param unit Panel unit identifier. Required if `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).
 #'
-#' @return A tibble with the event study regression results, including:
-#' - `term`: Name of the lead or lag dummy variable
+#' @return A tibble containing the event study estimates:
+#' - `term`: Lead or lag dummy name (e.g., `"lead3"`, `"lag0"`)
 #' - `estimate`: Coefficient estimate
 #' - `std.error`: Standard error
 #' - `statistic`: t-statistic
 #' - `p.value`: p-value
-#' - `conf_high`: Upper bound of 95% confidence interval
-#' - `conf_low`: Lower bound of 95% confidence interval
-#' - `relative_time`: Time scaled relative to the treatment
-#' - `is_baseline`: Logical indicator for the baseline term (equals `TRUE` only for the excluded dummy)
+#' - `conf_high`: Upper 95% confidence bound
+#' - `conf_low`: Lower 95% confidence bound
+#' - `relative_time`: Relative period (scaled by `interval`)
+#' - `is_baseline`: Logical, `TRUE` only for the omitted baseline period
 #'
 #' @details
-#' This function is intended for difference-in-differences or event study designs with panel data.
-#' It automatically:
-#' - Computes relative time: \code{(time - timing) / interval}
-#' - Generates dummy variables for specified leads and lags
-#' - Removes the baseline term from estimation and appends it back post-estimation
-#' - Uses \code{fixest::feols()} for fast and flexible estimation
+#' This function streamlines event study regression for panel data with flexible support for:
 #'
-#' Both fixed effects and clustering are fully supported. Observation weights can be specified using the `weights` argument.
+#' - Staggered adoption: units with `NA` in `timing` are included as controls (all event dummies zero).
+#' - Relative time calculation: `(time - timing) / interval`.
+#' - Automatic dummy generation for specified leads and lags.
+#' - Omission of the baseline period from estimation and its re-addition with estimate 0.
+#' - Optional transformation of time to a unit-specific sequence (`time_transform = TRUE`), allowing for irregular or gapped panel structures.
 #'
-#' If `time_transform = TRUE`, the time variable is internally replaced with a unit-level sequence
-#' (e.g., 1, 2, 3, ...) based on its order within each unit (as specified by the `unit` argument).
-#' This is useful when the time variable is irregular (e.g., Date-type data or monthly data with gaps).
-#' Note that in this case, the `timing` argument must be specified based on the transformed index
-#' (e.g., 5 corresponds to the fifth time point in the sorted order within each unit).
+#' **Collinearity:**
+#' If some covariates are perfectly collinear with fixed effects or other regressors, they are automatically dropped from the regression. A message will be displayed listing dropped variables.
 #'
 #' @examples
 #' \dontrun{
-#' # Assume df is a panel dataset with variables: id, year, y, treat, x1, x2, var1, var2, popwt
-#'
-#' # Minimal example without covariates
+#' # Minimal use: simple DiD with two-way fixed effects
 #' run_es(
-#'   data       = df,
-#'   outcome    = y,
-#'   treatment  = treat,
-#'   time       = year,
-#'   timing     = 2005,
+#'   data = df,
+#'   outcome = y,
+#'   treatment = treat,
+#'   time = year,
+#'   timing = 2000,
 #'   lead_range = 2,
-#'   lag_range  = 2,
-#'   fe         = ~ id + year,
-#'   cluster    = ~ id,
-#'   baseline   = -1
+#'   lag_range = 2,
+#'   fe = ~ id + year,
+#'   baseline = -1
 #' )
 #'
-#' # Weighted regression
+#' # With weights, cluster, and covariates
 #' run_es(
-#'   data       = df,
-#'   outcome    = y,
-#'   treatment  = treat,
-#'   time       = year,
-#'   timing     = 2005,
+#'   data = df,
+#'   outcome = y,
+#'   treatment = treat,
+#'   time = year,
+#'   timing = 2000,
 #'   lead_range = 2,
-#'   lag_range  = 2,
+#'   lag_range = 3,
 #'   covariates = ~ x1 + x2,
-#'   fe         = ~ id + year,
-#'   cluster    = ~ id,
-#'   weights    = ~ wt,
-#'   baseline   = -1
+#'   fe = ~ id + year,
+#'   cluster = ~ id,
+#'   weights = ~ popwt,
+#'   baseline = -1
 #' )
 #'
-#' # Example with staggered treatment timing
-#' # Suppose `treat_time` indicates the year each unit was treated
+#' # Staggered adoption: timing is unit-specific
 #' run_es(
-#'   data       = df,
-#'   outcome    = y,
-#'   treatment  = is_treated,
-#'   time       = year,
-#'   staggered  = TRUE,
-#'   timing     = treat_time,  # a variable with treatment years per unit
+#'   data = df,
+#'   outcome = y,
+#'   treatment = treat,
+#'   time = year,
+#'   staggered = TRUE,
+#'   timing = treat_time,
 #'   lead_range = 3,
-#'   lag_range  = 4,
-#'   fe         = ~ id + year,
-#'   cluster    = ~ id,
-#'   baseline   = -1
+#'   lag_range = 4,
+#'   fe = ~ id + year,
+#'   cluster = ~ id,
+#'   baseline = -1
 #' )
 #' }
 #' @importFrom stats as.formula
 #' @export
-run_es <- function(data,
-                   outcome,
-                   treatment,
-                   time,
-                   staggered = FALSE,
-                   timing,
-                   lead_range = NULL,
-                   lag_range = NULL,
-                   covariates = NULL,
-                   fe,
-                   cluster = NULL,
-                   weights = NULL,
-                   baseline = -1,
-                   interval = 1,
-                   time_transform = FALSE,
-                   unit = NULL) {
+run_es <- function(
+    data,
+    outcome,
+    treatment,
+    time,
+    staggered = FALSE,
+    timing,
+    lead_range = NULL,
+    lag_range = NULL,
+    covariates = NULL,
+    fe,
+    cluster = NULL,
+    weights = NULL,
+    baseline = -1,
+    interval = 1,
+    time_transform = FALSE,
+    unit = NULL
+) {
 
-  # ---- 0. Helper function: generate lead/lag term name ----
+  # ---- 0. Helper Functions ----
   get_term_name <- function(i) {
     if (i < 0) paste0("lead", abs(i)) else paste0("lag", i)
   }
 
-  # ---- 1. Helper function: process cluster argument ----
   process_cluster <- function(cluster, data) {
     if (is.null(cluster)) return(NULL)
     if (inherits(cluster, "formula")) {
@@ -152,88 +138,112 @@ run_es <- function(data,
     }
   }
 
-  # ---- 2. Process outcome, treatment, time ----
+  # ---- 1. Validate Core Arguments ----
+  if (!is.data.frame(data)) stop("`data` must be a data.frame.")
+  if (!is.numeric(interval) || length(interval) != 1 || interval <= 0) {
+    stop("`interval` must be a single positive numeric value.")
+  }
+
   outcome_expr <- rlang::enexpr(outcome)
   treatment_sym <- rlang::ensym(treatment)
   time_sym <- rlang::ensym(time)
 
+  # outcome: symbol or call
   if (rlang::is_symbol(outcome_expr)) {
     outcome_chr <- rlang::as_string(outcome_expr)
     if (!outcome_chr %in% colnames(data)) {
       stop("The specified outcome ('", outcome_chr, "') does not exist in the dataframe.")
     }
   } else if (!rlang::is_call(outcome_expr)) {
-    stop("The specified outcome must be either a column name or a function call (e.g., log(variable)).")
+    stop("`outcome` must be either a column name or a function call (e.g., log(variable)).")
   }
 
+  # treatment: column must exist and be binary (0/1 or logical)
   treatment_chr <- rlang::as_string(treatment_sym)
   if (!treatment_chr %in% colnames(data)) {
     stop("The specified treatment ('", treatment_chr, "') does not exist in the dataframe.")
   }
+  if (!all(data[[treatment_chr]] %in% c(0, 1, NA)) && !is.logical(data[[treatment_chr]])) {
+    stop("`treatment` must be a binary (0/1 or logical) variable.")
+  }
 
+  # time: must exist, be numeric or Date, and not missing
   time_chr <- rlang::as_string(time_sym)
   if (!time_chr %in% colnames(data)) {
     stop("The specified time ('", time_chr, "') does not exist in the dataframe.")
   }
-
-  if (inherits(data[[time_chr]], "Date")) {
-    data[[time_chr]] <- as.numeric(data[[time_chr]])
-  }
-
-  if (!is.numeric(data[[time_chr]])) {
+  if (!is.numeric(data[[time_chr]]) && !inherits(data[[time_chr]], "Date")) {
     stop("The `time` variable must be either numeric or Date. Please convert it before passing to `run_es()`.")
   }
-
-  # ---- 3. Process timing ----
-  if (staggered && time_transform) {
-    stop("The combination of staggered = TRUE and time_transform = TRUE is not currently supported.")
+  if (any(is.na(data[[time_chr]]))) {
+    stop("Missing values detected in `time`. Please impute or remove before proceeding.")
   }
 
+  # ---- 2. Process timing for (non-)staggered ----
+  if (staggered && time_transform) {
+    stop("The combination of staggered = TRUE and time_transform = TRUE is not supported.")
+  }
   timing_sym <- NULL
-
   if (staggered) {
     timing_sym <- rlang::ensym(timing)
     timing_chr <- rlang::as_string(timing_sym)
     if (!timing_chr %in% colnames(data)) {
       stop("The specified timing variable ('", timing_chr, "') does not exist in the dataframe.")
     }
+    # NA in timing is now ALLOWED (never-treated units), no stop
   } else {
-    timing_sym <- rlang::enexpr(timing)
-    if (!is.numeric(eval(timing_sym))) {
-      stop("When staggered = FALSE, timing must be a single numeric value.")
+    timing_val <- timing
+    if (is.character(timing_val)) {
+      try_date <- suppressWarnings(as.Date(timing_val, format = "%Y-%m-%d"))
+      if (!is.na(try_date)) {
+        timing_val <- try_date
+      } else {
+        stop("When timing is a string, it must be a valid date (e.g., '1998-01-01').")
+      }
     }
+    if (inherits(timing_val, "Date")) {
+      if (!inherits(data[[time_chr]], "Date")) {
+        stop("When timing is a Date, time variable must also be of Date type.")
+      }
+      timing_val <- as.numeric(timing_val)
+      data[[time_chr]] <- as.numeric(data[[time_chr]])
+    }
+    if (!is.numeric(timing_val)) {
+      stop("When staggered = FALSE, timing must be numeric or coercible to Date.")
+    }
+    timing <- timing_val
   }
 
-  # ---- 4. Process time_transform ----
+  # ---- 3. Process time_transform argument ----
   if (time_transform) {
     if (missing(unit)) {
       stop("When time_transform = TRUE, you must specify the `unit` argument (e.g., unit = id).")
     }
-
+    if (interval != 1) {
+      warning("When time_transform = TRUE, interval is ignored and has been set to 1.")
+      interval <- 1
+    }
     id_sym <- rlang::ensym(unit)
     id_chr <- rlang::as_string(id_sym)
     if (!id_chr %in% colnames(data)) {
       stop("The specified unit variable ('", id_chr, "') does not exist in the dataframe.")
     }
-
     data <- data |>
       dplyr::group_by(!!id_sym) |>
       dplyr::arrange(!!time_sym, .by_group = TRUE) |>
       dplyr::mutate(time_index = dplyr::row_number()) |>
       dplyr::ungroup()
-
     time_sym <- rlang::sym("time_index")
   }
-
   if (!time_transform && !is.null(unit)) {
     warning("The `unit` argument is ignored because `time_transform = FALSE`.")
   }
 
-  # ---- 5. Process covariates ----
+  # ---- 4. Validate covariates ----
   cov_text <- ""
   if (!rlang::quo_is_null(rlang::enquo(covariates))) {
     if (!inherits(covariates, "formula")) {
-      stop("Invalid input for covariates. Please supply a one-sided formula (e.g., ~ x1 + log(x2)).")
+      stop("`covariates` must be a one-sided formula (e.g., ~ x1 + log(x2)).")
     }
     cov_rhs <- rlang::f_rhs(covariates)
     cov_text <- rlang::expr_text(cov_rhs)
@@ -242,28 +252,55 @@ run_es <- function(data,
     if (length(missing_cov) > 0) {
       stop("Missing covariates: ", paste(missing_cov, collapse = ", "))
     }
+    if (length(cov_vars) == 0) {
+      stop("No covariates specified in the formula.")
+    }
   }
 
-  # ---- 6. Process fixed effects (fe) ----
+  # ---- 5. Validate fixed effects ----
   if (!inherits(fe, "formula")) {
-    stop("Invalid input for fe. Please supply a one-sided formula (e.g., ~ id + year).")
+    stop("`fe` must be a one-sided formula (e.g., ~ id + year).")
   }
-
   fe_rhs <- rlang::f_rhs(fe)
   fe_vars <- all.vars(fe_rhs)
   missing_fes <- fe_vars[!fe_vars %in% colnames(data)]
   if (length(missing_fes) > 0) {
     stop("The specified fixed effects variable(s) (", paste(missing_fes, collapse = ", "), ") do not exist in the dataframe.")
   }
-
+  if (length(fe_vars) == 0) {
+    stop("No fixed effects specified in the formula.")
+  }
   fe_text <- paste(fe_vars, collapse = "+")
 
-  # ---- 7. Process cluster if provided ----
+  # ---- 6. Validate and process cluster/weights ----
   if (!is.null(cluster)) {
     cluster <- process_cluster(cluster, data)
   }
+  if (!is.null(weights)) {
+    weights_expr <- rlang::enexpr(weights)
+    weights_vars <- NULL
+    if (is.character(weights)) {
+      weights_vars <- weights
+    } else if (inherits(weights, "formula")) {
+      weights_vars <- all.vars(weights)
+    } else if (is.symbol(weights_expr)) {
+      weights_vars <- rlang::as_string(weights_expr)
+    }
+    if (!is.null(weights_vars)) {
+      missing_weights <- weights_vars[!weights_vars %in% colnames(data)]
+      if (length(missing_weights) > 0) {
+        stop("The specified weights variable(s) (", paste(missing_weights, collapse = ", "), ") do not exist in the dataframe.")
+      }
+      if (any(is.na(data[[weights_vars[1]]]))) {
+        stop("Missing values detected in weights variable.")
+      }
+      if (any(data[[weights_vars[1]]] < 0)) {
+        stop("All weights must be non-negative.")
+      }
+    }
+  }
 
-  # ---- 8. Create relative time ----
+  # ---- 7. Create relative_time (NA allowed for never-treated) ----
   data <- data |>
     dplyr::mutate(
       relative_time = if (staggered)
@@ -271,8 +308,11 @@ run_es <- function(data,
       else
         (!!time_sym - timing) / interval
     )
+  if (all(is.na(data$relative_time))) {
+    stop("relative_time is NA for all observations. Check time and timing arguments.")
+  }
 
-  # ---- 9. Auto set lead/lag range if NULL ----
+  # ---- 8. Set lead/lag ranges automatically if needed ----
   if (is.null(lead_range) || is.null(lag_range)) {
     min_rt <- floor(min(data$relative_time, na.rm = TRUE))
     max_rt <- ceiling(max(data$relative_time, na.rm = TRUE))
@@ -280,14 +320,17 @@ run_es <- function(data,
     if (is.null(lag_range))  lag_range  <- max_rt
   }
 
-  # ---- 10. Check that baseline is within range ----
+  # ---- 9. Baseline and Term Range Checks ----
   if (baseline < -lead_range || baseline > lag_range) {
     stop("The specified baseline (", baseline,
          ") is outside the range defined by lead_range (", -lead_range,
          ") and lag_range (", lag_range, ").")
   }
+  if (lead_range < 0 || lag_range < 0) {
+    stop("lead_range and lag_range must be non-negative.")
+  }
 
-  # ---- 11. Check for existing columns to be overwritten ----
+  # ---- 10. Warn if overwriting existing columns ----
   existing_terms <- vapply(seq(-lead_range, lag_range), get_term_name, character(1))
   overwritten <- existing_terms[existing_terms %in% names(data)]
   if (length(overwritten) > 0) {
@@ -295,48 +338,54 @@ run_es <- function(data,
             paste(overwritten, collapse = ", "))
   }
 
-  # ---- 12. Create lead and lag dummy variables ----
+  # ---- 11. Create lead/lag dummy variables robustly ----
   for (i in seq(-lead_range, lag_range, by = 1)) {
     col_name <- get_term_name(i)
-    data <- data |>
-      dplyr::mutate(
-        !!col_name := dplyr::if_else(
-          !is.na(relative_time) &
-            !!treatment_sym &
-            round(relative_time, 5) == i, 1L, 0L
-        )
-      )
+    # NA relative_time always yields dummy = 0 (never-treated)
+    data[[col_name]] <- ifelse(
+      !is.na(data$relative_time) &
+        as.logical(data[[treatment_chr]]) &
+        abs(data$relative_time - i) < 1e-5,
+      1L, 0L
+    )
   }
 
-  # ---- 13. Construct and estimate the regression model ----
+  # ---- 12. Build Regression Formula ----
   outcome_expr_text <- rlang::expr_deparse(outcome_expr)
-
   all_terms <- c(
     paste0("lead", seq(lead_range, 1)),
     paste0("lag", seq(0, lag_range))
   )
   baseline_term <- get_term_name(baseline)
   included_terms <- setdiff(all_terms, baseline_term)
-
+  if (length(included_terms) == 0) {
+    stop("No event study terms are included in the model (all are set as baseline).")
+  }
   RHS_formula <- paste(included_terms, collapse = "+")
   if (cov_text != "") {
     RHS_formula <- paste0(RHS_formula, "+", cov_text)
   }
-
   formula_string <- paste0(outcome_expr_text, " ~ ", RHS_formula, " | ", fe_text)
   model_formula <- as.formula(formula_string)
 
-  # ---- 14. Estimate model (with optional weights) ----
-  if (!is.null(weights)) {
-    weights_formula <- rlang::enexpr(weights)
-    model <- fixest::feols(model_formula, data = data, cluster = cluster, weights = weights_formula)
-  } else {
-    model <- fixest::feols(model_formula, data = data, cluster = cluster)
-  }
+  # ---- 13. Run Regression (with/without weights) ----
+  model <- tryCatch(
+    {
+      if (!is.null(weights)) {
+        fixest::feols(model_formula, data = data, cluster = cluster, weights = rlang::enexpr(weights))
+      } else {
+        fixest::feols(model_formula, data = data, cluster = cluster)
+      }
+    },
+    error = function(e) {
+      stop("Model estimation failed. Check your design matrix and arguments. Error: ", e$message)
+    }
+  )
 
-  # ---- 15. Format the results ----
+  # ---- 14. Collect Results ----
   result <- broom::tidy(model)
 
+  # Add baseline row (always zero)
   baseline_row <- tibble::tibble(
     term = baseline_term,
     estimate = 0,
@@ -345,10 +394,12 @@ run_es <- function(data,
     p.value = NA_real_
   )
 
+  # Full order for result
   full_order <- c(
     paste0("lead", seq(lead_range, 1)),
     paste0("lag", seq(0, lag_range))
   )
+
   result <- result |>
     dplyr::bind_rows(baseline_row) |>
     dplyr::mutate(term = factor(term, levels = full_order)) |>
@@ -359,7 +410,7 @@ run_es <- function(data,
     ) |>
     dplyr::filter(!is.na(term))
 
-  # ---- 16. Attach relative_time mapping ----
+  # ---- 15. Attach relative_time mapping, add meta attributes, return ----
   rel_times <- c(seq(-lead_range, -1), seq(0, lag_range)) * interval
   rel_map <- tibble::tibble(
     term = factor(full_order, levels = full_order),
@@ -368,6 +419,15 @@ run_es <- function(data,
   result <- result |>
     dplyr::left_join(rel_map, by = "term") |>
     dplyr::mutate(is_baseline = (term == baseline_term))
+
+  # Attach meta info as attributes
+  attr(result, "lead_range") <- lead_range
+  attr(result, "lag_range") <- lag_range
+  attr(result, "baseline") <- baseline
+  attr(result, "interval") <- interval
+  attr(result, "call") <- match.call()
+  attr(result, "model_formula") <- formula_string
+  class(result) <- c("es_result", "data.frame")
 
   return(result)
 }

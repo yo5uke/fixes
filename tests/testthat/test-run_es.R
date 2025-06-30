@@ -262,5 +262,29 @@ test_that("run_es works with staggered treatment timing and real covariates", {
   expect_equal(result[result$is_baseline, ]$estimate, 0)
 })
 
+panel_data_date <- panel_data |>
+  dplyr::mutate(
+    date = as.Date(paste0(year, "-01-01"))
+  )
+
+testthat::test_that("run_es handles date-type time and string timing correctly", {
+  result <- run_es(
+    data = panel_data_date,
+    outcome = y,
+    treatment = is_treated,
+    time = date,
+    staggered = FALSE,
+    timing = "1998-01-01",
+    lead_range = 3,
+    lag_range = 3,
+    fe = ~ firm_id + date
+  )
+
+  testthat::expect_s3_class(result, "data.frame")
+  testthat::expect_true("relative_time" %in% colnames(result))
+  testthat::expect_true(any(result$relative_time == 0))
+})
+
+
 
 

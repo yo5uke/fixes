@@ -1,3 +1,25 @@
+# fixes 0.4.1 (2025-06-30)
+
+## New Features
+- **Support for untreated units (`NA` in timing):**
+  - Units with missing `timing` are now retained as never-treated controls (staggered only).
+- **Flexible `weights` input:**
+  - Accepts formulas (`~ popwt`), bare names (`popwt`), or character strings (`"popwt"`).
+- **Improved `cluster` input handling:**
+  - Now supports formula, character vector, and bare names consistently.
+
+## Improvements
+- Better validation and error messages across all inputs.
+- Warning added if `unit` is supplied without `time_transform = TRUE`.
+- Documentation switched to Markdown-style lists for better readability.
+
+## Bug Fixes
+- Ensured untreated units don’t receive event dummies.
+- Improved internal dummy creation and baseline handling.
+
+## Compatibility
+- Fully backward compatible with previous versions.
+
 # fixes 0.4.0 (May 25, 2025)
 
 ## New Features
