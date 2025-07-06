@@ -2,133 +2,118 @@
 % Please edit documentation in R/event_study.R
 \name{run_es}
 \alias{run_es}
-\title{Run Event Study with Fixed Effects}
+\title{Event Study Estimation for Panel Data}
 \usage{
 run_es(
   data,
   outcome,
   treatment,
   time,
-  staggered = FALSE,
   timing,
+  fe,
   lead_range = NULL,
   lag_range = NULL,
   covariates = NULL,
-  fe,
   cluster = NULL,
   weights = NULL,
   baseline = -1,
   interval = 1,
   time_transform = FALSE,
-  unit = NULL
+  unit = NULL,
+  staggered = FALSE,
+  conf.level = 0.95
 )
 }
 \arguments{
-\item{data}{A data frame containing the panel dataset.}
+\item{data}{A data.frame with panel data. Must contain all required variables.}
 
-\item{outcome}{The outcome variable, unquoted. You can supply a raw variable (e.g., `y`) or a function call (e.g., `log(y)`).}
+\item{outcome}{Outcome variable (unquoted variable name or expression, e.g. \code{log(y)}).}
 
-\item{treatment}{Treatment assignment indicator (unquoted). Should be binary (`0/1` or logical). Typically equals 1 in and after the treated period, 0 otherwise.}
+\item{treatment}{Treatment indicator (unquoted; 0/1 or logical).}
 
-\item{time}{The time variable (unquoted). Used for relative period calculation.}
+\item{time}{Time variable (unquoted; numeric or Date).}
 
-\item{staggered}{Logical. If `TRUE`, allows each unit to have its own treatment timing (supports staggered adoption). If so, supply `timing` as a variable name. Default is `FALSE`.}
+\item{timing}{Treatment timing: a numeric or Date for universal timing, or a variable (unquoted) for staggered.}
 
-\item{timing}{If `staggered = FALSE`, supply a single numeric or date value (e.g., `2005` or `"2005-01-01"`). If `staggered = TRUE`, supply the unquoted variable indicating each unit's treatment time. Never-treated units (with `NA`) are allowed and automatically included as controls.
-If `time_transform = TRUE`, specify `timing` as an integer corresponding to the transformed index.}
+\item{fe}{One-sided formula for fixed effects (e.g. \code{~ id + year}).}
 
-\item{lead_range}{Number of pre-treatment periods (leads) to include (e.g., 5 creates `lead5`, ..., `lead1`). If `NULL`, automatically determined.}
+\item{lead_range}{Number of pre-treatment periods to include (default: detected from data).}
 
-\item{lag_range}{Number of post-treatment periods (lags) to include (e.g., 3 creates `lag0`, `lag1`, `lag2`, `lag3`). If `NULL`, automatically determined.}
+\item{lag_range}{Number of post-treatment periods to include (default: detected from data).}
 
-\item{covariates}{Optional covariates for the regression. Must be a one-sided formula (e.g., `~ x1 + x2`). Default is `NULL`.}
+\item{covariates}{One-sided formula of additional controls (optional).}
 
-\item{fe}{Fixed effects specification, as a one-sided formula (e.g., `~ id + year`). Required.}
+\item{cluster}{Cluster variable(s), as a one-sided formula or character vector (optional).}
 
-\item{cluster}{Cluster-robust standard errors. Accepts a one-sided formula (e.g., `~ id`), or a character vector of column names. Default is `NULL`.}
+\item{weights}{Observation weights (formula, character, or unquoted variable).}
 
-\item{weights}{Optional observation weights. Accepts a one-sided formula (e.g., `~ wt`), character string, or bare variable name. Default is `NULL`.}
+\item{baseline}{Baseline period for normalization (default: -1, i.e., one period before treatment).}
 
-\item{baseline}{Which relative period to use as the omitted (reference) period (e.g., `-1`). This dummy is excluded from estimation and added to the results with estimate 0.}
+\item{interval}{Numeric; interval of the time variable (default: 1).}
 
-\item{interval}{The interval between time periods (e.g., `1` for yearly data, `5` for 5-year periods). Default is `1`.}
+\item{time_transform}{Logical; if \code{TRUE}, converts time variable to consecutive integer within units (requires \code{unit}).}
 
-\item{time_transform}{Logical. If `TRUE`, time is replaced by a sequential integer per unit (useful for irregular panels). Default is `FALSE`.}
+\item{unit}{Panel unit variable (required if \code{time_transform = TRUE}).}
 
-\item{unit}{Panel unit identifier. Required if `time_transform = TRUE`. Must be an unquoted variable name (e.g., `id`).}
+\item{staggered}{Logical; if \code{TRUE}, treats timing as variable (default: \code{FALSE}).}
+
+\item{conf.level}{Numeric vector of confidence levels (e.g. \code{c(0.90, 0.95, 0.99)}; default: \code{0.95}).}
 }
 \value{
-A tibble containing the event study estimates:
-- `term`: Lead or lag dummy name (e.g., `"lead3"`, `"lag0"`)
-- `estimate`: Coefficient estimate
-- `std.error`: Standard error
-- `statistic`: t-statistic
-- `p.value`: p-value
-- `conf_high`: Upper 95% confidence bound
-- `conf_low`: Lower 95% confidence bound
-- `relative_time`: Relative period (scaled by `interval`)
-- `is_baseline`: Logical, `TRUE` only for the omitted baseline period
+A data.frame with class \code{"es_result"}, containing:
+\describe{
+  \item{term}{Dummy variable name (\code{leadX}, \code{lagY})}
+  \item{estimate, std.error, statistic, p.value}{Coefficient estimates, standard errors, test statistics, and p-values}
+  \item{conf_low_XX, conf_high_XX}{Confidence intervals at each requested level}
+  \item{relative_time}{Period relative to treatment (0 = event)}
+  \item{is_baseline}{Logical, is this the baseline period (estimate always 0)}
+}
+Attributes: \code{lead_range}, \code{lag_range}, \code{baseline}, \code{interval}, \code{call}, \code{model_formula}, \code{conf.level}.
 }
 \description{
-Performs an event study analysis using fixed effects regression on panel data.
-The function automatically generates lead and lag dummies for each relative period around treatment, supports covariates and flexible fixed effects, and allows for clustered standard errors and observation weights.
+\code{run_es()} is a user-friendly event study wrapper for panel data, supporting both classic (universal timing) and staggered (unit-varying timing) settings. It generates lead/lag dummy variables around treatment, builds the regression formula, and returns tidy results with confidence intervals for arbitrary levels.
 }
 \details{
-This function streamlines event study regression for panel data with flexible support for:
+Runs an event study regression on panel data, automatically generating lead/lag dummies around a treatment event.
 
-- Staggered adoption: units with `NA` in `timing` are included as controls (all event dummies zero).
-- Relative time calculation: `(time - timing) / interval`.
-- Automatic dummy generation for specified leads and lags.
-- Omission of the baseline period from estimation and its re-addition with estimate 0.
-- Optional transformation of time to a unit-specific sequence (`time_transform = TRUE`), allowing for irregular or gapped panel structures.
 
-**Collinearity:**
-If some covariates are perfectly collinear with fixed effects or other regressors, they are automatically dropped from the regression. A message will be displayed listing dropped variables.
+The function does not require explicit formula specification; dummy variables and model formula are constructed internally.
+Baseline normalization (reference category) can be customized. Untreated units or units never treated are supported.
+Missing values in key variables result in an error.
 }
+\section{Key Features}{
+
+\itemize{
+  \item One-step event study: specify outcome, treatment, time, timing, and fixed effects directly.
+  \item Supports both universal and staggered treatment timing.
+  \item Flexible covariate, clustering, and weighting options.
+  \item Customizable lead/lag window and baseline normalization.
+  \item Returns a tidy \code{data.frame} (class \code{"es_result"}) with estimates and confidence intervals.
+}
+}
+
 \examples{
 \dontrun{
-# Minimal use: simple DiD with two-way fixed effects
-run_es(
-  data = df,
-  outcome = y,
-  treatment = treat,
-  time = year,
-  timing = 2000,
-  lead_range = 2,
-  lag_range = 2,
-  fe = ~ id + year,
-  baseline = -1
-)
-
-# With weights, cluster, and covariates
-run_es(
-  data = df,
-  outcome = y,
-  treatment = treat,
-  time = year,
-  timing = 2000,
-  lead_range = 2,
-  lag_range = 3,
-  covariates = ~ x1 + x2,
-  fe = ~ id + year,
-  cluster = ~ id,
-  weights = ~ popwt,
-  baseline = -1
-)
-
-# Staggered adoption: timing is unit-specific
-run_es(
-  data = df,
-  outcome = y,
-  treatment = treat,
-  time = year,
-  staggered = TRUE,
-  timing = treat_time,
+# Simulated example
+result <- run_es(
+  data       = panel_data,
+  outcome    = y,
+  treatment  = treated_1998,
+  time       = year,
+  timing     = 1998,
+  fe         = ~ firm_id + year,
+  cluster    = ~ state_id,
   lead_range = 3,
-  lag_range = 4,
-  fe = ~ id + year,
-  cluster = ~ id,
-  baseline = -1
+  lag_range  = 3,
+  conf.level = c(0.90, 0.95, 0.99)
 )
+plot_es(result)
 }
+
+}
+\seealso{
+\code{\link{plot_es}}
+}
+\author{
+Yosuke Abe
 }

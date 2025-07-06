@@ -18,46 +18,45 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-The **fixes** package provides a set of tools for creating, estimating, and visualizing event study models using fixed effects regression. With **fixes**, you can easily generate lead and lag dummy variables, estimate a fixed effects model via `fixest::feols()`, and visualize the results using `ggplot2`.
+The **fixes** package provides an easy-to-use toolkit for creating, estimating, and visualizing event study models using fixed effects regression. With **fixes**, you can automatically generate lead and lag dummy variables, flexibly estimate fixed effects event study regressions, and visualize the results with `ggplot2` using a single pipeline.
 
-This vignette walks you through a minimal example to demonstrate the core functionality of the package.
+This vignette introduces the core functions of the package through simple examples, including recent updates such as multiple confidence interval support and improved plotting options.
 
 ## Installation
 
-You can install the released version from CRAN:
+Install the released version from CRAN:
 
-``` r
-pak::pak("fixes")
-```
-
-Alternatively, you can use:
-
-``` r
+```r
 install.packages("fixes")
 ```
 
-To install the development version directly from GitHub, run:
+Or with **pak** (recommended for fast install):
 
-``` r
+```r
+pak::pak("fixes")
+```
+
+To install the latest development version from GitHub:
+
+```r
 pak::pak("yo5uke/fixes")
 ```
 
 or
 
-``` r
+```r
 devtools::install_github("yo5uke/fixes")
 ```
 
-## A Minimal Example
+## Minimal Example
 
-Below is a simple example to simulate a small panel dataset and perform an event study analysis. In this example, we assume an event (treatment) occurs in 2005.
+Below is a basic example simulating a panel dataset, running an event study, and visualizing the results.
 
-``` r
+```r
 library(fixes)
-library(tibble)
 library(dplyr)
+library(tibble)
 
-# Simulate panel data
 set.seed(2)
 
 n_firms <- 1000
@@ -75,7 +74,7 @@ error <- rnorm(n_firms * T, mean = 0, sd = .5)
 treated_1998 <- sample(c(1, 0), size = n_firms,
                        replace = TRUE, prob = c(1/2, 1/2))
 
-df <- tibble::tibble(
+df <- tibble(
   firm_id = rep(firm_id, each = T),
   state_id = rep(state_id, each = T),
   year = rep(year, times = n_firms),
@@ -83,17 +82,17 @@ df <- tibble::tibble(
   fe_year = rep(fe_year, times = n_firms),
   error = error,
   is_treated = rep(treated_1998, each = T),
-  after_treat = dplyr::if_else(is_treated == 1 & year >= 1998, 1, 0),
+  after_treat = if_else(is_treated == 1 & year >= 1998, 1, 0),
   x1 = runif(n_firms * T),
   x2 = rnorm(n_firms * T),
-  y = dplyr::case_when(
+  y = case_when(
     after_treat == 1 ~
       rnorm(n_firms * T, mean = .3, sd = .2) * (year - 1997) + fe_firm + fe_year + error,
-    .default = fe_firm + fe_year + error
+    TRUE ~ fe_firm + fe_year + error
   )
 )
 
-# Run the event study
+# Run the event study (now supports multiple confidence levels)
 event_study <- run_es(
   data       = df,
   outcome    = y,
@@ -106,57 +105,55 @@ event_study <- run_es(
   fe         = ~ firm_id + year,
   cluster    = ~ state_id,
   baseline   = -1,
-  interval   = 1
+  interval   = 1,
+  conf.level = c(0.90, 0.95, 0.99) # Multiple CIs now supported!
 )
 
-
-# View the first few rows of the event study results
+# View results
 head(event_study)
 ```
 
-## Visualizing the Event Study Results
+## Visualizing Event Study Results
 
-The **fixes** package provides the `plot_es()` function to create visualizations of your event study results. Here are some examples:
+The **fixes** package provides `plot_es()` for flexible visualization. You can easily switch between ribbon-style or error bar CIs, select the displayed CI level, and customize appearance.
 
-``` r
-# Basic plot using ribbon-style confidence intervals
+```r
+# Basic plot (default: ribbon, 95% CI)
 p1 <- plot_es(event_study)
 print(p1)
 
-# Plot with error bars instead of a ribbon
-p2 <- plot_es(event_study, type = "errorbar")
+# Plot with error bars and 99% CI
+p2 <- plot_es(event_study, type = "errorbar", ci_level = 0.99)
 print(p2)
 
-# Plot with a custom vertical reference line
-p3 <- plot_es(event_study, type = "errorbar", vline_val = -0.5)
+# Use a minimal theme and highlight the event period
+p3 <- plot_es(event_study, type = "ribbon", vline_val = 0, theme_style = "minimal")
 print(p3)
 
-# Customized plot: adjust axis breaks and add a title
+# Customize further with ggplot2
 library(ggplot2)
-p4 <- plot_es(event_study, type = "errorbar") + 
-  scale_x_continuous(breaks = seq(-5, 4, by = 1)) + 
-  ggtitle("Result of Event Study")
+p4 <- plot_es(event_study, type = "errorbar", ci_level = 0.9, theme_style = "classic") +
+  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
+  ggtitle("Event Study with 90% CI and Classic Theme")
 print(p4)
 ```
 
 ## Handling Irregular Time Data
 
-In some panel datasets, the time variable may not be regularly spaced — for example, it may be a `Date` column or have gaps between observations. In such cases, `run_es()` provides a convenient option: `time_transform = TRUE`.
-
-When `time_transform` is set to `TRUE`, the function automatically creates a sequential time index (1, 2, 3, ...) within each unit (specified by the `unit` argument) and uses that index for the event study analysis. This is particularly useful when your original time variable is not integer-valued or has irregular spacing.
+If your panel data uses irregular time variables (e.g., Dates), or has gaps, set `time_transform = TRUE` and provide a `unit` variable. This will replace the time variable with a consecutive sequence within each unit, ensuring leads/lags are calculated correctly.
 
 ### Example using `Date` and `time_transform`
 
 ```r
 df_alt <- df |>
-  dplyr::mutate(date = as.Date(paste0(year, "-01-01")))
+  mutate(date = as.Date(paste0(year, "-01-01")))
 
 event_study_alt <- run_es(
   data           = df_alt,
   outcome        = y,
   treatment      = is_treated,
   time           = date,
-  timing         = 19,        # Corresponds to the 19th time point per unit
+  timing         = 19,        # 19th time point per unit (not the actual year!)
   lead_range     = 3,
   lag_range      = 3,
   fe             = ~ firm_id + year,
@@ -169,37 +166,29 @@ event_study_alt <- run_es(
 head(event_study_alt)
 ```
 
-***Note:*** when `time_transform = TRUE`, the `timing` argument must be specified as the index of the treated time point within each unit.
+**Note:** When `time_transform = TRUE`, use the index (1, 2, 3, ...) for `timing` rather than the actual value (e.g., "1998-01-01"), and always specify `unit`.
 
-## Package Details
+## Package Highlights
 
-The **fixes** package is designed for panel data analysis and supports custom time intervals. Key functions include:
+- **`run_es()`**:
+    - Fast, one-step event study for panel data.
+    - Automatic creation of lead/lag dummies relative to treatment.
+    - Supports both classic and staggered timing, covariates, clustering, weights, and flexible baseline normalization.
+    - Multiple confidence interval levels supported (e.g., 90%, 95%, 99%).
+    - Handles irregular time panels via `time_transform`.
 
-- `run_es()`:
-    - Automatically generates lead and lag dummy variables relative to the treatment event.
-    - Constructs and estimates a fixed effects regression model.
-    - Accepts covariates specified as a one-sided formula (e.g., `~ x1 + x2`).
-    - Fixed effects must also be specified as a one-sided formula (e.g., `~ id + year`).
-    - Supports clustered standard errors:
-        - You can specify clusters using either a character vector (e.g., `c("id", "year")`) or a one-sided formula (e.g., `~ id + year` or `~ id^year`).
-        - The cluster variables are evaluated *after* subsetting the estimation sample to ensure compatibility.
-    - Returns a tidy dataframe with estimated coefficients, standard errors, and confidence intervals.
-    - `time_transform`: If `TRUE`, replaces the time variable with a sequential index within each unit (e.g., for irregular time variables like `Date`).
-    - `unit`: Required when `time_transform = TRUE`. Specifies the panel unit ID (e.g., `firm_id`).
-
-
-- `plot_es()`:
-    - Provides a flexible visualization tool using `ggplot2`.
-    - Offers both ribbon-style and error bar representations of confidence intervals.
-    - Can be further customized with standard ggplot2 functions.
+- **`plot_es()`**:
+    - Intuitive event study plot with ribbon or errorbar CI display.
+    - CI level and visual style are fully customizable.
+    - ggplot2-based for further modification.
 
 ## Conclusion
 
-The **fixes** package streamlines the process of performing event study analyses with fixed effects. It simplifies the estimation and visualization steps, making it easier to interpret dynamic treatment effects in panel data.
+The **fixes** package streamlines event study estimation and visualization for panel data researchers. With a minimal API, multiple CI support, and robust visualization, it accelerates the workflow for dynamic treatment effect analysis.
 
-For more information, consult the package documentation:
+For further details and full argument documentation, see:
 
-``` r
+```r
 ?run_es
 ?plot_es
 ```

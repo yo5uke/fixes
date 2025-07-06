@@ -2,4 +2,8 @@
 
 export(plot_es)
 export(run_es)
+importFrom(dplyr,"%>%")
+importFrom(rlang,.data)
 importFrom(stats,as.formula)
+importFrom(stats,qnorm)
+importFrom(stats,setNames)
