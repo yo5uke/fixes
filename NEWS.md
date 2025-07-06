@@ -1,3 +1,32 @@
+# fixes 0.5.0 (2025-07-06)
+
+## New Features
+- **Multiple Confidence Intervals:**  
+  `run_es()` and `plot_es()` now support returning and visualizing multiple confidence levels (e.g., 90%, 95%, 99%) in a single analysis.
+- **Enhanced Plotting Options:**  
+  `plot_es()` adds `ci_level` selection, more theme options (`theme_style`), and improved ribbon/error bar display.
+- **Expanded Error Handling:**  
+  More informative error reporting for all argument validation and model mis-specification.
+- **Documentation Overhaul:**  
+  Updated README, vignette, and roxygen docs to reflect all new features and usage patterns.
+
+## Improvements
+- **Input Validation:**  
+  Stricter checks for all arguments and clearer, friendlier error messages.
+- **Staggered Timing:**  
+  More robust handling of partial or missing treatment timing.
+- **Code Refactoring:**  
+  Internal codebase cleaned for maintainability and reliability.
+
+## Bug Fixes
+- Fixed: Confidence intervals always correctly labeled and included in output.
+- Fixed: Dummy variables not created for untreated/never-treated units in staggered settings.
+- Fixed: CRAN warnings by declaring all global variables used in tidy evaluation.
+
+## Compatibility
+- Fully backward compatible with previous versions.
+- Minimum required R version remains 4.1.0.
+
 # fixes 0.4.1 (2025-06-30)
 
 ## New Features
