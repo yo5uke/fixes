@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# fixes <a><img src="man/figures/fixes_logo_blue.png" align="right" height="138" /></a>
+# fixes <a><img src="man/figures/fixes_logo_blue.png" align="right" height="120" /></a>
 
 <!-- badges: start -->
 
