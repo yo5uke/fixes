@@ -1,14 +1,4 @@
 # test-event_study.R
-# ------------------------------------------------------------------------------
-# Unit tests for fixes::run_es() and fixes::plot_es()
-#
-# These tests are intended for a development environment.
-# NOTE: The tests require that the *current* (開発中の最新版) run_es/plot_es functions
-# are loaded into the R session (e.g. via devtools::load_all()).
-# If you have only CRAN版fixes loaded, conf.levelなど新機能のテストは失敗します。
-#
-# This file is meant to be placed in tests/testthat/.
-# ------------------------------------------------------------------------------
 
 library(testthat)
 library(dplyr)
