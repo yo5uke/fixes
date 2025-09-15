@@ -17,6 +17,8 @@ rcompendium::add_cran_badge(quiet = FALSE)
 
 ## Overview
 
+> **Current version:** 0.6.0 (development)
+
 > **Note**  
 > By default, the `fixes` package assumes time is a regularly spaced numeric variable (e.g., year = 1995, 1996, ...).  
 > If your time variable is irregular or non-numeric (e.g., `Date` type), set `time_transform = TRUE` to automatically convert it to a sequential index within each unit.  

@@ -12,6 +12,8 @@ status](https://www.r-pkg.org/badges/version/fixes)](https://CRAN.R-project.org/
 
 ## Overview
 
+> **Current version:** 0.6.0 (development)
+
 > **Note**  
 > By default, the `fixes` package assumes time is a regularly spaced
 > numeric variable (e.g., year = 1995, 1996, …).  
