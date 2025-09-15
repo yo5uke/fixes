@@ -1,7 +1,7 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
-Version: 0.5.0
+Version: 0.6.0
 Authors@R: c(
     person(
       "Yosuke", "Abe",
@@ -20,7 +20,7 @@ Imports:
     rlang
 License: MIT + file LICENSE
 Encoding: UTF-8
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Suggests: 
     knitr,
     rmarkdown,
