@@ -136,7 +136,7 @@ run_es <- function(
   }
 
   # Helper: Compute metadata in fewer passes
-  .compute_metadata <- function(data, unit_chr, k_vec, timing_chr = NULL, method = "classic") {
+  .compute_metadata <- function(data, unit_chr, k_vec, timing_chr = NULL, method = "classic", treat_vec = NULL) {
     N_units <- if (!is.null(unit_chr)) {
       length(unique(data[[unit_chr]]))
     } else {
@@ -147,14 +147,25 @@ run_es <- function(
       N_treat <- sum(!is.na(data[[timing_chr]]))
       N_never <- if (!is.na(N_units)) N_units - N_treat else NA_integer_
     } else {
-      # For classic method: count observations with non-NA event time
-      N_treat <- sum(!is.na(k_vec))
-      N_never <- if (!is.na(N_units) && !is.null(unit_chr)) {
-        # Count units that never have non-NA event time
-        units_ever_treated <- tapply(!is.na(k_vec), data[[unit_chr]], any, simplify = TRUE)
-        sum(!units_ever_treated)
+      # For classic method: use treatment indicator if provided
+      if (!is.null(treat_vec)) {
+        N_treat <- sum(as.logical(treat_vec), na.rm = TRUE)
+        N_never <- if (!is.na(N_units) && !is.null(unit_chr)) {
+          # Count units that are never treated
+          units_ever_treated <- tapply(as.logical(treat_vec), data[[unit_chr]], any, na.rm = TRUE, simplify = TRUE)
+          sum(!units_ever_treated)
+        } else {
+          NA_integer_
+        }
       } else {
-        NA_integer_
+        # Fallback: count observations with non-NA event time
+        N_treat <- sum(!is.na(k_vec))
+        N_never <- if (!is.na(N_units) && !is.null(unit_chr)) {
+          units_ever_treated <- tapply(!is.na(k_vec), data[[unit_chr]], any, simplify = TRUE)
+          sum(!units_ever_treated)
+        } else {
+          NA_integer_
+        }
       }
     }
 
@@ -382,12 +393,11 @@ run_es <- function(
     stop("`relative_time` is NA for all rows. Check `time` and `timing` inputs.")
   }
 
-  # Integer event time (only for treated observations)
+  # Integer event time (for all observations)
   k_vec <- suppressWarnings(as.integer(round(rt)))
-  k_vec[!as.logical(tx)] <- NA_integer_
 
-  # Determine lead/lag ranges (single pass with range())
-  k_range <- range(k_vec, na.rm = TRUE)
+  # Determine lead/lag ranges (only consider treated observations)
+  k_range <- range(k_vec[as.logical(tx)], na.rm = TRUE)
   if (is.null(lead_range)) {
     lead_range <- max(0L, abs(k_range[1]))
   }
@@ -411,12 +421,13 @@ run_es <- function(
   levels_ordered <- c(baseline_char, setdiff(as.character(levels_all), baseline_char))
   f_vec <- factor(k_vec, levels = levels_ordered)
 
-  # Prepare data for model (minimal modification: only add factor column)
+  # Prepare data for model (add factor column and treatment indicator)
   model_data <- time_data
   model_data$..f <- f_vec
+  model_data$..treat <- as.numeric(tx)  # treatment group indicator (0/1)
 
-  # Build model formula
-  rhs <- "..f"
+  # Build model formula using i() for proper interaction (treat × relative_time)
+  rhs <- paste0("i(..f, ..treat, ref = ", baseline_char, ")")
   if (nzchar(cov_text)) {
     rhs <- paste(rhs, cov_text, sep = " + ")
   }
@@ -449,9 +460,28 @@ run_es <- function(
   )
   tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
 
+  # Extract relative_time from term names
+  # When using i(), term names are like "..f::-5:..treat" or similar
+  # Extract the numeric part (relative time) from the term
+  tidy$relative_time <- suppressWarnings({
+    # Try to extract number from term (handles both "..f-5" and "..f::-5:..treat" formats)
+    extracted <- gsub(".*[^0-9](-?[0-9]+).*", "\\1", tidy$term)
+    as.integer(extracted)
+  })
+
   # Add baseline row (dropped reference category)
+  # Match the term format produced by i() - use the first non-baseline term as template
+  if (nrow(tidy) > 0) {
+    # Create baseline term matching the format of other terms
+    sample_term <- as.character(tidy$term[1])
+    baseline_term <- gsub(paste0("(-?[0-9]+)"), baseline, sample_term)
+  } else {
+    # Fallback to simple format
+    baseline_term <- paste0("..f::", baseline, ":..treat")
+  }
+
   baseline_row <- tibble::tibble(
-    term = paste0("..f", baseline),
+    term = baseline_term,
     estimate = 0,
     std.error = 0,
     statistic = NA_real_,
@@ -459,25 +489,20 @@ run_es <- function(
     relative_time = as.integer(baseline)
   )
 
-  # Extract relative_time from term names
-  tidy$relative_time <- suppressWarnings(
-    as.integer(sub("^..f", "", tidy$term))
-  )
-
-  # Combine and order results
-  full_order <- paste0("..f", levels_all)
+  # Combine results
   tidy <- dplyr::bind_rows(tidy, baseline_row)
-  tidy$term <- factor(tidy$term, levels = full_order)
+
+  # Order by relative_time
   tidy <- tidy %>%
-    dplyr::arrange(.data$term) %>%
-    dplyr::filter(!is.na(.data$term))
+    dplyr::arrange(.data$relative_time)
+
   tidy$is_baseline <- (tidy$relative_time == baseline)
 
   # Add confidence intervals (vectorized)
   tidy <- .add_confidence_intervals(tidy, conf.level, tidy$estimate, tidy$std.error)
 
   # Compute metadata efficiently
-  metadata <- .compute_metadata(model_data, unit_chr, k_vec, NULL, method = "classic")
+  metadata <- .compute_metadata(model_data, unit_chr, k_vec, NULL, method = "classic", treat_vec = tx)
 
   # Attach attributes
   attr(tidy, "lead_range") <- lead_range
