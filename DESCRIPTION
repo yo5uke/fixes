@@ -1,7 +1,7 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
-Version: 0.6.0
+Version: 0.7.0
 Authors@R: c(
     person(
       "Yosuke", "Abe",
@@ -9,7 +9,7 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: Provides functions for creating, analyzing, and visualizing event study models using fixed-effects regression. Supports staggered adoption, multiple confidence intervals, flexible clustering, and panel/time transformations in a simple workflow.
+Description: Provides functions for creating, analyzing, and visualizing event study models using fixed-effects regression. Supports staggered adoption, multiple confidence intervals, flexible clustering, and panel/time transformations in a simple workflow. Features both static (ggplot2) and interactive (plotly) visualizations with dynamic confidence interval switching.
 Depends: R (>= 4.1.0)
 Imports:
     dplyr,
@@ -21,11 +21,13 @@ Imports:
 License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.3
-Suggests: 
+Suggests:
     knitr,
     rmarkdown,
     haven,
-    testthat
+    testthat,
+    tidyr,
+    plotly
 VignetteBuilder: knitr
 URL: https://github.com/yo5uke/fixes
 BugReports: https://github.com/yo5uke/fixes/issues

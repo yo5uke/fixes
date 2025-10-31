@@ -20,7 +20,7 @@ knitr::opts_chunk$set(
 
 The **fixes** package provides an easy-to-use toolkit for creating, estimating, and visualizing event study models using fixed effects regression. With **fixes**, you can automatically generate lead and lag dummy variables, flexibly estimate fixed effects event study regressions, and visualize the results with `ggplot2` using a single pipeline.
 
-This vignette introduces the core functions of the package through simple examples, including recent updates such as multiple confidence interval support and improved plotting options.
+This vignette introduces the core functions of the package through simple examples, including recent updates such as multiple confidence interval support, improved plotting options, and **new in version 0.7.0**: interactive plotly visualizations with dynamic confidence interval switching.
 
 ## Installation
 
@@ -138,6 +138,160 @@ p4 <- plot_es(event_study, type = "errorbar", ci_level = 0.9, theme_style = "cla
 print(p4)
 ```
 
+## Interactive Plotting (New in v0.7.0!)
+
+The **fixes** package now includes `plot_es_interactive()` for creating interactive plotly visualizations. This feature requires the `plotly` package:
+
+```r
+# Install plotly if not already installed
+if (!requireNamespace("plotly", quietly = TRUE)) {
+  install.packages("plotly")
+}
+```
+
+### Key Features of Interactive Plots
+
+Interactive plots provide several advantages for exploring event study results:
+
+1. **Dynamic CI Switching**: Toggle between 90%, 95%, and 99% confidence intervals using interactive buttons
+2. **Hover Tooltips**: View detailed information by hovering over any point:
+   - Relative time to treatment
+   - Point estimate (4 decimal precision)
+   - Confidence interval bounds
+   - P-value
+   - Sample size
+3. **Zoom and Pan**: Explore specific regions of your plot with built-in plotly tools
+4. **Legend Toggle**: Click legend items to show/hide specific elements
+
+### Multiple Confidence Intervals by Default
+
+Starting with version 0.7.0, `run_es()` calculates 90%, 95%, and 99% confidence intervals by default. This enables interactive CI switching without re-running the estimation. The calculations are vectorized, so there's no performance penalty.
+
+```r
+# The event_study object created earlier already has multiple CIs
+print(event_study)
+#> Event Study Result (fixes)
+#>   N: 36000  | Units: NA  | Treated units: 18000  | Never-treated: NA
+#>   FE: firm_id + year
+#>   VCOV: HC1  | Cluster: state_id
+#>   Method: classic  | lead_range: 18  lag_range: 17  baseline: -1
+#>   Note: Multiple confidence levels calculated (90%, 95%, 99%).
+#>         Use plot_es_interactive() for dynamic CI switching.
+```
+
+### Creating Interactive Plots
+
+Basic usage is straightforward:
+
+```r
+# Create interactive plot (starts with 95% CI by default)
+plot_es_interactive(event_study)
+```
+
+This creates an interactive visualization with:
+- Three buttons at the top to switch between 90%, 95%, and 99% CIs
+- Smooth ribbon display showing the confidence interval
+- Points connected by a line showing point estimates
+- Dashed reference lines at x=0 (event time) and y=0 (no effect)
+
+### Customization Options
+
+The interactive plot function supports similar customization as `plot_es()`:
+
+```r
+# Start with 90% CI
+plot_es_interactive(event_study, conf.level = 0.90)
+
+# Use errorbar style instead of ribbon
+plot_es_interactive(event_study, display_type = "errorbar")
+
+# Apply minimal theme
+plot_es_interactive(event_study, theme = "minimal")
+
+# Full customization
+plot_es_interactive(
+  event_study,
+  conf.level = 0.95,
+  display_type = "ribbon",
+  theme = "bw",
+  color = "#E64B35",      # Custom color
+  fill = "#E64B35",       # Custom fill
+  alpha = 0.3,            # Transparency
+  linewidth = 1.5,        # Thicker line
+  pointsize = 3           # Larger points
+)
+```
+
+### Understanding the Interactive Controls
+
+When you create an interactive plot, you'll see several interactive features:
+
+1. **CI Level Buttons** (top of plot): Click "90%", "95%", or "99%" to switch between confidence intervals. The plot title and data update automatically.
+
+2. **Hover Tooltips**: Move your mouse over any point to see:
+   ```
+   Relative Time: -5
+   Estimate: 0.1234
+   CI: [-0.0567, 0.3035]
+   P-value: 0.182
+   N: 36000
+   ```
+
+3. **Zoom Tools** (modebar, top-right):
+   - Box zoom: Click and drag to zoom into a specific region
+   - Pan: Click the pan tool, then drag to move around
+   - Reset axes: Return to original view
+   - Download plot: Save as PNG
+
+4. **Legend**: Click legend items to show/hide elements (useful for presentations)
+
+### Comparing with Static Plots
+
+Both `plot_es()` and `plot_es_interactive()` use the same data and styling. Choose based on your needs:
+
+**Static plots (`plot_es()`)** are best for:
+- Publications and papers (standardized output)
+- Further customization with ggplot2
+- Faster rendering for quick checks
+- PDF exports
+
+**Interactive plots (`plot_es_interactive()`)** excel at:
+- Exploratory data analysis
+- Presentations and talks
+- Sharing results with collaborators
+- Exploring different CI levels dynamically
+
+```r
+# Side-by-side comparison
+static_plot <- plot_es(event_study, ci_level = 0.95)
+interactive_plot <- plot_es_interactive(event_study, conf.level = 0.95)
+
+# Display static plot
+print(static_plot)
+
+# Display interactive plot (if in RStudio or browser)
+interactive_plot
+```
+
+### Example: Focused Analysis
+
+Interactive plots are particularly useful for examining specific time windows:
+
+```r
+# Create interactive plot, then zoom to specific region
+# Users can interactively zoom to periods -5 to +10
+plot_es_interactive(
+  event_study,
+  display_type = "errorbar",
+  theme = "classic"
+)
+```
+
+After creating the plot, you can:
+1. Use box zoom to focus on periods -5 to +10
+2. Switch between CI levels to see how inference changes
+3. Hover over points near the event time (0) to examine estimates precisely
+
 ## Handling Irregular Time Data
 
 If your panel data uses irregular time variables (e.g., Dates), or has gaps, set `time_transform = TRUE` and provide a `unit` variable. This will replace the time variable with a consecutive sequence within each unit, ensuring leads/lags are calculated correctly.
@@ -182,6 +336,12 @@ head(event_study_alt)
     - CI level and visual style are fully customizable.
     - ggplot2-based for further modification.
 
+- **`plot_es_interactive()`** (new in v0.7.0):
+    - Interactive plotly visualization with dynamic CI switching.
+    - Hover tooltips display detailed information.
+    - Zoom, pan, and legend toggle for exploring results.
+    - Perfect for presentations and exploratory analysis.
+
 ## Conclusion
 
 The **fixes** package streamlines event study estimation and visualization for panel data researchers. With a minimal API, multiple CI support, and robust visualization, it accelerates the workflow for dynamic treatment effect analysis.
@@ -191,6 +351,7 @@ For further details and full argument documentation, see:
 ```r
 ?run_es
 ?plot_es
+?plot_es_interactive
 ```
 
 Happy analyzing!🥂

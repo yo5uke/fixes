@@ -5,3 +5,9 @@
 ^\.github$
 ^README\.Rmd$
 ^README_files$
+
+# Claude AI assistant files (exclude from CRAN build)
+^\.claude$
+^CLAUDE\.md$
+^REFACTORING_ANALYSIS\.md$
+^REFACTORING_SUMMARY\.md$

@@ -12,14 +12,14 @@ status](https://www.r-pkg.org/badges/version/fixes)](https://CRAN.R-project.org/
 
 ## Overview
 
-> **Current version:** 0.6.0 (development)
+> **Current version:** 0.7.0
 
-> **Note**  
+> **Note**
 > By default, the `fixes` package assumes time is a regularly spaced
-> numeric variable (e.g., year = 1995, 1996, …).  
+> numeric variable (e.g., year = 1995, 1996, …).
 > If your time variable is irregular or non-numeric (e.g., `Date` type),
 > set `time_transform = TRUE` to automatically convert it to a
-> sequential index within each unit.  
+> sequential index within each unit.
 > For unit-specific treatment timing, set `staggered = TRUE`.
 
 The `fixes` package is designed for convenient event study analysis and
@@ -32,10 +32,14 @@ difference-in-differences (DID) research.
 1.  `run_es()` — Takes a data frame, generates lead/lag dummies, and
     fits the event study regression. Supports fixed effects, covariates,
     clustering, staggered timing, weights, custom baseline, and multiple
-    confidence intervals.
+    confidence intervals. By default, calculates 90%, 95%, and 99%
+    confidence intervals for flexible visualization.
 2.  `plot_es()` — Plots event study results using `ggplot2` with
     flexible options: ribbon or error bars, choice of CI level, and
     theme customization.
+3.  `plot_es_interactive()` — Creates interactive plotly visualizations
+    with dynamic confidence interval switching, hover tooltips, zoom/pan
+    functionality, and more. **New in version 0.7.0!**
 
 ## Installation
 
@@ -129,7 +133,7 @@ The main event study function. All key arguments below:
 | `time_transform` | Logical. If `TRUE`, converts the `time` variable into a sequential index (1, 2, 3, …) within each unit. Useful for irregular time (e.g., Date). Default is `FALSE`. |
 | `unit` | Required if `time_transform = TRUE`. Specifies the panel unit identifier (e.g., `firm_id`). |
 | `staggered` | Logical. If `TRUE`, allows for unit-specific treatment timing (staggered adoption). Default is `FALSE`. |
-| `conf.level` | Numeric vector of confidence levels (e.g., `c(0.90, 0.95, 0.99)`; default: `0.95`). |
+| `conf.level` | Numeric vector of confidence levels (default: `c(0.90, 0.95, 0.99)`). Specify a single value like `0.95` if only one CI level is needed. |
 
 #### Example: basic event study
 
@@ -238,9 +242,124 @@ plot_es(event_study, type = "errorbar", ci_level = 0.99) + ggplot2::ggtitle("Eve
 Further customization with `ggplot2` is fully supported:
 
 ``` r
-plot_es(event_study, type = "errorbar") + 
-  ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) + 
+plot_es(event_study, type = "errorbar") +
+  ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) +
   ggplot2::ggtitle("Result of Event Study")
+```
+
+### `plot_es_interactive()` — Interactive Plotting
+
+**New in version 0.7.0!** Create interactive plotly visualizations with
+dynamic confidence interval switching.
+
+> **Note:** The `plotly` package is required for interactive plots.
+> Install with `install.packages("plotly")`.
+
+#### Key Features
+
+- **Dynamic CI Switching**: Toggle between 90%, 95%, and 99%
+  confidence intervals using interactive buttons
+- **Hover Tooltips**: View detailed information (estimate, CI bounds,
+  p-value, sample size) by hovering over points
+- **Zoom and Pan**: Built-in plotly interactivity for exploring your
+  results
+- **Flexible Display**: Choose between ribbon or errorbar styles
+
+#### Multiple Confidence Intervals
+
+By default, `run_es()` now calculates 90%, 95%, and 99% confidence
+intervals simultaneously with no performance penalty (calculations are
+vectorized). This enables interactive CI switching without re-running
+the estimation.
+
+``` r
+# Default behavior: multiple CIs calculated automatically
+event_study <- run_es(
+  data       = df1,
+  outcome    = y,
+  treatment  = treat,
+  time       = period,
+  timing     = 6,
+  fe         = ~ id + period,
+  cluster    = ~ id
+)
+
+# The print method informs you about available CI levels
+print(event_study)
+#> Event Study Result (fixes)
+#>   N: 1080  | Units: NA  | Treated units: 540  | Never-treated: NA
+#>   FE: id + period
+#>   VCOV: HC1  | Cluster: id
+#>   Method: classic  | lead_range: 5  lag_range: 4  baseline: -1
+#>   Note: Multiple confidence levels calculated (90%, 95%, 99%).
+#>         Use plot_es_interactive() for dynamic CI switching.
+```
+
+#### Basic Interactive Plot
+
+``` r
+# Create interactive plot with default settings (starts with 95% CI)
+plot_es_interactive(event_study)
+```
+
+This creates an interactive plot with: - Buttons to switch between 90%,
+95%, and 99% CIs - Hover tooltips showing detailed information - Zoom
+and pan functionality - Legend toggle
+
+#### Customization Options
+
+``` r
+# Start with 90% CI
+plot_es_interactive(event_study, conf.level = 0.90)
+
+# Use errorbar display style
+plot_es_interactive(event_study, display_type = "errorbar")
+
+# Apply different theme
+plot_es_interactive(event_study, theme = "minimal")
+
+# Full customization
+plot_es_interactive(
+  event_study,
+  conf.level = 0.95,
+  display_type = "ribbon",
+  theme = "bw",
+  color = "#E64B35",
+  fill = "#E64B35",
+  alpha = 0.3
+)
+```
+
+| Argument     | Description                                 |
+|--------------|---------------------------------------------|
+| data         | es_result object from `run_es()`            |
+| conf.level   | Initial CI level to display (default: 0.95) |
+| display_type | "ribbon" (default) or "errorbar"            |
+| theme        | "bw" (default), "minimal", or "classic"     |
+| color        | Line and point color (default: "\#B25D91FF") |
+| fill         | Ribbon fill color (default: "\#B25D91FF")   |
+| alpha        | Ribbon transparency (default: 0.2)          |
+| linewidth    | Line width (default: 1)                     |
+| pointsize    | Point size (default: 2)                     |
+
+#### Backward Compatibility
+
+For users who prefer single CI calculations (e.g., for publications
+with only 95% CIs), simply specify `conf.level = 0.95`:
+
+``` r
+event_study_single <- run_es(
+  data       = df1,
+  outcome    = y,
+  treatment  = treat,
+  time       = period,
+  timing     = 6,
+  fe         = ~ id + period,
+  conf.level = 0.95  # Calculate only 95% CI
+)
+
+# Static plot works exactly as before
+plot_es(event_study_single)
 ```
 
 ## Planned Features

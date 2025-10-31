@@ -22,7 +22,7 @@ run_es(
   unit = NULL,
   staggered = FALSE,
   method = c("classic", "sunab"),
-  conf.level = 0.95,
+  conf.level = c(0.9, 0.95, 0.99),
   vcov = "HC1",
   vcov_args = list()
 )
@@ -60,7 +60,7 @@ run_es(
 
 \item{method}{Either \code{"classic"} or \code{"sunab"} (default: \code{"classic"}).}
 
-\item{conf.level}{Numeric vector of confidence levels (default \code{0.95}).}
+\item{conf.level}{Numeric vector of confidence levels (default \code{c(0.90, 0.95, 0.99)} for interactive plotting). Specify a single value like \code{0.95} if only one level is needed.}
 
 \item{vcov}{VCOV type passed to \code{fixest::vcov()} or used via \code{broom::tidy(vcov = ...)}. Default \code{"HC1"}.}
 
@@ -88,6 +88,18 @@ The function builds the design (lead/lag factor or \code{sunab}), estimates with
   \item Flexible clustering, weights, and VCOV choices (e.g., \code{vcov = "HC1" | "HC3" | "CR2" | "iid" ...}).
   \item Automatic lead/lag window detection and customizable baseline period.
   \item Returns an \code{"es_result"} object compatible with \code{print()} and \code{autoplot()}.
+}
+}
+
+\section{Performance Optimizations}{
+
+The function has been optimized for computational efficiency:
+\itemize{
+  \item Minimal data frame copying - input data is not modified
+  \item Single-pass metadata computation where possible
+  \item Vectorized confidence interval calculations
+  \item Early input validation to fail fast on invalid inputs
+  \item Efficient time transformation using base R functions
 }
 }
 
