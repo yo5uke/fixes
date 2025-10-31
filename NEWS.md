@@ -1,3 +1,32 @@
+# fixes 0.7.0 (2025-10-31)
+
+## New Features
+- **Interactive Plotting with Plotly:**
+  New `plot_es_interactive()` function creates dynamic visualizations with:
+  - Dropdown menu to switch between 90%, 95%, and 99% confidence intervals on-the-fly
+  - Hover tooltips showing exact values and uncertainty bounds
+  - Pan, zoom, and export capabilities for publication-ready graphics
+
+- **Multi-Level Confidence Intervals by Default:**
+  `run_es()` now automatically calculates 90%, 95%, and 99% confidence intervals in every call, enabling seamless exploration of uncertainty without re-estimation.
+
+## Improvements
+- **Enhanced S3 Method Exports:**
+  `print.es_result()` now properly exported in NAMESPACE for better method dispatch.
+
+- **Documentation Expansion:**
+  Comprehensive interactive plotting examples added to README and vignettes, with detailed guidance on when to use static vs. interactive visualizations.
+
+## Code Quality
+- Removed duplicate `R/autoplot-es_result.R` file for cleaner codebase.
+- Added Claude AI assistant files to `.gitignore` and `.Rbuildignore` for CRAN compliance.
+
+## Compatibility
+- Fully backward compatible with previous versions.
+- Interactive plotting requires `plotly` package (suggested dependency).
+
+---
+
 # fixes 0.5.0 (2025-07-06)
 
 ## New Features
