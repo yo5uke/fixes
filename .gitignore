@@ -4,3 +4,9 @@
 .Ruserdata
 inst/doc
 
+# Claude AI assistant files
+.claude/
+CLAUDE.md
+REFACTORING_ANALYSIS.md
+REFACTORING_SUMMARY.md
+
