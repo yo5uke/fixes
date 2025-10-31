@@ -455,7 +455,8 @@ run_es <- function(
     estimate = 0,
     std.error = 0,
     statistic = NA_real_,
-    p.value = NA_real_
+    p.value = NA_real_,
+    relative_time = as.integer(baseline)
   )
 
   # Extract relative_time from term names
