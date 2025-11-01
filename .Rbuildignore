@@ -5,3 +5,7 @@
 ^\.github$
 ^README\.Rmd$
 ^README_files$
+
+^\.claude$
+^CLAUDE\.md$
+^VERSION_.*\.md$

@@ -4,3 +4,10 @@
 .Ruserdata
 inst/doc
 
+# Claude Code related files
+.claude/
+CLAUDE.md
+VERSION_*.md
+
+/.quarto/
+**/*.quarto_ipynb
