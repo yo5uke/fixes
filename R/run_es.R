@@ -22,7 +22,7 @@
 #' @param covariates One-sided formula of additional controls, e.g., \code{~ x1 + log(x2)}.
 #' @param cluster Cluster specification (one-sided formula like \code{~ id + year}, a single character column name, or a vector of length \code{nrow(data)}).
 #' @param weights Observation weights (a name/one-sided formula or a numeric vector of length \code{nrow(data)}).
-#' @param baseline Integer baseline period (default \code{-1}); used only when \code{method = "classic"}.
+#' @param baseline Integer baseline period (default \code{-1}); reference period excluded from results for both \code{"classic"} and \code{"sunab"} methods.
 #' @param interval Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).
 #' @param time_transform Logical; if \code{TRUE}, creates consecutive integer time within unit.
 #' @param unit Unit identifier variable (required when \code{time_transform = TRUE}); also used for metadata when supplied.
@@ -36,13 +36,13 @@
 #' \itemize{
 #'   \item \code{term}, \code{estimate}, \code{std.error}, \code{statistic}, \code{p.value}
 #'   \item \code{conf_low_XX}, \code{conf_high_XX} (for each requested \code{conf.level})
-#'   \item \code{relative_time} (integer; 0 = event), \code{is_baseline} (logical; classic only)
+#'   \item \code{relative_time} (integer; 0 = event), \code{is_baseline} (logical; marks the reference period)
 #' }
 #' Attributes include: \code{lead_range}, \code{lag_range}, \code{baseline}, \code{interval}, \code{call}, \code{model_formula}, \code{conf.level},
 #' \code{N}, \code{N_units}, \code{N_treated}, \code{N_nevertreated}, \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{staggered}, \code{sunab_used}.
 #'
 #' @importFrom stats as.formula qnorm setNames vcov
-#' @importFrom dplyr %>% bind_rows mutate arrange filter left_join group_by ungroup n_distinct
+#' @importFrom dplyr bind_rows mutate arrange filter left_join group_by ungroup n_distinct
 #' @importFrom rlang .data
 #' @export
 run_es <- function(
@@ -103,10 +103,10 @@ run_es <- function(
   # time transform (dense_rank within unit)
   if (isTRUE(time_transform)) {
     if (is.null(unit_chr)) stop("`time_transform=TRUE` requires `unit`.")
-    data <- data %>%
-      dplyr::group_by(.data[[unit_chr]]) %>%
-      dplyr::arrange(.data[[time_chr]], .by_group = TRUE) %>%
-      dplyr::mutate(.time_index = dplyr::dense_rank(.data[[time_chr]])) %>%
+    data <- data |>
+      dplyr::group_by(.data[[unit_chr]]) |>
+      dplyr::arrange(.data[[time_chr]], .by_group = TRUE) |>
+      dplyr::mutate(.time_index = dplyr::dense_rank(.data[[time_chr]])) |>
       dplyr::ungroup()
     time_chr <- ".time_index"
   }
@@ -146,15 +146,25 @@ run_es <- function(
   if (method == "sunab") {
     if (!staggered) warning("`method='sunab'` is typically used with `staggered=TRUE`.")
     timing_chr <- resolve_column(rlang::enexpr(timing), data)
-    # build formula: outcome ~ sunab(timing,time) + cov | FE
-    rhs <- paste0("fixest::sunab(", timing_chr, ", ", time_chr, ")")
+
+    # Get sunab function from fixest namespace and make it available in the formula environment
+    # This ensures sunab is accessible when feols evaluates the formula
+    sunab_fn <- getFromNamespace("sunab", "fixest")
+
+    # Build formula as string (simpler approach that works with the injected function)
+    rhs <- paste0("sunab(", timing_chr, ", ", time_chr, ")")
     if (nzchar(cov_text)) rhs <- paste(rhs, cov_text, sep = " + ")
     if (nzchar(fe_rhs_text)) {
       formula_string <- paste0(outcome_chr, " ~ ", rhs, " | ", fe_rhs_text)
     } else {
       formula_string <- paste0(outcome_chr, " ~ ", rhs)
     }
-    model_formula  <- stats::as.formula(formula_string)
+    model_formula <- stats::as.formula(formula_string)
+
+    # Set the formula environment to include sunab
+    formula_env <- new.env(parent = environment(model_formula))
+    formula_env$sunab <- sunab_fn
+    environment(model_formula) <- formula_env
 
     model_args <- list(model_formula, data = data)
     if (!is.null(cluster)) model_args$cluster <- cluster
@@ -171,6 +181,44 @@ run_es <- function(
     tidy$relative_time <- rel
     tidy$is_baseline   <- FALSE
 
+    # Determine lead_range and lag_range
+    if (is.null(lead_range)) {
+      lead_range <- max(0L, abs(min(tidy$relative_time, na.rm = TRUE)))
+    }
+    if (is.null(lag_range)) {
+      lag_range <- max(0L, max(tidy$relative_time, na.rm = TRUE))
+    }
+
+    # Filter results to specified ranges (before adding baseline)
+    tidy <- tidy |>
+      dplyr::filter(!is.na(.data$relative_time) &
+                    .data$relative_time >= -lead_range &
+                    .data$relative_time <= lag_range)
+
+    # Add baseline row (0 estimate, 0 SE) for the dropped reference
+    # Check if baseline is within the filtered range
+    if (baseline >= -lead_range && baseline <= lag_range) {
+      baseline_row <- tibble::tibble(
+        term      = as.character(baseline),
+        estimate  = 0,
+        std.error = 0,
+        statistic = NA_real_,
+        p.value   = NA_real_,
+        relative_time = baseline
+      )
+      # Add baseline row if it doesn't already exist
+      if (!baseline %in% tidy$relative_time) {
+        tidy <- dplyr::bind_rows(tidy, baseline_row)
+      }
+    }
+
+    # Mark baseline rows and arrange
+    tidy$is_baseline <- tidy$relative_time == baseline
+    tidy <- tidy |> dplyr::arrange(.data$relative_time)
+
+    # Update term column to show relative_time as numeric string
+    tidy$term <- as.character(tidy$relative_time)
+
     # add CIs for requested levels
     conf.level <- sort(unique(conf.level))
     for (cl in conf.level) {
@@ -184,9 +232,9 @@ run_es <- function(
     N_units <- if (!is.null(unit_chr)) dplyr::n_distinct(data[[unit_chr]]) else NA_integer_
     N_treat <- if (timing_chr %in% names(data)) sum(!is.na(data[[timing_chr]])) else NA_integer_
 
-    attr(tidy, "lead_range")       <- NA_integer_
-    attr(tidy, "lag_range")        <- NA_integer_
-    attr(tidy, "baseline")         <- NA
+    attr(tidy, "lead_range")       <- lead_range
+    attr(tidy, "lag_range")        <- lag_range
+    attr(tidy, "baseline")         <- baseline
     attr(tidy, "interval")         <- interval
     attr(tidy, "call")             <- match.call()
     attr(tidy, "model_formula")    <- formula_string
@@ -265,8 +313,15 @@ run_es <- function(
     # Use i(..k, treatment, ref = baseline)
     i_formula <- paste0("fixest::i(..k, ", treatment_chr, ", ref = ", baseline, ")")
   } else {
-    # Use i(time, treatment, ref = timing_val)
-    i_formula <- paste0("fixest::i(", time_chr, ", ", treatment_chr, ", ref = ", timing_val, ")")
+    # Calculate the reference period based on baseline
+    # E.g., if timing = 5 and baseline = -1, ref should be period 4
+    if (inherits(timing_val, "Date")) {
+      ref_period <- timing_val + baseline * interval
+    } else {
+      ref_period <- timing_val + baseline * interval
+    }
+    # Use i(time, treatment, ref = ref_period)
+    i_formula <- paste0("fixest::i(", time_chr, ", ", treatment_chr, ", ref = ", ref_period, ")")
   }
 
   rhs <- i_formula
@@ -293,37 +348,36 @@ run_es <- function(
   V <- tryCatch(vcov(model, vcov = vcov, .vcov_args = vcov_args), error = function(e) NULL)
   tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
 
-  # Extract relative_time from i() terms
-  # Format: "var::value:treatment" or "..k::value:treatment"
-  # We need to extract the middle value and convert to relative time
-  extract_relative_time <- function(term, staggered, timing_val, interval) {
-    # Extract the middle part (the time/..k value)
-    # Format: "var::value:treatment" or "var::value"
-    parts <- strsplit(as.character(term), "::", fixed = TRUE)[[1]]
-    if (length(parts) < 2) return(NA_integer_)
+  # Extract relative_time from i() terms - vectorized for performance
+  # Format: "fixest::var::value:treatment" (3 parts) or "var::value" (2 parts)
+  terms_char <- as.character(tidy$term)
 
-    # parts[2] might be "1:treat" or just "1"
-    # Extract just the numeric part before any additional ":"
-    value_part <- parts[2]
-    value_parts <- strsplit(value_part, ":", fixed = TRUE)[[1]]
-    time_value <- suppressWarnings(as.numeric(value_parts[1]))
-    if (is.na(time_value)) return(NA_integer_)
+  # Extract numeric values from term strings
+  # Split by "::" and extract the LAST part (which contains "value:treatment" or just "value")
+  parts_list <- strsplit(terms_char, "::", fixed = TRUE)
+  value_parts <- sapply(parts_list, function(x) x[length(x)])
 
-    if (staggered) {
-      # For staggered, ..k is already relative time
-      return(as.integer(time_value))
-    } else {
-      # For non-staggered, convert absolute time to relative time
-      tv <- if (inherits(timing_val, "Date")) as.numeric(timing_val) else timing_val
-      rel_time <- as.integer(round((time_value - tv) / interval))
-      return(rel_time)
-    }
+  # Extract numeric part (before any additional ":")
+  numeric_parts <- sapply(strsplit(value_parts, ":", fixed = TRUE), function(x) x[1])
+  time_values <- suppressWarnings(as.numeric(numeric_parts))
+
+  # Convert to relative time
+  if (staggered) {
+    # For staggered, ..k is already relative time
+    tidy$relative_time <- as.integer(time_values)
+  } else {
+    # For non-staggered, convert absolute time to relative time
+    tv <- if (inherits(timing_val, "Date")) as.numeric(timing_val) else timing_val
+    tidy$relative_time <- as.integer(round((time_values - tv) / interval))
   }
 
-  tidy$relative_time <- sapply(tidy$term, extract_relative_time,
-                               staggered = staggered,
-                               timing_val = timing_val,
-                               interval = interval)
+  # Warn about any NA values
+  if (any(is.na(tidy$relative_time))) {
+    na_terms <- terms_char[is.na(tidy$relative_time)]
+    if (length(na_terms) > 0) {
+      warning("Could not extract relative_time from terms: ", paste(na_terms, collapse = ", "))
+    }
+  }
 
   # Add baseline row (0 estimate, 0 SE) for the dropped reference
   baseline_row <- tibble::tibble(
@@ -340,7 +394,13 @@ run_es <- function(
   tidy$is_baseline <- tidy$relative_time == baseline
 
   # Arrange by relative_time
-  tidy <- tidy %>% dplyr::arrange(.data$relative_time)
+  tidy <- tidy |> dplyr::arrange(.data$relative_time)
+
+  # Filter results to specified ranges
+  tidy <- tidy |>
+    dplyr::filter(!is.na(.data$relative_time) &
+                  .data$relative_time >= -lead_range &
+                  .data$relative_time <= lag_range)
 
   # Update term column to show relative_time as requested
   tidy$term <- as.character(tidy$relative_time)
