@@ -168,19 +168,55 @@ head(event_study_alt)
 
 **Note:** When `time_transform = TRUE`, use the index (1, 2, 3, ...) for `timing` rather than the actual value (e.g., "1998-01-01"), and always specify `unit`.
 
+## Staggered Treatment with `sunab`
+
+For staggered adoption designs where treatment timing varies across units, you can use `method = "sunab"` to implement the Sun & Abraham (2021) estimator, which is robust to heterogeneous treatment effects.
+
+```r
+# Example with fixest::base_stagg data
+data("base_stagg", package = "fixest")
+
+event_study_sunab <- run_es(
+  data       = base_stagg,
+  outcome    = y,
+  treatment  = treated,
+  time       = year,
+  timing     = year_treated,
+  fe         = ~ id + year,
+  staggered  = TRUE,
+  method     = "sunab",  # Use Sun & Abraham decomposition
+  lead_range = 3,
+  lag_range  = 3,
+  cluster    = ~ id
+)
+
+head(event_study_sunab)
+
+# Visualize
+plot_es(event_study_sunab)
+```
+
+**New in v0.7.1:** The `baseline` parameter now applies to both `classic` and `sunab` methods, and the baseline period is included in results with zero estimates for consistent visualization.
+
 ## Package Highlights
 
 - **`run_es()`**:
     - Fast, one-step event study for panel data.
     - Automatic creation of lead/lag dummies relative to treatment.
     - Supports both classic and staggered timing, covariates, clustering, weights, and flexible baseline normalization.
+    - Choice of estimation methods: `classic` (factor expansion) or `sunab` (Sun & Abraham 2021 for staggered designs).
     - Multiple confidence interval levels supported (e.g., 90%, 95%, 99%).
     - Handles irregular time panels via `time_transform`.
+    - Results are filtered to specified `lead_range` and `lag_range` (v0.7.1+).
 
 - **`plot_es()`**:
     - Intuitive event study plot with ribbon or errorbar CI display.
     - CI level and visual style are fully customizable.
     - ggplot2-based for further modification.
+
+- **`plot_es_interactive()`** (v0.7.0+):
+    - Interactive plotly-based visualizations with hover tooltips.
+    - Displays point estimates, confidence intervals, standard errors, and p-values on hover.
 
 ## Conclusion
 
