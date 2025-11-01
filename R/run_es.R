@@ -17,7 +17,7 @@
 #' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when \code{method = "classic"}.
 #' @param time Unquoted time variable (numeric or Date).
 #' @param timing For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time.
-#' @param fe One-sided fixed-effects formula, e.g., \code{~ id + year}.
+#' @param fe One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects.
 #' @param lead_range,lag_range Integers for pre/post windows. If \code{NULL}, determined automatically.
 #' @param covariates One-sided formula of additional controls, e.g., \code{~ x1 + log(x2)}.
 #' @param cluster Cluster specification (one-sided formula like \code{~ id + year}, a single character column name, or a vector of length \code{nrow(data)}).
@@ -51,7 +51,7 @@ run_es <- function(
     treatment,
     time,
     timing,
-    fe,
+    fe           = NULL,
     lead_range   = NULL,
     lag_range    = NULL,
     covariates   = NULL,
@@ -120,8 +120,11 @@ run_es <- function(
   }
 
   # FE
-  if (!inherits(fe, "formula")) stop("`fe` must be a one-sided formula, e.g., ~ id + year.")
-  fe_rhs_text <- rlang::expr_text(rlang::f_rhs(fe))
+  fe_rhs_text <- ""
+  if (!is.null(fe)) {
+    if (!inherits(fe, "formula")) stop("`fe` must be a one-sided formula, e.g., ~ id + year.")
+    fe_rhs_text <- rlang::expr_text(rlang::f_rhs(fe))
+  }
 
   # ---- cluster validation (feols accepts formula/character/vector) ---------
   if (!is.null(cluster)) {
@@ -146,7 +149,11 @@ run_es <- function(
     # build formula: outcome ~ sunab(timing,time) + cov | FE
     rhs <- paste0("fixest::sunab(", timing_chr, ", ", time_chr, ")")
     if (nzchar(cov_text)) rhs <- paste(rhs, cov_text, sep = " + ")
-    formula_string <- paste0(outcome_chr, " ~ ", rhs, " | ", fe_rhs_text)
+    if (nzchar(fe_rhs_text)) {
+      formula_string <- paste0(outcome_chr, " ~ ", rhs, " | ", fe_rhs_text)
+    } else {
+      formula_string <- paste0(outcome_chr, " ~ ", rhs)
+    }
     model_formula  <- stats::as.formula(formula_string)
 
     model_args <- list(model_formula, data = data)
@@ -209,6 +216,8 @@ run_es <- function(
   data[[treatment_chr]] <- tx
 
   # timing
+  timing_val <- NULL
+  timing_chr <- NULL
   if (staggered) {
     timing_chr <- resolve_column(rlang::enexpr(timing), data)
   } else {
@@ -224,7 +233,7 @@ run_es <- function(
       stop("`time` must be a Date when `timing` is a Date.")
   }
 
-  # relative_time
+  # relative_time (for range calculation and staggered case)
   if (staggered) {
     .must_exist(timing_chr, data)
     rt <- (data[[time_chr]] - data[[timing_chr]]) / interval
@@ -236,28 +245,37 @@ run_es <- function(
   data$..rt <- rt
   if (all(is.na(data$..rt))) stop("`relative_time` is NA for all rows. Check inputs.")
 
-  # integer event time (only when treated)
+  # integer event time
   data$..k <- suppressWarnings(as.integer(round(data$..rt)))
-  data$..k[!as.logical(data[[treatment_chr]])] <- NA_integer_
 
-  # auto ranges
-  if (is.null(lead_range)) lead_range <- max(0L, abs(min(data$..k, na.rm = TRUE)))
-  if (is.null(lag_range))  lag_range  <- max(0L, max(data$..k, na.rm = TRUE))
+  # auto ranges (based on treated units only)
+  k_treated <- data$..k[as.logical(data[[treatment_chr]])]
+  if (is.null(lead_range)) lead_range <- max(0L, abs(min(k_treated, na.rm = TRUE)))
+  if (is.null(lag_range))  lag_range  <- max(0L, max(k_treated, na.rm = TRUE))
 
   # baseline check
   if (!is.finite(baseline) || (baseline %% 1L) != 0L) stop("`baseline` must be an integer.")
   if (baseline < -lead_range || baseline > lag_range)
     stop("`baseline` outside [-lead_range, lag_range].")
 
-  # factor for event-time, with baseline as reference
-  levels_all <- seq.int(-lead_range, lag_range)
-  data$..f <- factor(data$..k, levels = levels_all)
-  data$..f <- stats::relevel(data$..f, ref = as.character(baseline))
+  # Build formula using i()
+  # For staggered: use relative time (..k)
+  # For non-staggered: use absolute time for i(), but will convert terms to relative time later
+  if (staggered) {
+    # Use i(..k, treatment, ref = baseline)
+    i_formula <- paste0("fixest::i(..k, ", treatment_chr, ", ref = ", baseline, ")")
+  } else {
+    # Use i(time, treatment, ref = timing_val)
+    i_formula <- paste0("fixest::i(", time_chr, ", ", treatment_chr, ", ref = ", timing_val, ")")
+  }
 
-  # model formula
-  rhs <- "..f"
+  rhs <- i_formula
   if (nzchar(cov_text)) rhs <- paste(rhs, cov_text, sep = " + ")
-  formula_string <- paste0(outcome_chr, " ~ ", rhs, " | ", fe_rhs_text)
+  if (nzchar(fe_rhs_text)) {
+    formula_string <- paste0(outcome_chr, " ~ ", rhs, " | ", fe_rhs_text)
+  } else {
+    formula_string <- paste0(outcome_chr, " ~ ", rhs)
+  }
   model_formula  <- stats::as.formula(formula_string)
 
   model_args <- list(model_formula, data = data)
@@ -275,26 +293,59 @@ run_es <- function(
   V <- tryCatch(vcov(model, vcov = vcov, .vcov_args = vcov_args), error = function(e) NULL)
   tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
 
-  # add baseline row (0, NA SE) for dropped reference
+  # Extract relative_time from i() terms
+  # Format: "var::value:treatment" or "..k::value:treatment"
+  # We need to extract the middle value and convert to relative time
+  extract_relative_time <- function(term, staggered, timing_val, interval) {
+    # Extract the middle part (the time/..k value)
+    # Format: "var::value:treatment" or "var::value"
+    parts <- strsplit(as.character(term), "::", fixed = TRUE)[[1]]
+    if (length(parts) < 2) return(NA_integer_)
+
+    # parts[2] might be "1:treat" or just "1"
+    # Extract just the numeric part before any additional ":"
+    value_part <- parts[2]
+    value_parts <- strsplit(value_part, ":", fixed = TRUE)[[1]]
+    time_value <- suppressWarnings(as.numeric(value_parts[1]))
+    if (is.na(time_value)) return(NA_integer_)
+
+    if (staggered) {
+      # For staggered, ..k is already relative time
+      return(as.integer(time_value))
+    } else {
+      # For non-staggered, convert absolute time to relative time
+      tv <- if (inherits(timing_val, "Date")) as.numeric(timing_val) else timing_val
+      rel_time <- as.integer(round((time_value - tv) / interval))
+      return(rel_time)
+    }
+  }
+
+  tidy$relative_time <- sapply(tidy$term, extract_relative_time,
+                               staggered = staggered,
+                               timing_val = timing_val,
+                               interval = interval)
+
+  # Add baseline row (0 estimate, 0 SE) for the dropped reference
   baseline_row <- tibble::tibble(
-    term      = paste0("..f", baseline),
+    term      = as.character(baseline),
     estimate  = 0,
     std.error = 0,
     statistic = NA_real_,
-    p.value   = NA_real_
+    p.value   = NA_real_,
+    relative_time = baseline
   )
 
-  # recover relative_time from term ("..f-2", etc.)
-  rel_from_term <- function(term) suppressWarnings(as.integer(sub("^..f", "", term)))
-  tidy$relative_time <- rel_from_term(tidy$term)
-
-  # arrange full period + CI
-  full_order <- paste0("..f", levels_all)
+  # Combine with baseline row
   tidy <- dplyr::bind_rows(tidy, baseline_row)
-  tidy$term <- factor(tidy$term, levels = full_order)
-  tidy <- tidy %>% dplyr::arrange(.data$term) %>% dplyr::filter(!is.na(.data$term))
   tidy$is_baseline <- tidy$relative_time == baseline
 
+  # Arrange by relative_time
+  tidy <- tidy %>% dplyr::arrange(.data$relative_time)
+
+  # Update term column to show relative_time as requested
+  tidy$term <- as.character(tidy$relative_time)
+
+  # Add confidence intervals
   conf.level <- sort(unique(conf.level))
   for (cl in conf.level) {
     z <- stats::qnorm(1 - (1 - cl)/2)
