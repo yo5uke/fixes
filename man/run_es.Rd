@@ -10,7 +10,7 @@ run_es(
   treatment,
   time,
   timing,
-  fe,
+  fe = NULL,
   lead_range = NULL,
   lag_range = NULL,
   covariates = NULL,
@@ -38,7 +38,7 @@ run_es(
 
 \item{timing}{For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time.}
 
-\item{fe}{One-sided fixed-effects formula, e.g., \code{~ id + year}.}
+\item{fe}{One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects.}
 
 \item{lead_range, lag_range}{Integers for pre/post windows. If \code{NULL}, determined automatically.}
 
@@ -48,7 +48,7 @@ run_es(
 
 \item{weights}{Observation weights (a name/one-sided formula or a numeric vector of length \code{nrow(data)}).}
 
-\item{baseline}{Integer baseline period (default \code{-1}); used only when \code{method = "classic"}.}
+\item{baseline}{Integer baseline period (default \code{-1}); reference period excluded from results for both \code{"classic"} and \code{"sunab"} methods.}
 
 \item{interval}{Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).}
 
@@ -71,7 +71,7 @@ A \code{data.frame} of class \code{"es_result"} with columns:
 \itemize{
   \item \code{term}, \code{estimate}, \code{std.error}, \code{statistic}, \code{p.value}
   \item \code{conf_low_XX}, \code{conf_high_XX} (for each requested \code{conf.level})
-  \item \code{relative_time} (integer; 0 = event), \code{is_baseline} (logical; classic only)
+  \item \code{relative_time} (integer; 0 = event), \code{is_baseline} (logical; marks the reference period)
 }
 Attributes include: \code{lead_range}, \code{lag_range}, \code{baseline}, \code{interval}, \code{call}, \code{model_formula}, \code{conf.level},
 \code{N}, \code{N_units}, \code{N_treated}, \code{N_nevertreated}, \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{staggered}, \code{sunab_used}.
