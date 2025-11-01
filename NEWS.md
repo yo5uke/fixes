@@ -1,3 +1,80 @@
+# fixes 0.7.1 (2025-11-02)
+
+## Bug Fixes
+- **Lead/lag range filtering now enforced:**
+  - Fixed bug where `lead_range` and `lag_range` parameters were ignored, causing all estimated coefficients to be returned regardless of specified ranges
+  - Results now correctly filtered to only include coefficients within `[-lead_range, lag_range]`
+  - Applies to both `classic` and `sunab` methods
+
+- **sunab() namespace error resolved:**
+  - Fixed `'sunab' is not an exported object from 'namespace:fixest'` error when using `method = "sunab"`
+  - Formula environment now correctly configured to access `sunab` function from fixest package
+  - sunab() calls now work identically to direct fixest::feols() usage
+
+## Enhancements
+- **Baseline row now included in sunab results:**
+  - The `baseline` parameter (default: -1) now applies to both `classic` and `sunab` methods
+  - Baseline period added to results with `estimate = 0`, `std.error = 0`, and `is_baseline = TRUE`
+  - Provides consistent behavior across both estimation methods
+  - Updated documentation to clarify that `baseline` is used for both methods
+
+- **Improved term column formatting:**
+  - Term values now display as clean numeric strings (e.g., `"-9"`, `"0"`, `"3"`)
+  - Removed complex fixest-specific notation (e.g., `"year::-9"`) for better readability
+  - Consistent formatting across both classic and sunab methods
+
+- **Modernized code with native pipe operator:**
+  - Replaced tidyverse pipe (`%>%`) with base R pipe (`|>`) throughout the package
+  - Requires R >= 4.1.0 (already enforced in DESCRIPTION)
+  - Cleaner code with no functional changes
+
+## Testing
+- **Comprehensive test suite overhaul:**
+  - Added 25+ test cases covering all bug fixes and enhancements
+  - Separate test suites for classic, staggered, and sunab methods
+  - Tests for baseline row inclusion, term formatting, and range filtering
+  - Integration tests with fixest built-in datasets (base_did, base_stagg)
+  - Tests use native pipe operator (`|>`)
+
+## Compatibility
+- Fully backward compatible with previous versions
+- All changes maintain existing API and functionality
+- Enhanced robustness and user experience
+
+---
+
+# fixes 0.7.0 (2025-11-01)
+
+## Bug Fixes
+- **Critical fix for relative_time calculation in non-staggered designs:**
+  - Fixed bug where `relative_time` was NA for all coefficients except baseline when using non-staggered treatment timing
+  - The reference period in `fixest::i()` now correctly corresponds to the `baseline` parameter
+  - For example, with `timing = 5` and `baseline = -1`, period 4 (not period 5) is now used as the reference
+  - This ensures proper event study estimation with the intended baseline period
+
+## New Features
+- **Interactive plotting with plotly:**
+  - New function `plot_es_interactive()` for creating interactive event study plots
+  - Hover tooltips display: relative time, point estimate, confidence intervals, standard error, and p-value
+  - Supports customizable confidence levels, colors, and styling options
+  - Optional ribbon or point-only display modes
+  - Fully compatible with `es_result` objects from `run_es()`
+
+## Performance Improvements
+- **Optimized relative_time extraction:**
+  - Vectorized term parsing replaces previous `sapply()` approach for significant performance gains
+  - Faster processing of large event study results
+- **Enhanced error reporting:**
+  - More informative warnings when term parsing fails
+  - Better debugging information for malformed coefficient names
+
+## Compatibility
+- Fully backward compatible with previous versions
+- Requires R >= 4.1.0
+- Interactive plotting requires `plotly` package (optional, suggested dependency)
+
+---
+
 # fixes 0.5.0 (2025-07-06)
 
 ## New Features
