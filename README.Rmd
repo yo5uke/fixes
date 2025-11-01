@@ -17,7 +17,7 @@ rcompendium::add_cran_badge(quiet = FALSE)
 
 ## Overview
 
-> **Current version:** 0.6.0 (development)
+> **Current version:** 0.7.1
 
 > **Note**  
 > By default, the `fixes` package assumes time is a regularly spaced numeric variable (e.g., year = 1995, 1996, ...).  
@@ -30,6 +30,7 @@ The `fixes` package is designed for convenient event study analysis and plotting
 
 1. `run_es()` — Takes a data frame, generates lead/lag dummies, and fits the event study regression. Supports fixed effects, covariates, clustering, staggered timing, weights, custom baseline, and multiple confidence intervals.
 2. `plot_es()` — Plots event study results using `ggplot2` with flexible options: ribbon or error bars, choice of CI level, and theme customization.
+3. `plot_es_interactive()` — Creates interactive event study plots using `plotly` with hover tooltips displaying coefficients, confidence intervals, standard errors, and p-values.
 
 ## Installation
 
@@ -106,12 +107,14 @@ The main event study function. All key arguments below:
 | `covariates`    | Additional covariates to include in the regression. **Must be a one-sided formula** (e.g., `~ x1 + x2`). |
 | `cluster`       | Specifies clustering for standard errors. Can be a **character vector** (e.g., `c("id", "year")`) or a **formula** (e.g., `~ id + year`, `~ id^year`). |
 | `weights`       | Optional weights to be used in the regression. Provide as a one-sided formula (e.g., `~ weight`). |
-| `baseline`      | Relative time value to be used as the reference category. The corresponding dummy is excluded from the regression. **Must be within the specified lead/lag range.** |
+| `baseline`      | Relative time value to be used as the reference category (default: `-1`). For both `classic` and `sunab` methods, this period is included in results with zero estimates. **Must be within the specified lead/lag range.** |
 | `interval`      | Time interval between observations (e.g., `1` for yearly data, `5` for 5-year intervals). |
 | `time_transform`| Logical. If `TRUE`, converts the `time` variable into a sequential index (1, 2, 3, ...) within each unit. Useful for irregular time (e.g., Date). Default is `FALSE`. |
 | `unit`          | Required if `time_transform = TRUE`. Specifies the panel unit identifier (e.g., `firm_id`). |
 | `staggered`     | Logical. If `TRUE`, allows for unit-specific treatment timing (staggered adoption). Default is `FALSE`. |
+| `method`        | Estimation method: `"classic"` (default) uses factor expansion with `fixest::i()`, or `"sunab"` for staggered-robust estimation using Sun & Abraham (2021) decomposition. |
 | `conf.level`    | Numeric vector of confidence levels (e.g., `c(0.90, 0.95, 0.99)`; default: `0.95`). |
+| `vcov`          | Variance-covariance type (default: `"HC1"`). Accepts any `fixest::vcov()` type (e.g., `"HC3"`, `"CR2"`, `"iid"`). |
 
 #### Example: basic event study
 
@@ -216,10 +219,60 @@ plot_es(event_study, type = "errorbar", ci_level = 0.99) + ggplot2::ggtitle("Eve
 Further customization with `ggplot2` is fully supported:
 
 ```r
-plot_es(event_study, type = "errorbar") + 
-  ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) + 
+plot_es(event_study, type = "errorbar") +
+  ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) +
   ggplot2::ggtitle("Result of Event Study")
 ```
+
+### `plot_es_interactive()`
+
+Create interactive event study plots with hover tooltips (requires the `plotly` package):
+
+```r
+# Interactive plot with hover information
+plot_es_interactive(event_study, ci_level = 0.95)
+
+# Customize colors and display
+plot_es_interactive(
+  event_study,
+  ci_level = 0.99,
+  point_color = "darkblue",
+  ribbon_color = "lightblue",
+  show_ribbon = TRUE
+)
+```
+
+Hover over points to see:
+- Relative time
+- Point estimate
+- Standard error
+- Confidence intervals
+- P-value
+
+### Staggered Treatment with `sunab`
+
+For staggered adoption designs with unit-varying treatment timing, use `method = "sunab"` for the Sun & Abraham (2021) estimator:
+
+```r
+# Using fixest::base_stagg example data
+event_study_sunab <- run_es(
+  data       = df2,
+  outcome    = y,
+  treatment  = treated,
+  time       = year,
+  timing     = year_treated,
+  fe         = ~ id + year,
+  staggered  = TRUE,
+  method     = "sunab",
+  lead_range = 3,
+  lag_range  = 3,
+  cluster    = ~ id
+)
+
+plot_es(event_study_sunab)
+```
+
+**Note (v0.7.1+):** The `baseline` parameter now works for both `classic` and `sunab` methods, and results are properly filtered to `lead_range` and `lag_range`.
 
 ## Planned Features
 
