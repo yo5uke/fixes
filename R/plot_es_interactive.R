@@ -92,7 +92,7 @@ plot_es_interactive <- function(
 
   # Add confidence interval ribbon if requested
   if (show_ribbon) {
-    fig <- fig %>%
+    fig <- fig |>
       plotly::add_ribbons(
         data = plot_data,
         x = ~relative_time,
@@ -108,7 +108,7 @@ plot_es_interactive <- function(
   }
 
   # Add point estimates with line
-  fig <- fig %>%
+  fig <- fig |>
     plotly::add_trace(
       data = plot_data,
       x = ~relative_time,
@@ -128,7 +128,7 @@ plot_es_interactive <- function(
     )
 
   # Add vertical reference line at treatment time
-  fig <- fig %>%
+  fig <- fig |>
     plotly::add_segments(
       x = vline_val, xend = vline_val,
       y = min(plot_data$conf_low, na.rm = TRUE) * 1.1,
@@ -140,7 +140,7 @@ plot_es_interactive <- function(
     )
 
   # Add horizontal reference line at zero
-  fig <- fig %>%
+  fig <- fig |>
     plotly::add_segments(
       x = min(plot_data$relative_time, na.rm = TRUE) - 0.5,
       xend = max(plot_data$relative_time, na.rm = TRUE) + 0.5,
@@ -152,7 +152,7 @@ plot_es_interactive <- function(
     )
 
   # Configure layout
-  fig <- fig %>%
+  fig <- fig |>
     plotly::layout(
       xaxis = list(
         title = "Relative Time to Treatment",
@@ -171,7 +171,7 @@ plot_es_interactive <- function(
     )
 
   # Configure modebar
-  fig <- fig %>%
+  fig <- fig |>
     plotly::config(
       displayModeBar = TRUE,
       modeBarButtonsToRemove = c(

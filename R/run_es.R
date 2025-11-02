@@ -44,6 +44,7 @@
 #' @importFrom stats as.formula qnorm setNames vcov
 #' @importFrom dplyr bind_rows mutate arrange filter left_join group_by ungroup n_distinct
 #' @importFrom rlang .data
+#' @importFrom utils getFromNamespace
 #' @export
 run_es <- function(
     data,
