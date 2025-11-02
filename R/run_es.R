@@ -182,6 +182,19 @@ run_es <- function(
     tidy$relative_time <- rel
     tidy$is_baseline   <- FALSE
 
+    # Warn about any NA values in sunab event time terms only (not covariates)
+    # Sunab terms should contain "::" (from sunab decomposition)
+    terms_char <- as.character(tidy$term)
+    is_sunab_term <- grepl("::", terms_char, fixed = TRUE)
+
+    if (any(is.na(tidy$relative_time) & is_sunab_term)) {
+      na_sunab_terms <- terms_char[is_sunab_term & is.na(tidy$relative_time)]
+      if (length(na_sunab_terms) > 0) {
+        warning("Could not extract relative_time from sunab event time terms: ",
+                paste(na_sunab_terms, collapse = ", "))
+      }
+    }
+
     # Determine lead_range and lag_range
     if (is.null(lead_range)) {
       lead_range <- max(0L, abs(min(tidy$relative_time, na.rm = TRUE)))
@@ -372,11 +385,16 @@ run_es <- function(
     tidy$relative_time <- as.integer(round((time_values - tv) / interval))
   }
 
-  # Warn about any NA values
-  if (any(is.na(tidy$relative_time))) {
-    na_terms <- terms_char[is.na(tidy$relative_time)]
-    if (length(na_terms) > 0) {
-      warning("Could not extract relative_time from terms: ", paste(na_terms, collapse = ", "))
+  # Warn about any NA values in event time terms only (not covariates)
+  # Event time terms should contain "::" (from fixest::i()) or be standalone numeric-like
+  is_event_term <- grepl("::", terms_char, fixed = TRUE) |
+                   grepl("^[+-]?\\d+$", terms_char)
+
+  if (any(is.na(tidy$relative_time) & is_event_term)) {
+    na_event_terms <- terms_char[is_event_term & is.na(tidy$relative_time)]
+    if (length(na_event_terms) > 0) {
+      warning("Could not extract relative_time from event time terms: ",
+              paste(na_event_terms, collapse = ", "))
     }
   }
 
