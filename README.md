@@ -144,131 +144,54 @@ event_study <- run_es(
   outcome    = y,
   treatment  = treat,
   time       = period,
-  timing     = 6,
+  timing     = 5,  # Treatment occurs at period 5
   fe         = ~ id + period,
-  lead_range = 5,
-  lag_range  = 4,
+  lead_range = 3,
+  lag_range  = 3,
   cluster    = ~ id,
   baseline   = -1,
   interval   = 1,
   conf.level = c(0.90, 0.95, 0.99)
 )
+
+# View summary
+print(event_study)
 ```
+
+    ## Event Study Result (fixes)
+    ##   N: 1080  | Units: NA  | Treated units: 1080  | Never-treated: NA 
+    ##   FE: id + period
+    ##   VCOV: HC1  | Cluster: id 
+    ##   Method: classic  | lead_range: 3  lag_range: 3  baseline: -1
 
 - `fe` must be a one-sided formula (e.g., `~ firm_id + year`).
 - `cluster` can be a one-sided formula or a character vector.
 
-#### With covariates
-
-``` r
-event_study <- run_es(
-  data       = df1,
-  outcome    = y,
-  treatment  = treat,
-  time       = period,
-  timing     = 6,
-  fe         = ~ id + period,
-  lead_range = 5,
-  lag_range  = 4,
-  covariates = ~ cov1 + cov2 + cov3,
-  cluster    = ~ id,
-  baseline   = -1,
-  interval   = 1
-)
-```
-
-#### Using irregular time data (`Date`), with `time_transform`
-
-``` r
-df_alt <- df1 |>
-  dplyr::mutate(
-    year = rep(2001:2010, times = 108),
-    date = as.Date(paste0(year, "-01-01"))
-  )
-
-event_study_alt <- run_es(
-  data           = df_alt,
-  outcome        = y,
-  treatment      = treat,
-  time           = date,
-  timing         = 9,  # Use index, not the original Date
-  fe             = ~ id + period,
-  lead_range     = 3,
-  lag_range      = 3,
-  cluster        = ~ id,
-  baseline       = -1,
-  time_transform = TRUE,
-  unit           = id
-)
-```
-
-> **Note:**  
-> When `time_transform = TRUE`, specify `timing` as an index (e.g., 9 =
-> 9th observation in unit).  
-> Currently, `time_transform = TRUE` *cannot* be combined with
-> `staggered = TRUE` (future versions may support this).
-
-### `plot_es()`
-
-`plot_es()` visualizes results using `ggplot2`. By default, it plots a
-ribbon for the 95% CI, but supports error bars, CI level selection, and
-multiple themes.
-
-| Argument    | Description                                 |
-|-------------|---------------------------------------------|
-| data        | Data frame from `run_es()`                  |
-| ci_level    | Confidence interval (default: 0.95)         |
-| type        | “ribbon” (default) or “errorbar”            |
-| vline_val   | X for vertical line (default: 0)            |
-| vline_color | Color for vline (default: “\#000”)          |
-| hline_val   | Y for horizontal line (default: 0)          |
-| hline_color | Color for hline (default: “\#000”)          |
-| linewidth   | Line width (default: 1)                     |
-| pointsize   | Point size (default: 2)                     |
-| alpha       | Ribbon transparency (default: 0.2)          |
-| barwidth    | Errorbar width (default: 0.2)               |
-| color       | Point/line color (default: “\#B25D91FF”)    |
-| fill        | Ribbon color (default: “\#B25D91FF”)        |
-| theme_style | Theme: “bw” (default), “minimal”, “classic” |
+### Plotting Results
 
 #### Example usage
 
 ``` r
+# Basic plot with ribbon (default: 95% CI)
 plot_es(event_study)
-plot_es(event_study, type = "errorbar")
-plot_es(event_study, type = "ribbon", ci_level = 0.9, theme_style = "minimal")
-plot_es(event_study, type = "errorbar", ci_level = 0.99) + ggplot2::ggtitle("Event Study, 99% CI")
 ```
 
-Further customization with `ggplot2` is fully supported:
+![](man/figures/README-plot-basic-1.png)<!-- -->
 
 ``` r
-plot_es(event_study, type = "errorbar") +
-  ggplot2::scale_x_continuous(breaks = seq(-5, 5, by = 1)) +
-  ggplot2::ggtitle("Result of Event Study")
+# Plot with error bars
+plot_es(event_study, type = "errorbar", ci_level = 0.95)
 ```
 
-### `plot_es_interactive()`
-
-Create interactive event study plots with hover tooltips (requires the
-`plotly` package):
+![](man/figures/README-plot-errorbar-1.png)<!-- -->
 
 ``` r
-# Interactive plot with hover information
-plot_es_interactive(event_study, ci_level = 0.95)
-
-# Customize colors and display
-plot_es_interactive(
-  event_study,
-  ci_level = 0.99,
-  point_color = "darkblue",
-  ribbon_color = "lightblue",
-  show_ribbon = TRUE
-)
+# Customized plot
+plot_es(event_study, type = "ribbon", ci_level = 0.99, theme_style = "minimal") +
+  ggplot2::ggtitle("Event Study: 99% Confidence Interval")
 ```
 
-Hover over points to see: - Relative time - Point estimate - Standard
-error - Confidence intervals - P-value
+![](man/figures/README-plot-custom-1.png)<!-- -->
 
 ### Staggered Treatment with `sunab`
 
@@ -291,12 +214,39 @@ event_study_sunab <- run_es(
   cluster    = ~ id
 )
 
+# View summary
+print(event_study_sunab)
+```
+
+    ## Event Study Result (fixes)
+    ##   N: 950  | Units: NA  | Treated units: 950  | Never-treated: NA 
+    ##   FE: id + year
+    ##   VCOV: HC1  | Cluster: id 
+    ##   Method: SUNAB (staggered-safe)
+
+``` r
+# Plot sunab results
 plot_es(event_study_sunab)
 ```
+
+![](man/figures/README-plot-sunab-1.png)<!-- -->
 
 **Note (v0.7.1+):** The `baseline` parameter now works for both
 `classic` and `sunab` methods, and results are properly filtered to
 `lead_range` and `lag_range`.
+
+### Interactive Plots
+
+Create interactive event study plots with hover tooltips (requires the
+`plotly` package):
+
+``` r
+# Interactive plot with hover information
+plot_es_interactive(event_study, ci_level = 0.95)
+```
+
+Hover over points to see relative time, point estimates, confidence
+intervals, standard errors, and p-values.
 
 ## Planned Features
 

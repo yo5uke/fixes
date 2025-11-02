@@ -9,11 +9,21 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include = FALSE}
+```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 150
 )
+
+# Load the development version of the package
+library(fixes)
+library(dplyr)
+library(ggplot2)
 ```
 
 ## Introduction
@@ -50,63 +60,26 @@ devtools::install_github("yo5uke/fixes")
 
 ## Minimal Example
 
-Below is a basic example simulating a panel dataset, running an event study, and visualizing the results.
+Below is a basic example using the built-in `fixest::base_did` dataset, running an event study, and visualizing the results.
 
-```r
-library(fixes)
-library(dplyr)
-library(tibble)
+```{r minimal-example}
+# Load example data
+df <- fixest::base_did
 
-set.seed(2)
-
-n_firms <- 1000
-n_states <- 50
-T <- 36
-
-firm_id <- 1:n_firms
-state_id <- sample(n_states, size = n_firms, replace = TRUE)
-year <- 1980:2015
-
-fe_firm <- rnorm(n_firms, mean = 0, sd = .5)
-fe_year <- rnorm(T, mean = 0, sd = .5)
-error <- rnorm(n_firms * T, mean = 0, sd = .5)
-
-treated_1998 <- sample(c(1, 0), size = n_firms,
-                       replace = TRUE, prob = c(1/2, 1/2))
-
-df <- tibble(
-  firm_id = rep(firm_id, each = T),
-  state_id = rep(state_id, each = T),
-  year = rep(year, times = n_firms),
-  fe_firm = rep(fe_firm, each = T),
-  fe_year = rep(fe_year, times = n_firms),
-  error = error,
-  is_treated = rep(treated_1998, each = T),
-  after_treat = if_else(is_treated == 1 & year >= 1998, 1, 0),
-  x1 = runif(n_firms * T),
-  x2 = rnorm(n_firms * T),
-  y = case_when(
-    after_treat == 1 ~
-      rnorm(n_firms * T, mean = .3, sd = .2) * (year - 1997) + fe_firm + fe_year + error,
-    TRUE ~ fe_firm + fe_year + error
-  )
-)
-
-# Run the event study (now supports multiple confidence levels)
+# Run the event study (supports multiple confidence levels)
 event_study <- run_es(
   data       = df,
   outcome    = y,
-  treatment  = is_treated,
-  time       = year,
-  timing     = 1998,
-  lead_range = 18,
-  lag_range  = 17,
-  covariates = ~ x1 + x2,
-  fe         = ~ firm_id + year,
-  cluster    = ~ state_id,
+  treatment  = treat,
+  time       = period,
+  timing     = 5,  # Treatment occurs at period 5
+  fe         = ~ id + period,
+  cluster    = ~ id,
   baseline   = -1,
   interval   = 1,
-  conf.level = c(0.90, 0.95, 0.99) # Multiple CIs now supported!
+  lead_range = 3,
+  lag_range  = 3,
+  conf.level = c(0.90, 0.95, 0.99)  # Multiple CIs supported!
 )
 
 # View results
@@ -117,67 +90,33 @@ head(event_study)
 
 The **fixes** package provides `plot_es()` for flexible visualization. You can easily switch between ribbon-style or error bar CIs, select the displayed CI level, and customize appearance.
 
-```r
+```{r plot-basic}
 # Basic plot (default: ribbon, 95% CI)
-p1 <- plot_es(event_study)
-print(p1)
+plot_es(event_study)
+```
 
+```{r plot-errorbar}
 # Plot with error bars and 99% CI
-p2 <- plot_es(event_study, type = "errorbar", ci_level = 0.99)
-print(p2)
+plot_es(event_study, type = "errorbar", ci_level = 0.99)
+```
 
-# Use a minimal theme and highlight the event period
-p3 <- plot_es(event_study, type = "ribbon", vline_val = 0, theme_style = "minimal")
-print(p3)
-
+```{r plot-custom}
 # Customize further with ggplot2
-library(ggplot2)
-p4 <- plot_es(event_study, type = "errorbar", ci_level = 0.9, theme_style = "classic") +
-  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
+plot_es(event_study, type = "errorbar", ci_level = 0.9, theme_style = "classic") +
+  scale_x_continuous(breaks = seq(-3, 3, by = 1)) +
   ggtitle("Event Study with 90% CI and Classic Theme")
-print(p4)
 ```
-
-## Handling Irregular Time Data
-
-If your panel data uses irregular time variables (e.g., Dates), or has gaps, set `time_transform = TRUE` and provide a `unit` variable. This will replace the time variable with a consecutive sequence within each unit, ensuring leads/lags are calculated correctly.
-
-### Example using `Date` and `time_transform`
-
-```r
-df_alt <- df |>
-  mutate(date = as.Date(paste0(year, "-01-01")))
-
-event_study_alt <- run_es(
-  data           = df_alt,
-  outcome        = y,
-  treatment      = is_treated,
-  time           = date,
-  timing         = 19,        # 19th time point per unit (not the actual year!)
-  lead_range     = 3,
-  lag_range      = 3,
-  fe             = ~ firm_id + year,
-  cluster        = ~ state_id,
-  baseline       = -1,
-  time_transform = TRUE,
-  unit           = firm_id
-)
-
-head(event_study_alt)
-```
-
-**Note:** When `time_transform = TRUE`, use the index (1, 2, 3, ...) for `timing` rather than the actual value (e.g., "1998-01-01"), and always specify `unit`.
 
 ## Staggered Treatment with `sunab`
 
 For staggered adoption designs where treatment timing varies across units, you can use `method = "sunab"` to implement the Sun & Abraham (2021) estimator, which is robust to heterogeneous treatment effects.
 
-```r
+```{r sunab-example}
 # Example with fixest::base_stagg data
-data("base_stagg", package = "fixest")
+df_stagg <- fixest::base_stagg
 
 event_study_sunab <- run_es(
-  data       = base_stagg,
+  data       = df_stagg,
   outcome    = y,
   treatment  = treated,
   time       = year,
@@ -191,9 +130,12 @@ event_study_sunab <- run_es(
 )
 
 head(event_study_sunab)
+```
 
-# Visualize
-plot_es(event_study_sunab)
+```{r plot-sunab}
+# Visualize sunab results
+plot_es(event_study_sunab) +
+  ggtitle("Staggered Adoption Event Study (Sun & Abraham 2021)")
 ```
 
 **New in v0.7.1:** The `baseline` parameter now applies to both `classic` and `sunab` methods, and the baseline period is included in results with zero estimates for consistent visualization.
