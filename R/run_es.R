@@ -173,9 +173,14 @@ run_es <- function(
 
     model <- tryCatch(do.call(fixest::feols, model_args),
                       error = function(e) stop("Model estimation failed: ", e$message))
-    # vcov override
-    V <- tryCatch(vcov(model, vcov = vcov, .vcov_args = vcov_args), error = function(e) NULL)
-    tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
+    # vcov: when cluster is specified and vcov is the default "HC1", use the
+    # model's clustered SE rather than silently overriding it with HC1.
+    if (!is.null(cluster) && identical(vcov, "HC1")) {
+      tidy <- broom::tidy(model)
+    } else {
+      V <- tryCatch(vcov(model, vcov = vcov, .vcov_args = vcov_args), error = function(e) NULL)
+      tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
+    }
 
     # extract relative time from terms like "sunab::timing_var:: -2"
     rel <- suppressWarnings(as.integer(gsub(".*::(-?\\d+)$", "\\1", tidy$term)))
@@ -358,9 +363,14 @@ run_es <- function(
                            "\nHint: Check for collinearity between FE and event dummies; reconsider `lead_range`/`lag_range` or the granularity of your FE.")
                     })
 
-  # vcov override
-  V <- tryCatch(vcov(model, vcov = vcov, .vcov_args = vcov_args), error = function(e) NULL)
-  tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
+  # vcov: when cluster is specified and vcov is the default "HC1", use the
+  # model's clustered SE rather than silently overriding it with HC1.
+  if (!is.null(cluster) && identical(vcov, "HC1")) {
+    tidy <- broom::tidy(model)
+  } else {
+    V <- tryCatch(vcov(model, vcov = vcov, .vcov_args = vcov_args), error = function(e) NULL)
+    tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
+  }
 
   # Extract relative_time from i() terms - vectorized for performance
   # Format: "fixest::var::value:treatment" (3 parts) or "var::value" (2 parts)

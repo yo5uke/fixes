@@ -1,3 +1,16 @@
+# fixes 0.7.2 (2026-05-02)
+
+## Bug Fixes
+- **Clustered standard errors no longer silently overridden by HC1:**
+  - Fixed a bug where specifying `cluster` in `run_es()` did not produce clustered standard errors
+  - The default `vcov = "HC1"` was being applied after model estimation, overriding the clustered SE from `feols()`
+  - Now, when `cluster` is specified and `vcov` is left at its default (`"HC1"`), the model's clustered standard errors are used
+  - To explicitly request HC1 SEs even when `cluster` is set, pass `vcov = "HC1"` together with `cluster = NULL`
+  - Applies to both `classic` and `sunab` methods
+  - This resolves discrepancies between `run_es()` results and equivalent direct `fixest::feols()` calls
+
+---
+
 # fixes 0.7.1 (2025-11-02)
 
 ## Bug Fixes
