@@ -21,7 +21,6 @@ Imports:
     rlang
 License: MIT + file LICENSE
 Encoding: UTF-8
-RoxygenNote: 7.3.3
 Suggests:
     knitr,
     rmarkdown,
@@ -32,3 +31,4 @@ Suggests:
 VignetteBuilder: knitr
 URL: https://github.com/yo5uke/fixes
 BugReports: https://github.com/yo5uke/fixes/issues
+Config/roxygen2/version: 8.0.0
