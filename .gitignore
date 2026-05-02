@@ -11,3 +11,4 @@ VERSION_*.md
 
 /.quarto/
 **/*.quarto_ipynb
+.positai

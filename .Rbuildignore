@@ -9,3 +9,4 @@
 ^\.claude$
 ^CLAUDE\.md$
 ^VERSION_.*\.md$
+^\.positai$
