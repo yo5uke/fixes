@@ -6,11 +6,11 @@ output: github_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  echo    = TRUE,
+  echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.path   = "man/figures/README-",
-  fig.width  = 8,
+  fig.path = "man/figures/README-",
+  fig.width = 8,
   fig.height = 5,
   dpi = 300
 )
@@ -75,14 +75,14 @@ simulated balanced panel where all units are treated at period 5.
 df <- fixest::base_did
 
 es <- run_es(
-  data      = df,
-  outcome   = y,          # outcome variable (unquoted)
-  treatment = treat,      # 0/1 treatment indicator
-  time      = period,     # time variable
-  timing    = 5,          # treatment occurs at period 5
-  fe        = ~ id + period,
-  cluster   = ~ id,
-  baseline  = -1          # period -1 is the reference (default)
+  data = df,
+  outcome = y, # outcome variable (unquoted)
+  treatment = treat, # 0/1 treatment indicator
+  time = period, # time variable
+  timing = 5, # treatment occurs at period 5
+  fe = ~ id + period,
+  cluster = ~id,
+  baseline = -1 # period -1 is the reference (default)
 )
 
 print(es)
@@ -106,7 +106,7 @@ for all three staggered estimators.
 ```{r stagg-setup}
 df_stagg <- fixest::base_stagg
 df_stagg$timing <- df_stagg$year_treated
-df_stagg$timing[df_stagg$year_treated == 10000] <- NA  # mark never-treated
+df_stagg$timing[df_stagg$year_treated == 10000] <- NA # mark never-treated
 ```
 
 ### Callaway & Sant'Anna (2021) — `estimator = "cs"`
@@ -117,14 +117,14 @@ never-treated units (default) or not-yet-treated units.
 
 ```{r cs-run}
 cs <- run_es(
-  data          = df_stagg,
-  outcome       = y,
-  time          = year,
-  timing        = timing,   # first treatment period; NA = never treated
-  unit          = id,
-  staggered     = TRUE,
-  estimator     = "cs",
-  control_group = "nevertreated"   # or "notyettreated"
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing, # first treatment period; NA = never treated
+  unit = id,
+  staggered = TRUE,
+  estimator = "cs",
+  control_group = "nevertreated" # or "notyettreated"
 )
 
 print(cs)
@@ -157,16 +157,16 @@ weights. Gives the same result as `fixest::sunab()` but through the unified
 
 ```{r sa-run}
 sa <- run_es(
-  data      = df_stagg,
-  outcome   = y,
+  data = df_stagg,
+  outcome = y,
   treatment = treated,
-  time      = year,
-  timing    = timing,
-  unit      = id,
-  fe        = ~ id + year,
+  time = year,
+  timing = timing,
+  unit = id,
+  fe = ~ id + year,
   staggered = TRUE,
   estimator = "sa",
-  cluster   = ~ id
+  cluster = ~id
 )
 
 print(sa)
@@ -188,11 +188,11 @@ A three-step imputation approach:
 
 ```{r bjs-run}
 bjs <- run_es(
-  data      = df_stagg,
-  outcome   = y,
-  time      = year,
-  timing    = timing,
-  unit      = id,
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
   staggered = TRUE,
   estimator = "bjs"
 )
@@ -218,13 +218,13 @@ plot_es(es, type = "errorbar")
 ```{r plot-ci}
 # Multiple CI levels at once
 es_multi <- run_es(
-  data      = df,
-  outcome   = y,
+  data = df,
+  outcome = y,
   treatment = treat,
-  time      = period,
-  timing    = 5,
-  fe        = ~ id + period,
-  cluster   = ~ id,
+  time = period,
+  timing = 5,
+  fe = ~ id + period,
+  cluster = ~id,
   conf.level = c(0.90, 0.95, 0.99)
 )
 plot_es(es_multi, ci_level = 0.90, theme_style = "minimal")
