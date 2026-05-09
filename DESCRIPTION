@@ -1,8 +1,8 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
-Version: 0.7.2
-Date: 2026-05-02
+Version: 0.8.0
+Date: 2026-05-09
 Authors@R: c(
     person(
       "Yosuke", "Abe",
@@ -27,8 +27,11 @@ Suggests:
     haven,
     testthat,
     plotly,
-    tidyr
+    tidyr,
+    did,
+    didimputation
 VignetteBuilder: knitr
 URL: https://github.com/yo5uke/fixes
 BugReports: https://github.com/yo5uke/fixes/issues
 Config/roxygen2/version: 8.0.0
+RoxygenNote: 7.3.3

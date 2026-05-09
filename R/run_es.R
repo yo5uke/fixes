@@ -16,8 +16,8 @@
 #' @param outcome Unquoted outcome (name or expression, e.g., \code{log(y)}).
 #' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when \code{method = "classic"}.
 #' @param time Unquoted time variable (numeric or Date).
-#' @param timing For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time.
-#' @param fe One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects.
+#' @param timing For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time. For \code{estimator = "cs"}: unquoted column giving each unit's first treatment period (\code{NA} = never treated).
+#' @param fe One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects. Ignored when \code{estimator = "cs"}.
 #' @param lead_range,lag_range Integers for pre/post windows. If \code{NULL}, determined automatically.
 #' @param covariates One-sided formula of additional controls, e.g., \code{~ x1 + log(x2)}.
 #' @param cluster Cluster specification (one-sided formula like \code{~ id + year}, a single character column name, or a vector of length \code{nrow(data)}).
@@ -25,9 +25,16 @@
 #' @param baseline Integer baseline period (default \code{-1}); reference period excluded from results for both \code{"classic"} and \code{"sunab"} methods.
 #' @param interval Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).
 #' @param time_transform Logical; if \code{TRUE}, creates consecutive integer time within unit.
-#' @param unit Unit identifier variable (required when \code{time_transform = TRUE}); also used for metadata when supplied.
+#' @param unit Unit identifier variable (required when \code{estimator = "cs"} or \code{time_transform = TRUE}); also used for metadata when supplied.
 #' @param staggered Logical; if \code{TRUE}, \code{timing} is a variable (classic) or is used by \code{sunab}.
 #' @param method Either \code{"classic"} or \code{"sunab"} (default: \code{"classic"}).
+#' @param estimator Estimation strategy: \code{"twfe"} (default, existing fixest-based paths),
+#'   \code{"cs"} for the Callaway-Sant'Anna (2021) group-time ATT estimator, or
+#'   \code{"sa"} for the Sun-Abraham (2021) interaction-weighted estimator.
+#' @param control_group For \code{estimator = "cs"}: comparison group, either
+#'   \code{"nevertreated"} (default) or \code{"notyettreated"}.
+#' @param anticipation For \code{estimator = "cs"}: number of anticipation periods
+#'   before treatment (non-negative integer, default \code{0L}).
 #' @param conf.level Numeric vector of confidence levels (default \code{0.95}).
 #' @param vcov VCOV type passed to \code{fixest::vcov()} or used via \code{broom::tidy(vcov = ...)}. Default \code{"HC1"}.
 #' @param vcov_args List of additional arguments forwarded to \code{fixest::vcov()}.
@@ -49,7 +56,7 @@
 run_es <- function(
     data,
     outcome,
-    treatment,
+    treatment    = NULL,
     time,
     timing,
     fe           = NULL,
@@ -64,11 +71,15 @@ run_es <- function(
     unit         = NULL,
     staggered    = FALSE,
     method       = c("classic","sunab"),
+    estimator    = c("twfe", "cs", "sa", "bjs"),
+    control_group = c("nevertreated", "notyettreated"),
+    anticipation = 0L,
     conf.level   = 0.95,
     vcov         = "HC1",
     vcov_args    = list()
 ) {
-  method <- match.arg(method)
+  method    <- match.arg(method)
+  estimator <- match.arg(estimator)
   stopifnot(is.data.frame(data))
   if (!is.numeric(interval) || interval <= 0) stop("`interval` must be positive.")
 
@@ -96,9 +107,10 @@ run_es <- function(
   outcome_chr   <- resolve_column(rlang::enexpr(outcome), data, allow_call = TRUE)
   time_chr      <- resolve_column(rlang::enexpr(time), data)
 
-  unit_chr <- NULL
-  if (!missing(unit) && !is.null(unit)) {
-    unit_chr <- resolve_column(rlang::enexpr(unit), data)
+  unit_chr  <- NULL
+  unit_expr <- rlang::enexpr(unit)
+  if (!is.null(unit_expr)) {
+    unit_chr <- resolve_column(unit_expr, data)
   }
 
   # time transform (dense_rank within unit)
@@ -141,6 +153,321 @@ run_es <- function(
       if (!is.null(cluster) && length(cluster) != nrow(data))
         stop("Vector `cluster` must be length nrow(data).")
     }
+  }
+
+  # ---- estimator = cs -------------------------------------------------------
+  if (estimator == "cs") {
+    if (!missing(fe) && !is.null(fe))
+      warning("`fe` is ignored when `estimator = 'cs'`. ",
+              "The CS estimator absorbs unit and time effects via first-differencing.")
+
+    timing_chr <- resolve_column(rlang::enexpr(timing), data)
+    time_chr2  <- time_chr   # already resolved above
+    if (is.null(unit_chr))
+      stop("`unit` is required when `estimator = 'cs'`.")
+
+    control_group <- match.arg(control_group)
+    conf.level    <- sort(unique(conf.level))
+
+    cs_out <- .run_cs(
+      data          = data,
+      outcome_chr   = outcome_chr,
+      timing_chr    = timing_chr,
+      time_chr      = time_chr2,
+      unit_chr      = unit_chr,
+      anticipation  = anticipation,
+      control_group = control_group,
+      conf.level    = conf.level
+    )
+
+    es <- cs_out$es
+
+    # Build tidy data.frame matching es_result column contract
+    tidy <- data.frame(
+      term          = as.character(es$relative_time),
+      estimate      = es$estimate,
+      std.error     = es$std_error,
+      statistic     = es$estimate / es$std_error,
+      p.value       = 2 * stats::pnorm(-abs(es$estimate / es$std_error)),
+      relative_time = as.integer(es$relative_time),
+      is_baseline   = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    # Carry CI columns from .run_cs output
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      tidy[[paste0("conf_low_",  suf)]] <- es[[paste0("conf_low_",  suf)]]
+      tidy[[paste0("conf_high_", suf)]] <- es[[paste0("conf_high_", suf)]]
+    }
+
+    # Add the baseline row (relative_time = baseline, estimate = 0 by construction)
+    bl_row <- data.frame(
+      term          = as.character(baseline),
+      estimate      = 0,
+      std.error     = 0,
+      statistic     = NA_real_,
+      p.value       = NA_real_,
+      relative_time = as.integer(baseline),
+      is_baseline   = TRUE,
+      stringsAsFactors = FALSE
+    )
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      bl_row[[paste0("conf_low_",  suf)]] <- 0
+      bl_row[[paste0("conf_high_", suf)]] <- 0
+    }
+
+    tidy <- rbind(tidy, bl_row)
+    tidy$is_baseline <- tidy$relative_time == as.integer(baseline)
+    tidy <- tidy[order(tidy$relative_time), ]
+    rownames(tidy) <- NULL
+
+    # Apply lead/lag window filter if requested
+    non_base <- tidy$relative_time[!tidy$is_baseline]
+    if (is.null(lead_range)) lead_range <- max(0L, abs(min(non_base)))
+    if (is.null(lag_range))  lag_range  <- max(0L, max(non_base))
+    tidy <- tidy[!is.na(tidy$relative_time) &
+                   tidy$relative_time >= -lead_range &
+                   tidy$relative_time <= lag_range, ]
+
+    # Metadata
+    n_units <- dplyr::n_distinct(data[[unit_chr]])
+
+    attr(tidy, "lead_range")        <- lead_range
+    attr(tidy, "lag_range")         <- lag_range
+    attr(tidy, "baseline")          <- as.integer(baseline)
+    attr(tidy, "interval")          <- interval
+    attr(tidy, "call")              <- match.call()
+    attr(tidy, "model_formula")     <- "cs"
+    attr(tidy, "conf.level")        <- conf.level
+    attr(tidy, "N")                 <- nrow(data)
+    attr(tidy, "N_units")           <- n_units
+    attr(tidy, "N_treated")         <- n_units - cs_out$n_never
+    attr(tidy, "N_nevertreated")    <- cs_out$n_never
+    attr(tidy, "fe")                <- ""
+    attr(tidy, "vcov_type")         <- "analytic"
+    attr(tidy, "cluster_vars")      <- NULL
+    attr(tidy, "staggered")         <- TRUE
+    attr(tidy, "sunab_used")        <- FALSE
+    attr(tidy, "cs_control_group")  <- control_group
+    attr(tidy, "att_gt")            <- cs_out$att_gt
+
+    class(tidy) <- c("es_result", "data.frame")
+    return(tidy)
+  }
+
+  # ---- estimator = sa -------------------------------------------------------
+  if (estimator == "sa") {
+    timing_chr <- resolve_column(rlang::enexpr(timing), data)
+    if (is.null(unit_chr))
+      stop("`unit` is required when `estimator = 'sa'`.")
+
+    # FE specification: use provided `fe` or default to unit + time
+    fe_str <- if (nzchar(fe_rhs_text)) {
+      fe_rhs_text
+    } else {
+      warning("`fe` not specified for SA estimator; defaulting to `~ ",
+              unit_chr, " + ", time_chr, "`.")
+      paste(unit_chr, time_chr, sep = " + ")
+    }
+
+    conf.level <- sort(unique(conf.level))
+
+    sa_out <- .run_sa(
+      data        = data,
+      outcome_chr = outcome_chr,
+      timing_chr  = timing_chr,
+      time_chr    = time_chr,
+      unit_chr    = unit_chr,
+      fe_str      = fe_str,
+      baseline    = baseline,
+      cluster     = cluster,
+      vcov_type   = vcov,
+      vcov_args   = vcov_args,
+      conf.level  = conf.level
+    )
+
+    es <- sa_out$es
+
+    tidy <- data.frame(
+      term          = as.character(es$relative_time),
+      estimate      = es$estimate,
+      std.error     = es$std_error,
+      statistic     = es$estimate / es$std_error,
+      p.value       = 2 * stats::pnorm(-abs(es$estimate / es$std_error)),
+      relative_time = as.integer(es$relative_time),
+      is_baseline   = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      tidy[[paste0("conf_low_",  suf)]] <- es[[paste0("conf_low_",  suf)]]
+      tidy[[paste0("conf_high_", suf)]] <- es[[paste0("conf_high_", suf)]]
+    }
+
+    bl_row <- data.frame(
+      term          = as.character(baseline),
+      estimate      = 0,
+      std.error     = 0,
+      statistic     = NA_real_,
+      p.value       = NA_real_,
+      relative_time = as.integer(baseline),
+      is_baseline   = TRUE,
+      stringsAsFactors = FALSE
+    )
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      bl_row[[paste0("conf_low_",  suf)]] <- 0
+      bl_row[[paste0("conf_high_", suf)]] <- 0
+    }
+
+    tidy <- rbind(tidy, bl_row)
+    tidy$is_baseline <- tidy$relative_time == as.integer(baseline)
+    tidy <- tidy[order(tidy$relative_time), ]
+    rownames(tidy) <- NULL
+
+    non_base <- tidy$relative_time[!tidy$is_baseline]
+    if (is.null(lead_range)) lead_range <- max(0L, abs(min(non_base)))
+    if (is.null(lag_range))  lag_range  <- max(0L, max(non_base))
+    tidy <- tidy[!is.na(tidy$relative_time) &
+                   tidy$relative_time >= -lead_range &
+                   tidy$relative_time <= lag_range, ]
+
+    n_units <- dplyr::n_distinct(data[[unit_chr]])
+
+    attr(tidy, "lead_range")     <- lead_range
+    attr(tidy, "lag_range")      <- lag_range
+    attr(tidy, "baseline")       <- as.integer(baseline)
+    attr(tidy, "interval")       <- interval
+    attr(tidy, "call")           <- match.call()
+    attr(tidy, "model_formula")  <- sa_out$formula_str
+    attr(tidy, "conf.level")     <- conf.level
+    attr(tidy, "N")              <- sa_out$n_obs
+    attr(tidy, "N_units")        <- n_units
+    attr(tidy, "N_treated")      <- n_units - sa_out$n_never
+    attr(tidy, "N_nevertreated") <- sa_out$n_never
+    attr(tidy, "fe")             <- fe_str
+    attr(tidy, "vcov_type")      <- vcov
+    attr(tidy, "cluster_vars")   <- if (inherits(cluster, "formula"))
+                                      rlang::expr_text(rlang::f_rhs(cluster))
+                                    else cluster
+    attr(tidy, "staggered")      <- TRUE
+    attr(tidy, "sunab_used")     <- FALSE
+    attr(tidy, "catt_df")        <- sa_out$catt_df
+
+    class(tidy) <- c("es_result", "data.frame")
+    return(tidy)
+  }
+
+  # ---- estimator = bjs -------------------------------------------------------
+  if (estimator == "bjs") {
+    timing_chr <- resolve_column(rlang::enexpr(timing), data)
+    if (is.null(unit_chr))
+      stop("`unit` is required when `estimator = 'bjs'`.")
+
+    conf.level <- sort(unique(conf.level))
+
+    # Resolve cluster column names for .run_bjs
+    clustervars_chr <- if (!is.null(cluster)) {
+      if (inherits(cluster, "formula")) {
+        all.vars(rlang::f_rhs(cluster))
+      } else if (is.character(cluster) && length(cluster) == 1L) {
+        cluster
+      } else {
+        NULL
+      }
+    } else {
+      NULL
+    }
+
+    bjs_out <- .run_bjs(
+      data        = data,
+      outcome_chr = outcome_chr,
+      timing_chr  = timing_chr,
+      time_chr    = time_chr,
+      unit_chr    = unit_chr,
+      clustervars = clustervars_chr,
+      conf.level  = conf.level
+    )
+
+    es <- bjs_out$es
+
+    tidy <- data.frame(
+      term          = as.character(es$relative_time),
+      estimate      = es$estimate,
+      std.error     = es$std_error,
+      statistic     = NA_real_,
+      p.value       = NA_real_,
+      relative_time = as.integer(es$relative_time),
+      is_baseline   = FALSE,
+      stringsAsFactors = FALSE
+    )
+    tidy$statistic <- ifelse(tidy$std.error > 0,
+                             tidy$estimate / tidy$std.error, NA_real_)
+    tidy$p.value   <- ifelse(!is.na(tidy$statistic),
+                             2 * stats::pnorm(-abs(tidy$statistic)), NA_real_)
+
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      tidy[[paste0("conf_low_",  suf)]] <- es[[paste0("conf_low_",  suf)]]
+      tidy[[paste0("conf_high_", suf)]] <- es[[paste0("conf_high_", suf)]]
+    }
+
+    bl_row <- data.frame(
+      term          = as.character(baseline),
+      estimate      = 0,
+      std.error     = 0,
+      statistic     = NA_real_,
+      p.value       = NA_real_,
+      relative_time = as.integer(baseline),
+      is_baseline   = TRUE,
+      stringsAsFactors = FALSE
+    )
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      bl_row[[paste0("conf_low_",  suf)]] <- 0
+      bl_row[[paste0("conf_high_", suf)]] <- 0
+    }
+
+    tidy <- rbind(tidy, bl_row)
+    tidy$is_baseline <- tidy$relative_time == as.integer(baseline)
+    tidy <- tidy[order(tidy$relative_time), ]
+    rownames(tidy) <- NULL
+
+    non_base <- tidy$relative_time[!tidy$is_baseline]
+    # BJS aggregates only treated obs (rel_time >= 0), so min(non_base) = 0.
+    # Include the baseline row in the lead_range calculation so it survives the
+    # window filter (baseline = -1 means lead_range must be at least 1).
+    if (is.null(lead_range)) lead_range <- max(0L, -min(tidy$relative_time, na.rm = TRUE))
+    if (is.null(lag_range))  lag_range  <- max(0L, max(non_base))
+    tidy <- tidy[!is.na(tidy$relative_time) &
+                   tidy$relative_time >= -lead_range &
+                   tidy$relative_time <= lag_range, ]
+
+    n_units <- dplyr::n_distinct(data[[unit_chr]])
+
+    attr(tidy, "lead_range")     <- lead_range
+    attr(tidy, "lag_range")      <- lag_range
+    attr(tidy, "baseline")       <- as.integer(baseline)
+    attr(tidy, "interval")       <- interval
+    attr(tidy, "call")           <- match.call()
+    attr(tidy, "model_formula")  <- "bjs"
+    attr(tidy, "conf.level")     <- conf.level
+    attr(tidy, "N")              <- nrow(data)
+    attr(tidy, "N_units")        <- n_units
+    attr(tidy, "N_treated")      <- n_units - bjs_out$n_never
+    attr(tidy, "N_nevertreated") <- bjs_out$n_never
+    attr(tidy, "fe")             <- paste(unit_chr, time_chr, sep = " + ")
+    attr(tidy, "vcov_type")      <- "bjs_conservative"
+    attr(tidy, "cluster_vars")   <- clustervars_chr
+    attr(tidy, "staggered")      <- TRUE
+    attr(tidy, "sunab_used")     <- FALSE
+    attr(tidy, "tau_it")         <- bjs_out$tau_it
+
+    class(tidy) <- c("es_result", "data.frame")
+    return(tidy)
   }
 
   # ---- method = sunab ------------------------------------------------------

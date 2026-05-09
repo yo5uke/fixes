@@ -7,7 +7,7 @@
 run_es(
   data,
   outcome,
-  treatment,
+  treatment = NULL,
   time,
   timing,
   fe = NULL,
@@ -22,6 +22,9 @@ run_es(
   unit = NULL,
   staggered = FALSE,
   method = c("classic", "sunab"),
+  estimator = c("twfe", "cs", "sa", "bjs"),
+  control_group = c("nevertreated", "notyettreated"),
+  anticipation = 0L,
   conf.level = 0.95,
   vcov = "HC1",
   vcov_args = list()
@@ -36,9 +39,9 @@ run_es(
 
 \item{time}{Unquoted time variable (numeric or Date).}
 
-\item{timing}{For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time.}
+\item{timing}{For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time. For \code{estimator = "cs"}: unquoted column giving each unit's first treatment period (\code{NA} = never treated).}
 
-\item{fe}{One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects.}
+\item{fe}{One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects. Ignored when \code{estimator = "cs"}.}
 
 \item{lead_range, lag_range}{Integers for pre/post windows. If \code{NULL}, determined automatically.}
 
@@ -54,11 +57,21 @@ run_es(
 
 \item{time_transform}{Logical; if \code{TRUE}, creates consecutive integer time within unit.}
 
-\item{unit}{Unit identifier variable (required when \code{time_transform = TRUE}); also used for metadata when supplied.}
+\item{unit}{Unit identifier variable (required when \code{estimator = "cs"} or \code{time_transform = TRUE}); also used for metadata when supplied.}
 
 \item{staggered}{Logical; if \code{TRUE}, \code{timing} is a variable (classic) or is used by \code{sunab}.}
 
 \item{method}{Either \code{"classic"} or \code{"sunab"} (default: \code{"classic"}).}
+
+\item{estimator}{Estimation strategy: \code{"twfe"} (default, existing fixest-based paths),
+\code{"cs"} for the Callaway-Sant'Anna (2021) group-time ATT estimator, or
+\code{"sa"} for the Sun-Abraham (2021) interaction-weighted estimator.}
+
+\item{control_group}{For \code{estimator = "cs"}: comparison group, either
+\code{"nevertreated"} (default) or \code{"notyettreated"}.}
+
+\item{anticipation}{For \code{estimator = "cs"}: number of anticipation periods
+before treatment (non-negative integer, default \code{0L}).}
 
 \item{conf.level}{Numeric vector of confidence levels (default \code{0.95}).}
 

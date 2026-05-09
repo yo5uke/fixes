@@ -10,3 +10,5 @@
 ^CLAUDE\.md$
 ^VERSION_.*\.md$
 ^\.positai$
+^papers$
+^cran-comments\.md$

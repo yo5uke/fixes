@@ -1,3 +1,38 @@
+# fixes 0.8.0 (2026-05-09)
+
+## New Features
+- `run_es(estimator = "cs")`: Callaway-Sant'Anna (2021)
+  estimator. Computes group-time ATT(g,t) via the
+  unconditional DiD estimand (eq. 2.8) with
+  never-treated or not-yet-treated control groups.
+  Supports `control_group = "nevertreated"` (default)
+  or `"notyettreated"`. The full ATT(g,t) matrix is
+  stored as the `att_gt` attribute of the result.
+- `run_es(estimator = "sa")`: Sun-Abraham (2021)
+  interaction-weighted estimator. Aggregates cohort x
+  relative-time interactions by cohort share weights.
+  Numerically identical to `fixest::sunab()` to
+  machine precision.
+- `run_es(estimator = "bjs")`: Borusyak, Jaravel &
+  Spiess (2024) imputation estimator. Fits TWFE on
+  untreated observations only, imputes counterfactuals
+  for treated observations, and averages treatment
+  effects by horizon. Handles singleton unit fixed
+  effects via closed-form recovery.
+- `plot_att_gt()`: Visualize the full ATT(g,t) matrix
+  from CS results as a heatmap (`type = "heatmap"`) or
+  cohort-faceted time series (`type = "facet"`).
+  Requires `estimator = "cs"` result as input.
+
+## Internal
+- Added `did` and `didimputation` to Suggests for
+  numerical agreement tests against reference
+  implementations.
+- 134 tests passing across all estimators and
+  visualization functions.
+
+---
+
 # fixes 0.7.2 (2026-05-02)
 
 ## Bug Fixes
