@@ -90,43 +90,94 @@
   }, integer(1L))
   names(cohort_sizes) <- as.character(cohorts)
 
-  # ---- Build cohort x relative-time interaction indicators ------------------
-  # SA (2021) eq. (1): create D_{g,l}(i,t) = 1(G_i=g) * 1(t-G_i=l)
-  # Only for feasible (g,l) pairs: g+l in [min_t, max_t] and l != baseline.
-  # Column names: .sa__{g}__{safe_l}  where safe_l = "neg{|l|}" for l<0.
+  # ---- Build cohort x relative-time indicator matrix -------------------------
+  # SA (2021) eq. (1): D_{g,l}(i,t) = 1(G_i=g) * 1(t-G_i=l)
+  #
+  # Optimisation: instead of adding 76 indicator columns to the data frame
+  # (one per (g,l) pair) and passing the bloated frame to feols(), we build a
+  # pre-allocated integer matrix and pass it as a single matrix column (.sa_X).
+  # feols() then sees the same 76 regressors but receives a lean data frame
+  # (only outcome + FE variables + the matrix), eliminating the ~120 ms of GC
+  # pressure that comes from feols copying 76 × 40,000 × 4 bytes of indicators.
+  #
+  # Key facts:
+  #   - Coefficient estimates are bit-for-bit identical to the reference loop
+  #     (same regression, same collinearity handling — verified in proto_sa_compact3.R)
+  #   - feols prepends the matrix-column name ".sa_X" to each coefficient name:
+  #     ".sa__1995__neg5" → ".sa_X.sa__1995__neg5"  (handled in CATT extraction)
+  #   - feols timing: wide (76 cols) ~240 ms → compact (matrix col) ~105 ms
 
-  int_cols  <- character(0)
-  catt_meta <- list()   # list of (col, g, l) for later extraction
+  timing_vec  <- data[[timing_chr]]
+  reltime_vec <- data[[time_chr]] - timing_vec   # NA for never-treated
 
-  for (g in cohorts) {
-    feasible_l <- all_periods - g          # relative times with g+l in sample
-    feasible_l <- feasible_l[feasible_l != baseline]
+  # All feasible (g, l) pairs — same logic as the reference for loop
+  gl_pairs <- do.call(rbind, lapply(cohorts, function(g) {
+    fl <- all_periods - g
+    fl <- fl[fl != baseline]
+    if (length(fl) == 0L) return(NULL)
+    data.frame(g = g, l = fl, stringsAsFactors = FALSE)
+  }))
 
-    g_mask <- !is.na(data[[timing_chr]]) & data[[timing_chr]] == g
-
-    for (l in feasible_l) {
-      safe_l <- if (l < 0L) paste0("neg", -l) else as.character(l)
-      col    <- paste0(".sa__", g, "__", safe_l)
-
-      data[[col]] <- as.integer(
-        g_mask & (data[[time_chr]] - data[[timing_chr]]) == l
-      )
-      int_cols <- c(int_cols, col)
-      catt_meta[[length(catt_meta) + 1L]] <- list(col = col, g = g, l = l)
-    }
-  }
-
-  if (length(int_cols) == 0L)
+  if (is.null(gl_pairs) || nrow(gl_pairs) == 0L)
     stop("No cohort-by-period interactions could be constructed. ",
          "Check that the timing column, time column, and baseline are consistent.")
 
-  # ---- Run TWFE regression --------------------------------------------------
-  rhs_str     <- paste(int_cols, collapse = " + ")
-  formula_str <- if (nzchar(fe_str)) {
-    paste0(outcome_chr, " ~ ", rhs_str, " | ", fe_str)
-  } else {
-    paste0(outcome_chr, " ~ ", rhs_str)
+  K       <- nrow(gl_pairs)
+  N       <- nrow(data)
+  ind_mat <- matrix(0L, nrow = N, ncol = K)
+  col_names <- character(K)
+
+  k <- 0L
+  for (g in cohorts) {
+    g_mask <- !is.na(timing_vec) & timing_vec == g  # computed ONCE per cohort
+    for (j in which(gl_pairs$g == g)) {
+      l     <- gl_pairs$l[j]
+      k     <- k + 1L
+      col_names[k] <- paste0(".sa__", g, "__",
+                             if (l < 0L) paste0("neg", -l) else as.character(l))
+      ind_mat[, k] <- as.integer(g_mask & reltime_vec == l)
+    }
   }
+  colnames(ind_mat) <- col_names
+
+  # catt_meta: used in CATT extraction (feols prepends ".sa_X" to col names)
+  catt_meta <- lapply(seq_len(K), function(k)
+    list(col      = paste0(".sa_X", col_names[k]),   # as seen in tidy_df$term
+         orig_col = col_names[k],                     # for display / formula_str
+         g        = gl_pairs$g[k],
+         l        = gl_pairs$l[k]))
+
+  # Pass indicator matrix as a single matrix column; feols reads the K columns
+  # directly without the data-frame allocation overhead of 76 separate vectors.
+  data$.sa_X  <- ind_mat
+
+  formula_str <- if (nzchar(fe_str)) {
+    paste0(outcome_chr, " ~ .sa_X | ", fe_str)
+  } else {
+    paste0(outcome_chr, " ~ .sa_X")
+  }
+
+  # REFERENCE IMPLEMENTATION (pre-optimisation)
+  # Retained for correctness verification.
+  #
+  # int_cols  <- character(0)
+  # catt_meta_old <- list()
+  # for (g in cohorts) {
+  #   feasible_l <- all_periods - g
+  #   feasible_l <- feasible_l[feasible_l != baseline]
+  #   g_mask <- !is.na(data[[timing_chr]]) & data[[timing_chr]] == g
+  #   for (l in feasible_l) {
+  #     safe_l <- if (l < 0L) paste0("neg", -l) else as.character(l)
+  #     col    <- paste0(".sa__", g, "__", safe_l)
+  #     data[[col]] <- as.integer(
+  #       g_mask & (data[[time_chr]] - data[[timing_chr]]) == l
+  #     )
+  #     int_cols <- c(int_cols, col)
+  #     catt_meta_old[[...]] <- list(col = col, g = g, l = l)
+  #   }
+  # }
+  # rhs_str <- paste(int_cols, collapse = " + ")
+  # formula_str <- paste0(outcome_chr, " ~ ", rhs_str, " | ", fe_str)
 
   model_args <- list(stats::as.formula(formula_str), data = data)
   if (!is.null(cluster)) model_args$cluster <- cluster
@@ -154,16 +205,19 @@
   tidy_df    <- broom::tidy(model, vcov = V_full)
 
   # ---- Extract CATT(g,l) point estimates ------------------------------------
+  # feols prepends the matrix-column name to coefficient names, so
+  # ".sa__g__l" becomes ".sa_X.sa__g__l".  catt_meta$col already stores the
+  # prefixed name; we match it against tidy_df$term directly.
   catt_rows <- list()
   for (m in catt_meta) {
-    idx <- match(m$col, tidy_df$term)
-    if (is.na(idx)) next     # dropped as collinear by fixest — skip
+    idx <- match(m$col, tidy_df$term)  # m$col = ".sa_X.sa__g__l"
+    if (is.na(idx)) next               # dropped as collinear by fixest — skip
     catt_rows[[length(catt_rows) + 1L]] <- data.frame(
       g         = m$g,
       l         = m$l,
       estimate  = tidy_df$estimate[idx],
       std_error = tidy_df$std.error[idx],
-      col_name  = m$col,
+      col_name  = m$col,              # ".sa_X.sa__g__l" — used for VCOV lookup
       stringsAsFactors = FALSE
     )
   }
