@@ -56,10 +56,6 @@
 #' plot_att_gt(cs_result, type = "facet")
 #' }
 #'
-#' @importFrom ggplot2 ggplot aes geom_tile geom_point geom_vline geom_hline
-#'   geom_ribbon geom_line scale_fill_gradient2 scale_fill_manual
-#'   scale_x_continuous facet_wrap labs theme_bw theme_minimal theme_classic
-#'   theme element_blank element_text
 #' @importFrom rlang .data
 #' @export
 plot_att_gt <- function(x,
