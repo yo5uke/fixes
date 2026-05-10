@@ -38,6 +38,18 @@
 #' @param conf.level Numeric vector of confidence levels (default \code{0.95}).
 #' @param vcov VCOV type passed to \code{fixest::vcov()} or used via \code{broom::tidy(vcov = ...)}. Default \code{"HC1"}.
 #' @param vcov_args List of additional arguments forwarded to \code{fixest::vcov()}.
+#' @param bootstrap Logical; if \code{TRUE} and \code{estimator = "cs"}, compute
+#'   simultaneous confidence bands via the multiplier bootstrap (Algorithm 1,
+#'   Callaway and Sant'Anna 2021).  Adds \code{conf_low_sim} and
+#'   \code{conf_high_sim} columns to the result and stores the full (g,t)-level
+#'   bootstrap object as \code{attr(result, "bootstrap")}.  Default \code{FALSE}.
+#' @param B Integer number of bootstrap draws (default \code{999}).  Used only
+#'   when \code{bootstrap = TRUE} and \code{estimator = "cs"}.
+#' @param alpha Significance level for the simultaneous band (default \code{0.05}).
+#'   Note: this is independent of \code{conf.level}, which governs the pointwise
+#'   delta-method CIs.
+#' @param boot_seed Integer seed for the bootstrap RNG; \code{NULL} (default)
+#'   does not set a seed.  Pass an integer for reproducible results.
 #'
 #' @return A \code{data.frame} of class \code{"es_result"} with columns:
 #' \itemize{
@@ -76,7 +88,11 @@ run_es <- function(
     anticipation = 0L,
     conf.level   = 0.95,
     vcov         = "HC1",
-    vcov_args    = list()
+    vcov_args    = list(),
+    bootstrap    = FALSE,
+    B            = 999L,
+    alpha        = 0.05,
+    boot_seed    = NULL
 ) {
   method    <- match.arg(method)
   estimator <- match.arg(estimator)
@@ -252,6 +268,70 @@ run_es <- function(
     attr(tidy, "sunab_used")        <- FALSE
     attr(tidy, "cs_control_group")  <- control_group
     attr(tidy, "att_gt")            <- cs_out$att_gt
+
+    # ---- Multiplier bootstrap (Algorithm 1, CS 2021) -------------------------
+    if (isTRUE(bootstrap)) {
+      # 1. Unit-level influence functions at the (g,t) level
+      infl <- .compute_influence_cs(
+        data          = data,
+        att_gt        = cs_out$att_gt,
+        control_group = control_group,
+        unit_chr      = unit_chr,
+        time_chr      = time_chr2,
+        timing_chr    = timing_chr,
+        outcome_chr   = outcome_chr,
+        att_col       = "estimate",
+        anticipation  = anticipation
+      )
+
+      # 2. Aggregate psi to event-study level using cohort-size weights
+      es_agg <- .aggregate_psi_es(
+        psi_gt       = infl$psi,
+        gt_index     = infl$gt_index,
+        att_gt       = cs_out$att_gt,
+        cohort_sizes = cs_out$cohort_sizes,
+        att_es       = cs_out$es[, c("relative_time", "estimate", "std_error")]
+      )
+
+      # 3. Bootstrap at the event-study level → simultaneous CI over all ℓ
+      boot_es <- .bootstrap_cs(
+        psi      = es_agg$psi_es,
+        att_gt   = es_agg$gt_es_idx,
+        gt_index = es_agg$gt_es_idx,
+        B        = as.integer(B),
+        alpha    = alpha,
+        seed     = boot_seed
+      )
+
+      # 4. Merge simultaneous CI into tidy on relative_time.
+      # Save and restore custom attributes: base::merge() drops them.
+      saved_attrs <- attributes(tidy)
+      saved_attrs <- saved_attrs[!names(saved_attrs) %in% c("names", "row.names", "class")]
+
+      boot_cols <- boot_es[, c("relative_time", "conf_low_sim", "conf_high_sim")]
+      tidy <- merge(tidy, boot_cols, by = "relative_time", all.x = TRUE, sort = FALSE)
+      tidy <- tidy[order(tidy$relative_time), ]
+      rownames(tidy) <- NULL
+
+      for (.attr_nm in names(saved_attrs)) attr(tidy, .attr_nm) <- saved_attrs[[.attr_nm]]
+      rm(.attr_nm)
+
+      # Baseline row: by convention ATT = 0, so simultaneous CI = [0, 0]
+      tidy$conf_low_sim[tidy$is_baseline]  <- 0
+      tidy$conf_high_sim[tidy$is_baseline] <- 0
+
+      # 5. Bootstrap at the (g,t) level — stored as attribute
+      boot_gt <- .bootstrap_cs(
+        psi      = infl$psi,
+        att_gt   = cs_out$att_gt,
+        gt_index = infl$gt_index,
+        B        = as.integer(B),
+        alpha    = alpha,
+        seed     = boot_seed
+      )
+      attr(tidy, "bootstrap") <- boot_gt
+      attr(tidy, "boot_alpha") <- alpha
+    }
 
     class(tidy) <- c("es_result", "data.frame")
     return(tidy)
