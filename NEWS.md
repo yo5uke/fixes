@@ -1,4 +1,4 @@
-# fixes 0.8.0 (2026-05-09)
+# fixes 0.8.1 (2026-05-10)
 
 ## New Features
 - `run_es(estimator = "cs")`: Callaway-Sant'Anna (2021)
@@ -19,17 +19,47 @@
   for treated observations, and averages treatment
   effects by horizon. Handles singleton unit fixed
   effects via closed-form recovery.
+- `run_es(bootstrap = TRUE)`: Multiplier bootstrap for
+  simultaneous confidence bands (Algorithm 1, Callaway
+  & Sant'Anna 2021). Adds `conf_low_sim` /
+  `conf_high_sim` columns to the result and stores the
+  (g,t)-level bootstrap object as
+  `attr(result, "bootstrap")`. Controlled by `B`
+  (draws, default 999) and `boot_seed` arguments.
+  Available only when `estimator = "cs"`.
 - `plot_att_gt()`: Visualize the full ATT(g,t) matrix
   from CS results as a heatmap (`type = "heatmap"`) or
   cohort-faceted time series (`type = "facet"`).
   Requires `estimator = "cs"` result as input.
+  When `bootstrap = TRUE` was used, the heatmap adds
+  a subtitle with the simultaneous critical value and
+  open-diamond markers for simultaneously significant
+  cells; the facet adds a lighter simultaneous CI
+  ribbon.
+- `plot_es(show_simultaneous = TRUE)`: Overlays the
+  simultaneous bootstrap CI (lighter band, alpha 0.15)
+  alongside the pointwise CI (alpha 0.3) with a
+  two-entry legend. Errors informatively if bootstrap
+  was not run.
+- `plot_es_interactive(show_simultaneous = TRUE)`:
+  Adds a second lighter ribbon trace for the
+  simultaneous CI and extends the hover tooltip with
+  simultaneous CI bounds.
+
+## Bug Fixes
+- `run_es()` bootstrap path: `base::merge()` silently
+  dropped all custom attributes (e.g. `att_gt`,
+  `N_units`, `lead_range`) from the `es_result` object.
+  Attributes are now saved and restored around the
+  merge, so `plot_att_gt()` works correctly after a
+  `bootstrap = TRUE` run.
 
 ## Internal
 - Added `did` and `didimputation` to Suggests for
   numerical agreement tests against reference
   implementations.
-- 134 tests passing across all estimators and
-  visualization functions.
+- 195 tests passing across all estimators,
+  visualization functions, and bootstrap routines.
 
 ---
 

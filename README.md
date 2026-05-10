@@ -54,6 +54,55 @@ pak::pak("yo5uke/fixes")
 library(fixes)
 ```
 
+All four estimators share the same interface:
+
+``` r
+# Classic TWFE (single treatment date)
+res_twfe <- run_es(
+  data = df,
+  outcome = y,
+  treatment = treat,
+  time = period,
+  timing = 5,
+  fe = ~ id + period
+)
+
+# Sun & Abraham (2021) — staggered adoption
+res_sa <- run_es(
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
+  fe = ~ id + year,
+  staggered = TRUE,
+  estimator = "sa"
+)
+
+# Callaway & Sant'Anna (2021) — staggered adoption
+res_cs <- run_es(
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
+  staggered = TRUE,
+  estimator = "cs",
+  control_group = "nevertreated"
+)
+
+# Borusyak, Jaravel & Spiess (2024) — staggered adoption
+res_bjs <- run_es(
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
+  staggered = TRUE,
+  estimator = "bjs"
+)
+```
+
 ------------------------------------------------------------------------
 
 ## Classic event study (single treatment date)
@@ -233,6 +282,50 @@ plot_es(bjs)
 
 ------------------------------------------------------------------------
 
+## Bootstrap simultaneous confidence bands
+
+Pointwise confidence intervals control error rates **one period at a
+time**. When you display 15 pre- and post-treatment estimates on a
+single plot, the chance that at least one interval incorrectly excludes
+zero can be much higher than the nominal 5%.
+
+**Simultaneous** bands (Callaway & Sant’Anna 2021, Corollary 1) provide
+joint coverage: with probability ≥ 1 − α, the entire event-study curve
+is contained within the band.
+
+Use `bootstrap = TRUE` in `run_es()` and `show_simultaneous = TRUE` in
+`plot_es()`:
+
+``` r
+cs_boot <- run_es(
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
+  staggered = TRUE,
+  estimator = "cs",
+  control_group = "nevertreated",
+  bootstrap = TRUE, # run multiplier bootstrap (Algorithm 1, CS 2021)
+  B = 999, # number of bootstrap draws; 999 recommended in practice
+  boot_seed = 42 # for reproducibility
+)
+```
+
+``` r
+# Lighter outer band = simultaneous CI; darker inner band = pointwise CI
+plot_es(cs_boot, show_simultaneous = TRUE)
+```
+
+The simultaneous band is always at least as wide as the pointwise band.
+The interactive plot also gains a second ribbon trace:
+
+``` r
+plot_es_interactive(cs_boot, show_simultaneous = TRUE)
+```
+
+------------------------------------------------------------------------
+
 ## Plotting options
 
 `plot_es()` works with results from any estimator.
@@ -292,6 +385,9 @@ plot_es_interactive(es)
 | `lag_range` | auto | Post-treatment periods to show |
 | `conf.level` | `0.95` | CI level(s); vector allowed, e.g. `c(0.90, 0.95)` |
 | `vcov` | `"HC1"` | VCOV type (any `fixest::vcov()` type) |
+| `bootstrap` | `FALSE` | CS only: run multiplier bootstrap for simultaneous CIs |
+| `B` | `999` | CS bootstrap: number of draws |
+| `boot_seed` | `NULL` | CS bootstrap: RNG seed for reproducibility |
 
 ------------------------------------------------------------------------
 

@@ -160,6 +160,163 @@ plot_es(event_study_sunab) +
     - Interactive plotly-based visualizations with hover tooltips.
     - Displays point estimates, confidence intervals, standard errors, and p-values on hover.
 
+## Staggered adoption estimators (v0.8.0)
+
+Standard TWFE event-study regressions can produce biased and sign-reversed
+estimates under heterogeneous treatment effects when units adopt treatment at
+different times (Callaway & Sant'Anna 2021; Sun & Abraham 2021; Borusyak,
+Jaravel & Spiess 2024). **fixes** v0.8.0 adds three robust alternatives, all
+accessible through the same `run_es()` interface via the `estimator` argument.
+
+We demonstrate all three on `fixest::base_stagg`, a simulated staggered-adoption
+panel with true ATT = 1 for all cohorts and horizons.
+
+```{r stagg-data}
+df_stagg <- fixest::base_stagg
+# Mark never-treated units with NA (convention for all three estimators)
+df_stagg$timing <- df_stagg$year_treated
+df_stagg$timing[df_stagg$year_treated == 10000] <- NA
+```
+
+### Callaway & Sant'Anna (2021) — `estimator = "cs"`
+
+Estimates a separate ATT(g,t) for every cohort-by-period cell, then aggregates
+to an event-study curve using cohort-size weights.
+
+```{r cs-est}
+res_cs <- run_es(
+  data          = df_stagg,
+  outcome       = y,
+  time          = year,
+  timing        = timing,
+  unit          = id,
+  staggered     = TRUE,
+  estimator     = "cs",
+  control_group = "nevertreated"
+)
+plot_es(res_cs) + ggplot2::ggtitle("Callaway & Sant'Anna (2021)")
+```
+
+### Sun & Abraham (2021) — `estimator = "sa"`
+
+Builds cohort x relative-time interactions and aggregates with cohort-share
+weights. Numerically identical to `fixest::sunab()`.
+
+```{r sa-est}
+res_sa <- run_es(
+  data      = df_stagg,
+  outcome   = y,
+  treatment = treated,
+  time      = year,
+  timing    = timing,
+  unit      = id,
+  fe        = ~ id + year,
+  staggered = TRUE,
+  estimator = "sa",
+  cluster   = ~ id
+)
+plot_es(res_sa) + ggplot2::ggtitle("Sun & Abraham (2021)")
+```
+
+### Borusyak, Jaravel & Spiess (2024) — `estimator = "bjs"`
+
+Fits TWFE on untreated observations, imputes counterfactuals for treated units,
+then averages by horizon.
+
+```{r bjs-est}
+res_bjs <- run_es(
+  data      = df_stagg,
+  outcome   = y,
+  time      = year,
+  timing    = timing,
+  unit      = id,
+  staggered = TRUE,
+  estimator = "bjs"
+)
+plot_es(res_bjs) + ggplot2::ggtitle("Borusyak, Jaravel & Spiess (2024)")
+```
+
+Under homogeneous treatment effects (as in this DGP), all three estimators
+give similar results, each recovering a post-treatment ATT close to the true
+value of 1.
+
+---
+
+## Bootstrap simultaneous confidence bands (v0.8.0)
+
+### Pointwise vs. simultaneous CIs
+
+Standard confidence intervals are **pointwise**: the 95% CI at each horizon
+covers the true value with 95% probability, but the probability that *all*
+intervals simultaneously cover their true values can be much lower when many
+periods are plotted.
+
+**Simultaneous** confidence bands (Callaway & Sant'Anna 2021, Corollary 1)
+control the joint coverage probability. With probability at least 1 − α, the
+entire event-study curve is contained within the simultaneous band. This is
+especially important for parallel-trends pre-testing: a pre-trend test based
+on simultaneous bands controls the family-wise error rate.
+
+### Usage
+
+Pass `bootstrap = TRUE` to `run_es()` together with the CS estimator. The
+multiplier bootstrap (Algorithm 1 of Callaway & Sant'Anna 2021) is used.
+
+```{r boot-demo, eval=FALSE}
+# NOTE: B = 199 shown here for brevity; use B = 999 in practice
+res_cs_boot <- run_es(
+  data          = df_stagg,
+  outcome       = y,
+  time          = year,
+  timing        = timing,
+  unit          = id,
+  staggered     = TRUE,
+  estimator     = "cs",
+  control_group = "nevertreated",
+  bootstrap     = TRUE,
+  B             = 199,
+  boot_seed     = 42
+)
+# The lighter outer band is the simultaneous CI; the darker inner band is
+# the standard pointwise CI.
+plot_es(res_cs_boot, show_simultaneous = TRUE)
+```
+
+The simultaneous critical value ĉ and per-period simultaneous CI bounds are
+stored in `attr(res_cs_boot, "bootstrap")`. The simultaneous band is always
+at least as wide as the pointwise band, since the critical value
+ĉ_{1-α} >= z_{1-α/2}.
+
+---
+
+## ATT(g,t) visualization (v0.8.0)
+
+The CS estimator produces a separate ATT estimate for every (cohort g,
+calendar period t) pair. `plot_att_gt()` visualises this full matrix.
+
+### Heatmap
+
+Tiles are filled by the ATT(g,t) estimate. Cells whose pointwise CI excludes
+zero are marked with a filled dot (●); when bootstrap data are available,
+simultaneously significant cells also receive an open diamond (◇).
+
+```{r heatmap-demo}
+plot_att_gt(res_cs, type = "heatmap")
+```
+
+The vertical dashed lines mark each cohort's treatment onset (t = g).
+
+### Facet plot
+
+One panel per cohort showing ATT over calendar time, with a pointwise CI
+ribbon. Useful for inspecting heterogeneous dynamics across cohorts.
+
+```{r facet-demo}
+plot_att_gt(res_cs, type = "facet")
+```
+
+---
+
 ## Conclusion
 
 The **fixes** package streamlines event study estimation and visualization for panel data researchers. With a minimal API, multiple CI support, and robust visualization, it accelerates the workflow for dynamic treatment effect analysis.
@@ -169,6 +326,7 @@ For further details and full argument documentation, see:
 ```r
 ?run_es
 ?plot_es
+?plot_att_gt
 ```
 
-Happy analyzing!🥂
+Happy analyzing!
