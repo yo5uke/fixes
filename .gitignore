@@ -15,3 +15,14 @@ VERSION_*.md
 
 # papers
 papers/
+
+# Development / profiling artifacts (generated during Phase 2 work)
+bench_*.R
+diag_*.R
+profile*.R
+profiling_*.R
+profvis_*.html
+profvis_*_files/
+proto_*.R
+run_check.R
+fix_nonascii.R

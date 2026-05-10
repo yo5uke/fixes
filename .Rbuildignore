@@ -12,3 +12,14 @@
 ^\.positai$
 ^papers$
 ^cran-comments\.md$
+
+# Development / profiling scripts (not part of the package)
+^bench_.*\.R$
+^diag_.*\.R$
+^profile.*\.R$
+^profiling_.*\.R$
+^profvis_.*\.html$
+^profvis_.*_files$
+^proto_.*\.R$
+^run_check\.R$
+^fix_nonascii\.R$
