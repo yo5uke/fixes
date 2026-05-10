@@ -60,20 +60,23 @@ Visualises the full cohort-by-period ATT(g,t) matrix stored in the
   \item \code{"heatmap"}: a tile plot with calendar time \eqn{t} on the
     x-axis and cohort \eqn{g} on the y-axis, colour-filled by the point
     estimate.  Cells whose pointwise confidence interval excludes zero are
-    marked with a filled dot.
+    marked with a filled dot; cells that are simultaneously significant
+    (when bootstrap data are available) are additionally marked with an open
+    diamond.
   \item \code{"facet"}: one panel per cohort showing ATT(g,t) over
     calendar time \eqn{t} with a pointwise confidence ribbon, mirroring
-    the style of \code{\link{plot_es}}.
+    the style of \code{\link{plot_es}}.  A lighter simultaneous CI ribbon
+    is overlaid when bootstrap data are available.
 }
 
 Both types draw a vertical dashed line at \eqn{t = g} (treatment onset)
 for each cohort.
 }
-\section{Note on CIs}{
+\section{Bootstrap annotation}{
 
-Confidence intervals are pointwise (Wald), not simultaneous.  Simultaneous
-bands (Corollary 1 of Callaway and Sant'Anna 2021) will be added in a
-later release alongside bootstrap SE support.
+When \code{attr(x, "bootstrap")} is present (i.e., \code{run_es()} was
+called with \code{bootstrap = TRUE}), both plot types add simultaneous
+inference overlays sourced from the (g,t)-level bootstrap object.
 }
 
 \examples{

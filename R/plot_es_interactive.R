@@ -15,6 +15,10 @@
 #' @param linewidth Line width (default 2).
 #' @param markersize Marker size (default 8).
 #' @param show_ribbon Logical; if TRUE, shows confidence interval as a ribbon band (default TRUE).
+#' @param show_simultaneous Logical; if \code{TRUE}, overlays a second (lighter) ribbon for
+#'   the simultaneous bootstrap CI and extends the hover tooltip with simultaneous CI bounds.
+#'   Requires \code{bootstrap = TRUE} in the originating \code{run_es()} call.
+#'   Default \code{FALSE}.
 #' @param height Plot height in pixels (default NULL for auto).
 #' @param width Plot width in pixels (default NULL for auto).
 #'
@@ -28,6 +32,7 @@
 #'   \item Confidence interval bounds
 #'   \item Standard error
 #'   \item P-value
+#'   \item Simultaneous CI bounds (when \code{show_simultaneous = TRUE})
 #' }
 #'
 #' @export
@@ -37,6 +42,7 @@
 #' # Assuming res <- run_es(...)
 #' plot_es_interactive(res)
 #' plot_es_interactive(res, ci_level = 0.99, show_ribbon = FALSE)
+#' plot_es_interactive(res, show_simultaneous = TRUE)
 #' }
 plot_es_interactive <- function(
     data,
@@ -51,6 +57,7 @@ plot_es_interactive <- function(
     linewidth    = 2,
     markersize   = 8,
     show_ribbon  = TRUE,
+    show_simultaneous = FALSE,
     height       = NULL,
     width        = NULL
 ) {
@@ -61,6 +68,12 @@ plot_es_interactive <- function(
 
   if (!inherits(data, "es_result")) {
     warning("`data` is not class 'es_result'. Attempting to proceed.")
+  }
+
+  if (isTRUE(show_simultaneous)) {
+    if (!all(c("conf_low_sim", "conf_high_sim") %in% names(data))) {
+      stop("Simultaneous CIs not found. Re-run with bootstrap = TRUE in run_es().")
+    }
   }
 
   # Get confidence interval columns
@@ -77,33 +90,69 @@ plot_es_interactive <- function(
   plot_data$conf_low  <- plot_data[[conf_low_col]]
   plot_data$conf_high <- plot_data[[conf_high_col]]
 
-  # Create hover text
-  plot_data$hover_text <- paste0(
-    "<b>Relative Time:</b> ", plot_data$relative_time, "<br>",
-    "<b>Estimate:</b> ", sprintf("%.4f", plot_data$estimate), "<br>",
-    "<b>Std. Error:</b> ", sprintf("%.4f", plot_data$std.error), "<br>",
-    "<b>", ci_str, "% CI:</b> [", sprintf("%.4f", plot_data$conf_low), ", ",
-    sprintf("%.4f", plot_data$conf_high), "]<br>",
-    "<b>P-value:</b> ", sprintf("%.4f", plot_data$p.value)
-  )
+  # Determine CI label from boot_alpha if available
+  boot_alpha <- attr(data, "boot_alpha")
+  sim_ci_pct <- if (!is.null(boot_alpha)) {
+    sprintf("%.0f%%", (1 - boot_alpha) * 100)
+  } else "95%"
+
+  # Create hover text (extend with simultaneous CI when requested)
+  if (isTRUE(show_simultaneous)) {
+    plot_data$hover_text <- paste0(
+      "<b>Relative Time:</b> ", plot_data$relative_time, "<br>",
+      "<b>Estimate:</b> ", sprintf("%.4f", plot_data$estimate), "<br>",
+      "<b>Std. Error:</b> ", sprintf("%.4f", plot_data$std.error), "<br>",
+      "<b>", ci_str, "% CI:</b> [", sprintf("%.4f", plot_data$conf_low), ", ",
+      sprintf("%.4f", plot_data$conf_high), "]<br>",
+      "<b>Simultaneous CI:</b> [", sprintf("%.4f", plot_data$conf_low_sim), ", ",
+      sprintf("%.4f", plot_data$conf_high_sim), "]<br>",
+      "<b>P-value:</b> ", sprintf("%.4f", plot_data$p.value)
+    )
+  } else {
+    plot_data$hover_text <- paste0(
+      "<b>Relative Time:</b> ", plot_data$relative_time, "<br>",
+      "<b>Estimate:</b> ", sprintf("%.4f", plot_data$estimate), "<br>",
+      "<b>Std. Error:</b> ", sprintf("%.4f", plot_data$std.error), "<br>",
+      "<b>", ci_str, "% CI:</b> [", sprintf("%.4f", plot_data$conf_low), ", ",
+      sprintf("%.4f", plot_data$conf_high), "]<br>",
+      "<b>P-value:</b> ", sprintf("%.4f", plot_data$p.value)
+    )
+  }
 
   # Initialize plotly figure
   fig <- plotly::plot_ly(height = height, width = width)
 
-  # Add confidence interval ribbon if requested
+  # Add simultaneous CI ribbon (wider, lighter — drawn underneath)
+  if (isTRUE(show_simultaneous)) {
+    fig <- fig |>
+      plotly::add_ribbons(
+        data      = plot_data,
+        x         = ~relative_time,
+        ymin      = ~conf_low_sim,
+        ymax      = ~conf_high_sim,
+        fillcolor = fill,
+        opacity   = alpha * 0.5,
+        line      = list(width = 0),
+        name      = paste0(sim_ci_pct, " Simultaneous CI"),
+        hoverinfo = "skip",
+        showlegend = TRUE
+      )
+  }
+
+  # Add pointwise confidence interval ribbon if requested
   if (show_ribbon) {
     fig <- fig |>
       plotly::add_ribbons(
-        data = plot_data,
-        x = ~relative_time,
-        ymin = ~conf_low,
-        ymax = ~conf_high,
+        data      = plot_data,
+        x         = ~relative_time,
+        ymin      = ~conf_low,
+        ymax      = ~conf_high,
         fillcolor = fill,
-        opacity = alpha,
-        line = list(width = 0),
-        name = paste0(ci_str, "% CI"),
+        opacity   = alpha,
+        line      = list(width = 0),
+        name      = paste0(ci_str, "% Pointwise CI"),
         hoverinfo = "skip",
-        showlegend = FALSE
+        showlegend = isTRUE(show_simultaneous)
       )
   }
 

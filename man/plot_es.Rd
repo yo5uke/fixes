@@ -18,7 +18,8 @@ plot_es(
   barwidth = 0.2,
   color = "#B25D91FF",
   fill = "#B25D91FF",
-  theme_style = "bw"
+  theme_style = "bw",
+  show_simultaneous = FALSE
 )
 }
 \arguments{
@@ -37,6 +38,11 @@ plot_es(
 \item{color, fill}{Optional, override line/point color and ribbon fill.}
 
 \item{theme_style}{One of \code{"bw"}, \code{"minimal"}, or \code{"classic"} for ggplot theme.}
+
+\item{show_simultaneous}{Logical; if \code{TRUE}, overlays the simultaneous bootstrap CI
+(lighter band, alpha 0.15) alongside the standard pointwise CI (alpha 0.3), with a
+legend distinguishing the two bands.  Requires \code{bootstrap = TRUE} in the
+originating \code{run_es()} call.  Default \code{FALSE}.}
 }
 \value{
 A \code{ggplot} object.

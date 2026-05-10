@@ -9,19 +9,22 @@
 #'   \item \code{"heatmap"}: a tile plot with calendar time \eqn{t} on the
 #'     x-axis and cohort \eqn{g} on the y-axis, colour-filled by the point
 #'     estimate.  Cells whose pointwise confidence interval excludes zero are
-#'     marked with a filled dot.
+#'     marked with a filled dot; cells that are simultaneously significant
+#'     (when bootstrap data are available) are additionally marked with an open
+#'     diamond.
 #'   \item \code{"facet"}: one panel per cohort showing ATT(g,t) over
 #'     calendar time \eqn{t} with a pointwise confidence ribbon, mirroring
-#'     the style of \code{\link{plot_es}}.
+#'     the style of \code{\link{plot_es}}.  A lighter simultaneous CI ribbon
+#'     is overlaid when bootstrap data are available.
 #' }
 #'
 #' Both types draw a vertical dashed line at \eqn{t = g} (treatment onset)
 #' for each cohort.
 #'
-#' @section Note on CIs:
-#' Confidence intervals are pointwise (Wald), not simultaneous.  Simultaneous
-#' bands (Corollary 1 of Callaway and Sant'Anna 2021) will be added in a
-#' later release alongside bootstrap SE support.
+#' @section Bootstrap annotation:
+#' When \code{attr(x, "bootstrap")} is present (i.e., \code{run_es()} was
+#' called with \code{bootstrap = TRUE}), both plot types add simultaneous
+#' inference overlays sourced from the (g,t)-level bootstrap object.
 #'
 #' @param x An \code{es_result} object returned by
 #'   \code{run_es(estimator = "cs")}, or an \code{att_gt_result} data frame
@@ -54,9 +57,9 @@
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_tile geom_point geom_vline geom_hline
-#'   geom_ribbon geom_line scale_fill_gradient2 scale_x_continuous
-#'   facet_wrap labs theme_bw theme_minimal theme_classic theme
-#'   element_blank element_text
+#'   geom_ribbon geom_line scale_fill_gradient2 scale_fill_manual
+#'   scale_x_continuous facet_wrap labs theme_bw theme_minimal theme_classic
+#'   theme element_blank element_text
 #' @importFrom rlang .data
 #' @export
 plot_att_gt <- function(x,
@@ -71,7 +74,12 @@ plot_att_gt <- function(x,
   type  <- match.arg(type)
   theme <- match.arg(theme)
 
-  # ---- Extract att_gt data frame -------------------------------------------
+  # ---- Extract bootstrap data (available only when x is es_result) ----------
+  boot_gt    <- attr(x, "bootstrap")
+  boot_alpha <- attr(x, "boot_alpha")
+  has_boot   <- !is.null(boot_gt) && all(c("g", "t", "conf_low_sim", "conf_high_sim") %in% names(boot_gt))
+
+  # ---- Extract att_gt data frame --------------------------------------------
   if (inherits(x, "es_result")) {
     att <- attr(x, "att_gt")
     if (is.null(att))
@@ -89,6 +97,12 @@ plot_att_gt <- function(x,
   if (length(missing_cols))
     stop("The `att_gt` data frame is missing columns: ",
          paste(missing_cols, collapse = ", "))
+
+  # ---- Merge simultaneous CI columns if bootstrap is available ---------------
+  if (has_boot) {
+    boot_sim <- boot_gt[, c("g", "t", "conf_low_sim", "conf_high_sim")]
+    att <- merge(att, boot_sim, by = c("g", "t"), all.x = TRUE, sort = FALSE)
+  }
 
   # ---- Pointwise CIs -------------------------------------------------------
   z <- stats::qnorm(1 - (1 - ci_level) / 2)
@@ -118,6 +132,22 @@ plot_att_gt <- function(x,
 
     lim <- max(abs(att$estimate), na.rm = TRUE)
 
+    # Build subtitle and caption when bootstrap data are present
+    heatmap_subtitle <- NULL
+    heatmap_caption  <- NULL
+
+    if (has_boot) {
+      c_hat <- round(unique(boot_gt$critical_value)[1L], 2)
+      heatmap_subtitle <- sprintf(
+        "Dots = pointwise significant at 5%%; simultaneous critical value = %.2f",
+        c_hat
+      )
+      # \u25cf = filled circle, \u25c7 = open diamond
+      heatmap_caption <- paste0(
+        "\u25cf pointwise sig.   \u25c7 simultaneous sig."
+      )
+    }
+
     p <- ggplot2::ggplot(att,
            ggplot2::aes(x = .data$t, y = .data$g_label,
                         fill = .data$estimate)) +
@@ -139,7 +169,7 @@ plot_att_gt <- function(x,
         linewidth   = 0.5,
         alpha       = 0.7
       ) +
-      # Significance dots in the centre of each cell
+      # Pointwise significance dots (filled circle)
       ggplot2::geom_point(
         data  = att[att$significant, ],
         ggplot2::aes(x = .data$t, y = .data$g_label),
@@ -150,15 +180,35 @@ plot_att_gt <- function(x,
       ) +
       ggplot2::scale_x_continuous(breaks = sort(unique(att$t))) +
       ggplot2::labs(
+        title    = sprintf("ATT(g,t) \u2014 %.0f%% pointwise CIs; dots = significant",
+                           ci_level * 100),
+        subtitle = heatmap_subtitle,
+        caption  = heatmap_caption,
         x = "Calendar time (t)",
-        y = "Cohort (g)",
-        title = sprintf("ATT(g,t) \u2014 %.0f%% pointwise CIs; dots = significant",
-                        ci_level * 100)
+        y = "Cohort (g)"
       ) +
       ggplot2::theme(
         axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
         axis.text.y  = ggplot2::element_text(size  = 9)
       )
+
+    # Add simultaneously significant cells (open diamond) when bootstrap present
+    if (has_boot) {
+      sim_sig <- att[!is.na(att$conf_low_sim) &
+                       (att$conf_low_sim > 0 | att$conf_high_sim < 0), ]
+      if (nrow(sim_sig) > 0) {
+        p <- p +
+          ggplot2::geom_point(
+            data  = sim_sig,
+            ggplot2::aes(x = .data$t, y = .data$g_label),
+            size  = 2.5,
+            shape = 5,      # open diamond
+            colour = "black",
+            stroke = 0.8,
+            inherit.aes = FALSE
+          )
+      }
+    }
 
     return(apply_theme(p))
   }
@@ -173,6 +223,14 @@ plot_att_gt <- function(x,
   onset$g_label <- paste0("Cohort ", onset$g)
   onset$g_label <- factor(onset$g_label,
                            levels = paste0("Cohort ", sort(unique(onset$g))))
+
+  # Add label column for the simultaneous CI legend entry when bootstrap present
+  if (has_boot) {
+    sim_ci_pct <- if (!is.null(boot_alpha)) {
+      sprintf("%.0f%% simultaneous CI", (1 - boot_alpha) * 100)
+    } else "Simultaneous CI"
+    att$.sim_label <- sim_ci_pct
+  }
 
   p <- ggplot2::ggplot(att,
          ggplot2::aes(x = .data$t, y = .data$estimate, group = 1)) +
@@ -203,6 +261,21 @@ plot_att_gt <- function(x,
       axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
       strip.text   = ggplot2::element_text(face = "bold")
     )
+
+  # Add simultaneous CI ribbon when bootstrap data are present
+  if (has_boot) {
+    p <- p +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = .data[["conf_low_sim"]], ymax = .data[["conf_high_sim"]],
+                     fill = .data[[".sim_label"]]),
+        alpha = 0.10,
+        na.rm = TRUE
+      ) +
+      ggplot2::scale_fill_manual(
+        name   = NULL,
+        values = setNames(fill, sim_ci_pct)
+      )
+  }
 
   if (zero_line)
     p <- p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed",

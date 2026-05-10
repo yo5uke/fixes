@@ -27,7 +27,11 @@ run_es(
   anticipation = 0L,
   conf.level = 0.95,
   vcov = "HC1",
-  vcov_args = list()
+  vcov_args = list(),
+  bootstrap = FALSE,
+  B = 999L,
+  alpha = 0.05,
+  boot_seed = NULL
 )
 }
 \arguments{
@@ -78,6 +82,22 @@ before treatment (non-negative integer, default \code{0L}).}
 \item{vcov}{VCOV type passed to \code{fixest::vcov()} or used via \code{broom::tidy(vcov = ...)}. Default \code{"HC1"}.}
 
 \item{vcov_args}{List of additional arguments forwarded to \code{fixest::vcov()}.}
+
+\item{bootstrap}{Logical; if \code{TRUE} and \code{estimator = "cs"}, compute
+simultaneous confidence bands via the multiplier bootstrap (Algorithm 1,
+Callaway and Sant'Anna 2021).  Adds \code{conf_low_sim} and
+\code{conf_high_sim} columns to the result and stores the full (g,t)-level
+bootstrap object as \code{attr(result, "bootstrap")}.  Default \code{FALSE}.}
+
+\item{B}{Integer number of bootstrap draws (default \code{999}).  Used only
+when \code{bootstrap = TRUE} and \code{estimator = "cs"}.}
+
+\item{alpha}{Significance level for the simultaneous band (default \code{0.05}).
+Note: this is independent of \code{conf.level}, which governs the pointwise
+delta-method CIs.}
+
+\item{boot_seed}{Integer seed for the bootstrap RNG; \code{NULL} (default)
+does not set a seed.  Pass an integer for reproducible results.}
 }
 \value{
 A \code{data.frame} of class \code{"es_result"} with columns:

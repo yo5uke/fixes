@@ -17,6 +17,7 @@ plot_es_interactive(
   linewidth = 2,
   markersize = 8,
   show_ribbon = TRUE,
+  show_simultaneous = FALSE,
   height = NULL,
   width = NULL
 )
@@ -46,6 +47,11 @@ plot_es_interactive(
 
 \item{show_ribbon}{Logical; if TRUE, shows confidence interval as a ribbon band (default TRUE).}
 
+\item{show_simultaneous}{Logical; if \code{TRUE}, overlays a second (lighter) ribbon for
+the simultaneous bootstrap CI and extends the hover tooltip with simultaneous CI bounds.
+Requires \code{bootstrap = TRUE} in the originating \code{run_es()} call.
+Default \code{FALSE}.}
+
 \item{height}{Plot height in pixels (default NULL for auto).}
 
 \item{width}{Plot width in pixels (default NULL for auto).}
@@ -65,6 +71,7 @@ The hover tooltip displays:
   \item Confidence interval bounds
   \item Standard error
   \item P-value
+  \item Simultaneous CI bounds (when \code{show_simultaneous = TRUE})
 }
 }
 \examples{
@@ -72,5 +79,6 @@ The hover tooltip displays:
 # Assuming res <- run_es(...)
 plot_es_interactive(res)
 plot_es_interactive(res, ci_level = 0.99, show_ribbon = FALSE)
+plot_es_interactive(res, show_simultaneous = TRUE)
 }
 }
