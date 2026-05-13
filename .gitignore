@@ -16,6 +16,9 @@ VERSION_*.md
 # papers
 papers/
 
+# reviews
+reviews/
+
 # Development / profiling artifacts (generated during Phase 2 work)
 bench_*.R
 diag_*.R

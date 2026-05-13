@@ -19,7 +19,8 @@ Imports:
     broom,
     tibble,
     rlang,
-    Rcpp
+    Rcpp,
+    scales
 License: MIT + file LICENSE
 Encoding: UTF-8
 Suggests:
