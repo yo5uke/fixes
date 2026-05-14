@@ -202,30 +202,22 @@
     for (cv in covariate_chrs)
       if (!cv %in% names(data)) stop("Covariate '", cv, "' not found in data.")
 
-    cov_mat   <- as.matrix(data[, covariate_chrs, drop = FALSE])
-    n_cov     <- ncol(cov_mat)
-    x_centred <- matrix(0.0, nrow = N, ncol = n_cov)
+    cov_mat <- as.matrix(data[, covariate_chrs, drop = FALSE])
+    n_cov   <- ncol(cov_mat)
 
-    for (gi in seq_along(cohorts)) {
-      g_mask <- !is.na(timing_vec) & timing_vec == cohorts[gi]
-      for (j in seq_len(n_cov))
-        x_centred[g_mask, j] <-
-          cov_mat[g_mask, j] - mean(cov_mat[g_mask, j], na.rm = TRUE)
-    }
-
-    # K * n_cov columns: for each (g,s) pair k and covariate j:
-    # column = ind_mat[,k] * ẋ_ig  (i.e. 1{G_i=g,t=s} * (x_i - x̄_g))
-    cov_int_mat <- matrix(0.0, nrow = N, ncol = K * n_cov)
-    ci_names    <- character(K * n_cov)
+    # group_key: cohort value per obs (NA for never-treated → skipped / zero)
+    # build_cov_interactions_cpp centres within each cohort group and
+    # multiplies by ind_mat columns — replaces two nested R for-loops.
+    ci_names <- character(K * n_cov)
     for (j in seq_len(n_cov))
-      for (kk in seq_len(K)) {
-        col_idx              <- (j - 1L) * K + kk
-        cov_int_mat[, col_idx] <- ind_mat[, kk] * x_centred[, j]
-        ci_names[col_idx]    <- paste0(".twm_cov_X_", covariate_chrs[j],
-                                       "__k__", kk)
-      }
-    colnames(cov_int_mat) <- ci_names
-    data$.twm_cov_X       <- cov_int_mat
+      for (kk in seq_len(K))
+        ci_names[(j - 1L) * K + kk] <- paste0(".twm_cov_X_",
+                                               covariate_chrs[j], "__k__", kk)
+
+    cov_int_mat            <- build_cov_interactions_cpp(
+                               cov_mat, ind_mat, as.integer(timing_vec))
+    colnames(cov_int_mat)  <- ci_names
+    data$.twm_cov_X        <- cov_int_mat
 
     # Time × covariate terms for conditional parallel trends
     # i(time, x_j, ref=excl_t) creates (T-1) coefficients per covariate.

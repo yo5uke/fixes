@@ -11,6 +11,20 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// bootstrap_cs_cpp
+List bootstrap_cs_cpp(NumericMatrix psi, int B, double alpha, int B_pilot);
+RcppExport SEXP _fixes_bootstrap_cs_cpp(SEXP psiSEXP, SEXP BSEXP, SEXP alphaSEXP, SEXP B_pilotSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type psi(psiSEXP);
+    Rcpp::traits::input_parameter< int >::type B(BSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< int >::type B_pilot(B_pilotSEXP);
+    rcpp_result_gen = Rcpp::wrap(bootstrap_cs_cpp(psi, B, alpha, B_pilot));
+    return rcpp_result_gen;
+END_RCPP
+}
 // compute_att_gt_cpp
 Rcpp::DataFrame compute_att_gt_cpp(Rcpp::IntegerVector unit_id, Rcpp::IntegerVector time_id, Rcpp::NumericVector outcome, Rcpp::IntegerVector cohort, Rcpp::IntegerVector cohorts, Rcpp::IntegerVector all_times, std::string control_group, int anticipation);
 RcppExport SEXP _fixes_compute_att_gt_cpp(SEXP unit_idSEXP, SEXP time_idSEXP, SEXP outcomeSEXP, SEXP cohortSEXP, SEXP cohortsSEXP, SEXP all_timesSEXP, SEXP control_groupSEXP, SEXP anticipationSEXP) {
@@ -26,6 +40,19 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type control_group(control_groupSEXP);
     Rcpp::traits::input_parameter< int >::type anticipation(anticipationSEXP);
     rcpp_result_gen = Rcpp::wrap(compute_att_gt_cpp(unit_id, time_id, outcome, cohort, cohorts, all_times, control_group, anticipation));
+    return rcpp_result_gen;
+END_RCPP
+}
+// build_cov_interactions_cpp
+NumericMatrix build_cov_interactions_cpp(NumericMatrix cov_mat, IntegerMatrix ind_mat, IntegerVector group_key);
+RcppExport SEXP _fixes_build_cov_interactions_cpp(SEXP cov_matSEXP, SEXP ind_matSEXP, SEXP group_keySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type cov_mat(cov_matSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type ind_mat(ind_matSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type group_key(group_keySEXP);
+    rcpp_result_gen = Rcpp::wrap(build_cov_interactions_cpp(cov_mat, ind_mat, group_key));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -65,7 +92,9 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
+    {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 3},
     {"_fixes_build_indicator_matrix_cpp", (DL_FUNC) &_fixes_build_indicator_matrix_cpp, 4},
     {"_fixes_aggregate_iw_cpp", (DL_FUNC) &_fixes_aggregate_iw_cpp, 10},
     {NULL, NULL, 0}
