@@ -22,7 +22,7 @@ run_es(
   unit = NULL,
   staggered = FALSE,
   method = c("classic", "sunab"),
-  estimator = c("twfe", "cs", "sa", "bjs"),
+  estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
   conf.level = 0.95,
@@ -31,7 +31,9 @@ run_es(
   bootstrap = FALSE,
   B = 999L,
   alpha = 0.05,
-  boot_seed = NULL
+  boot_seed = NULL,
+  group = NULL,
+  trends = FALSE
 )
 }
 \arguments{
@@ -98,6 +100,17 @@ delta-method CIs.}
 
 \item{boot_seed}{Integer seed for the bootstrap RNG; \code{NULL} (default)
 does not set a seed.  Pass an integer for reproducible results.}
+
+\item{group}{Unquoted group identifier for \code{estimator = "flex"} only.
+Identifies which treatment group (cohort) each observation belongs to in a
+repeated cross-section design (\eqn{R_{ig}} in Deb et al. 2024).  Each
+group must map to exactly one value of \code{timing} (or \code{NA} for
+never-treated groups).  Not used by other estimators.}
+
+\item{trends}{Logical; reserved for \code{estimator = "twm"}.  When
+\code{TRUE}, cohort-specific linear trends will be added to the regression
+(Wooldridge 2025, Section 8).  Not yet implemented; attempting to set
+\code{TRUE} raises an informative error.  Default \code{FALSE}.}
 }
 \value{
 A \code{data.frame} of class \code{"es_result"} with columns:

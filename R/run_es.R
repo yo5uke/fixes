@@ -50,6 +50,15 @@
 #'   delta-method CIs.
 #' @param boot_seed Integer seed for the bootstrap RNG; \code{NULL} (default)
 #'   does not set a seed.  Pass an integer for reproducible results.
+#' @param group Unquoted group identifier for \code{estimator = "flex"} only.
+#'   Identifies which treatment group (cohort) each observation belongs to in a
+#'   repeated cross-section design (\eqn{R_{ig}} in Deb et al. 2024).  Each
+#'   group must map to exactly one value of \code{timing} (or \code{NA} for
+#'   never-treated groups).  Not used by other estimators.
+#' @param trends Logical; reserved for \code{estimator = "twm"}.  When
+#'   \code{TRUE}, cohort-specific linear trends will be added to the regression
+#'   (Wooldridge 2025, Section 8).  Not yet implemented; attempting to set
+#'   \code{TRUE} raises an informative error.  Default \code{FALSE}.
 #'
 #' @return A \code{data.frame} of class \code{"es_result"} with columns:
 #' \itemize{
@@ -83,7 +92,7 @@ run_es <- function(
     unit         = NULL,
     staggered    = FALSE,
     method       = c("classic","sunab"),
-    estimator    = c("twfe", "cs", "sa", "bjs"),
+    estimator    = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
     control_group = c("nevertreated", "notyettreated"),
     anticipation = 0L,
     conf.level   = 0.95,
@@ -92,7 +101,9 @@ run_es <- function(
     bootstrap    = FALSE,
     B            = 999L,
     alpha        = 0.05,
-    boot_seed    = NULL
+    boot_seed    = NULL,
+    group        = NULL,
+    trends       = FALSE
 ) {
   method    <- match.arg(method)
   estimator <- match.arg(estimator)
@@ -545,6 +556,214 @@ run_es <- function(
     attr(tidy, "staggered")      <- TRUE
     attr(tidy, "sunab_used")     <- FALSE
     attr(tidy, "tau_it")         <- bjs_out$tau_it
+
+    class(tidy) <- c("es_result", "data.frame")
+    return(tidy)
+  }
+
+  # ---- estimator = twm -------------------------------------------------------
+  if (estimator == "twm") {
+    if (isTRUE(trends))
+      stop("`trends = TRUE` is not yet implemented; coming in v0.9.1.")
+
+    timing_chr <- resolve_column(rlang::enexpr(timing), data)
+    if (is.null(unit_chr))
+      stop("`unit` is required when `estimator = 'twm'`.")
+
+    fe_str <- if (nzchar(fe_rhs_text)) {
+      fe_rhs_text
+    } else {
+      warning("`fe` not specified for TWM estimator; defaulting to `~ ",
+              unit_chr, " + ", time_chr, "`.")
+      paste(unit_chr, time_chr, sep = " + ")
+    }
+
+    conf.level <- sort(unique(conf.level))
+
+    twm_out <- .run_twm(
+      data        = data,
+      outcome_chr = outcome_chr,
+      timing_chr  = timing_chr,
+      time_chr    = time_chr,
+      unit_chr    = unit_chr,
+      fe_str      = fe_str,
+      baseline    = baseline,
+      cluster     = cluster,
+      vcov_type   = vcov,
+      vcov_args   = vcov_args,
+      conf.level  = conf.level
+    )
+
+    es <- twm_out$es
+
+    tidy <- data.frame(
+      term          = as.character(es$relative_time),
+      estimate      = es$estimate,
+      std.error     = es$std_error,
+      statistic     = es$estimate / es$std_error,
+      p.value       = 2 * stats::pnorm(-abs(es$estimate / es$std_error)),
+      relative_time = as.integer(es$relative_time),
+      is_baseline   = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      tidy[[paste0("conf_low_",  suf)]] <- es[[paste0("conf_low_",  suf)]]
+      tidy[[paste0("conf_high_", suf)]] <- es[[paste0("conf_high_", suf)]]
+    }
+
+    bl_row <- data.frame(
+      term          = as.character(baseline),
+      estimate      = 0,
+      std.error     = 0,
+      statistic     = NA_real_,
+      p.value       = NA_real_,
+      relative_time = as.integer(baseline),
+      is_baseline   = TRUE,
+      stringsAsFactors = FALSE
+    )
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      bl_row[[paste0("conf_low_",  suf)]] <- 0
+      bl_row[[paste0("conf_high_", suf)]] <- 0
+    }
+
+    tidy <- rbind(tidy, bl_row)
+    tidy$is_baseline <- tidy$relative_time == as.integer(baseline)
+    tidy <- tidy[order(tidy$relative_time), ]
+    rownames(tidy) <- NULL
+
+    non_base <- tidy$relative_time[!tidy$is_baseline]
+    if (is.null(lead_range)) lead_range <- max(0L, abs(min(non_base)))
+    if (is.null(lag_range))  lag_range  <- max(0L, max(non_base))
+    tidy <- tidy[!is.na(tidy$relative_time) &
+                   tidy$relative_time >= -lead_range &
+                   tidy$relative_time <= lag_range, ]
+
+    n_units <- dplyr::n_distinct(data[[unit_chr]])
+
+    attr(tidy, "lead_range")     <- lead_range
+    attr(tidy, "lag_range")      <- lag_range
+    attr(tidy, "baseline")       <- as.integer(baseline)
+    attr(tidy, "interval")       <- interval
+    attr(tidy, "call")           <- match.call()
+    attr(tidy, "model_formula")  <- twm_out$formula_str
+    attr(tidy, "conf.level")     <- conf.level
+    attr(tidy, "N")              <- twm_out$n_obs
+    attr(tidy, "N_units")        <- n_units
+    attr(tidy, "N_treated")      <- n_units - twm_out$n_never
+    attr(tidy, "N_nevertreated") <- twm_out$n_never
+    attr(tidy, "fe")             <- fe_str
+    attr(tidy, "vcov_type")      <- vcov
+    attr(tidy, "cluster_vars")   <- if (inherits(cluster, "formula"))
+                                      rlang::expr_text(rlang::f_rhs(cluster))
+                                    else cluster
+    attr(tidy, "staggered")      <- TRUE
+    attr(tidy, "sunab_used")     <- FALSE
+    attr(tidy, "tau_gt")         <- twm_out$tau_gt
+
+    class(tidy) <- c("es_result", "data.frame")
+    return(tidy)
+  }
+
+  # ---- estimator = flex -------------------------------------------------------
+  if (estimator == "flex") {
+    group_expr <- rlang::enexpr(group)
+    if (is.null(group_expr))
+      stop("`group` is required when `estimator = 'flex'`.")
+    group_chr  <- resolve_column(group_expr, data)
+
+    timing_chr <- resolve_column(rlang::enexpr(timing), data)
+
+    if (!is.null(fe) && !is.null(fe))
+      warning("`fe` is ignored when `estimator = 'flex'`; ",
+              "group and time fixed effects are used automatically.")
+
+    conf.level <- sort(unique(conf.level))
+
+    flex_out <- .run_flex(
+      data        = data,
+      outcome_chr = outcome_chr,
+      timing_chr  = timing_chr,
+      time_chr    = time_chr,
+      group_chr   = group_chr,
+      baseline    = baseline,
+      cluster     = cluster,
+      vcov_type   = vcov,
+      vcov_args   = vcov_args,
+      conf.level  = conf.level
+    )
+
+    es <- flex_out$es
+
+    tidy <- data.frame(
+      term          = as.character(es$relative_time),
+      estimate      = es$estimate,
+      std.error     = es$std_error,
+      statistic     = es$estimate / es$std_error,
+      p.value       = 2 * stats::pnorm(-abs(es$estimate / es$std_error)),
+      relative_time = as.integer(es$relative_time),
+      is_baseline   = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      tidy[[paste0("conf_low_",  suf)]] <- es[[paste0("conf_low_",  suf)]]
+      tidy[[paste0("conf_high_", suf)]] <- es[[paste0("conf_high_", suf)]]
+    }
+
+    bl_row <- data.frame(
+      term          = as.character(baseline),
+      estimate      = 0,
+      std.error     = 0,
+      statistic     = NA_real_,
+      p.value       = NA_real_,
+      relative_time = as.integer(baseline),
+      is_baseline   = TRUE,
+      stringsAsFactors = FALSE
+    )
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      bl_row[[paste0("conf_low_",  suf)]] <- 0
+      bl_row[[paste0("conf_high_", suf)]] <- 0
+    }
+
+    tidy <- rbind(tidy, bl_row)
+    tidy$is_baseline <- tidy$relative_time == as.integer(baseline)
+    tidy <- tidy[order(tidy$relative_time), ]
+    rownames(tidy) <- NULL
+
+    non_base <- tidy$relative_time[!tidy$is_baseline]
+    if (is.null(lead_range)) lead_range <- max(0L, abs(min(non_base)))
+    if (is.null(lag_range))  lag_range  <- max(0L, max(non_base))
+    tidy <- tidy[!is.na(tidy$relative_time) &
+                   tidy$relative_time >= -lead_range &
+                   tidy$relative_time <= lag_range, ]
+
+    n_groups <- dplyr::n_distinct(data[[group_chr]])
+
+    attr(tidy, "lead_range")     <- lead_range
+    attr(tidy, "lag_range")      <- lag_range
+    attr(tidy, "baseline")       <- as.integer(baseline)
+    attr(tidy, "interval")       <- interval
+    attr(tidy, "call")           <- match.call()
+    attr(tidy, "model_formula")  <- flex_out$formula_str
+    attr(tidy, "conf.level")     <- conf.level
+    attr(tidy, "N")              <- flex_out$n_obs
+    attr(tidy, "N_units")        <- n_groups
+    attr(tidy, "N_treated")      <- n_groups - flex_out$n_never_groups
+    attr(tidy, "N_nevertreated") <- flex_out$n_never_groups
+    attr(tidy, "fe")             <- paste(group_chr, time_chr, sep = " + ")
+    attr(tidy, "vcov_type")      <- vcov
+    attr(tidy, "cluster_vars")   <- if (inherits(cluster, "formula"))
+                                      rlang::expr_text(rlang::f_rhs(cluster))
+                                    else if (!is.null(cluster)) cluster
+                                    else group_chr
+    attr(tidy, "staggered")      <- TRUE
+    attr(tidy, "sunab_used")     <- FALSE
+    attr(tidy, "tau_gt")         <- flex_out$tau_gt
 
     class(tidy) <- c("es_result", "data.frame")
     return(tidy)
