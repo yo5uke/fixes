@@ -197,33 +197,26 @@
     for (cv in covariate_chrs)
       if (!cv %in% names(data)) stop("Covariate '", cv, "' not found in data.")
 
-    cov_mat   <- as.matrix(data[, covariate_chrs, drop = FALSE])
-    n_cov     <- ncol(cov_mat)
-    x_centred <- matrix(0.0, nrow = N, ncol = n_cov)
+    cov_mat <- as.matrix(data[, covariate_chrs, drop = FALSE])
+    n_cov   <- ncol(cov_mat)
 
-    # Cell-level centering: X̄_{g,t} for each (cohort-group, time) cell
-    for (gi in seq_along(cohorts)) {
-      g           <- cohorts[gi]
-      groups_in_g <- names(timing_by_group)[!is.na(timing_by_group) &
-                                              timing_by_group == g]
-      for (t_val in all_periods) {
-        cell_mask <- group_vec %in% groups_in_g & data[[time_chr]] == t_val
-        if (!any(cell_mask)) next
-        for (j in seq_len(n_cov))
-          x_centred[cell_mask, j] <-
-            cov_mat[cell_mask, j] - mean(cov_mat[cell_mask, j], na.rm = TRUE)
-      }
-    }
+    # cell_key: unique integer per (cohort, time) cell; NA for never-treated.
+    # build_cov_interactions_cpp centres within each cell and multiplies by
+    # ind_mat — replaces the triple nested R for-loop over cohorts × periods × covariates.
+    cohort_chr <- ifelse(is.na(cohort_of_obs), "NA", as.character(cohort_of_obs))
+    cell_key   <- as.integer(factor(paste(cohort_chr,
+                                          as.character(data[[time_chr]]),
+                                          sep = "_")))
+    cell_key[is.na(cohort_of_obs)] <- NA_integer_
 
-    cov_int_mat <- matrix(0.0, nrow = N, ncol = K * n_cov)
-    ci_names    <- character(K * n_cov)
+    ci_names <- character(K * n_cov)
     for (j in seq_len(n_cov))
-      for (kk in seq_len(K)) {
-        col_idx              <- (j - 1L) * K + kk
-        cov_int_mat[, col_idx] <- ind_mat[, kk] * x_centred[, j]
-        ci_names[col_idx]    <- paste0(".flex_cov_X_", covariate_chrs[j],
-                                       "__k__", kk)
-      }
+      for (kk in seq_len(K))
+        ci_names[(j - 1L) * K + kk] <- paste0(".flex_cov_X_",
+                                               covariate_chrs[j], "__k__", kk)
+
+    cov_int_mat           <- build_cov_interactions_cpp(
+                              cov_mat, ind_mat, cell_key)
     colnames(cov_int_mat) <- ci_names
     data$.flex_cov_X      <- cov_int_mat
 

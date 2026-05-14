@@ -28,25 +28,28 @@ devtools::load_all()
 
 `fixes` is an R package for **event study analysis** in panel data — the workhorse tool for visualizing parallel trends and dynamic treatment effects in difference-in-differences research.
 
-Version 0.8.0 adds three modern estimators designed for **staggered adoption** (where different units adopt treatment at different times), all accessible through the same `run_es()` interface.
+Version 0.10.0 supports six estimators for panel and repeated cross-section data,
+all accessible through the same `run_es()` interface.
 
 **Key functions:**
 
 | Function | What it does |
 |---|---|
-| `run_es()` | Estimate an event study (4 estimators available) |
+| `run_es()` | Estimate an event study (6 estimators available) |
 | `plot_es()` | Static ggplot2 event study plot |
 | `plot_att_gt()` | Visualize the full ATT(g,t) matrix (CS estimator) |
 | `plot_es_interactive()` | Interactive plotly plot with hover tooltips |
 
 **Estimators** (selected via the `estimator` argument in `run_es()`):
 
-| `estimator` | Reference | Best for |
-|---|---|---|
-| `"twfe"` | Classic TWFE | Universal treatment timing |
-| `"cs"` | Callaway & Sant'Anna (2021) | Staggered adoption |
-| `"sa"` | Sun & Abraham (2021) | Staggered adoption |
-| `"bjs"` | Borusyak, Jaravel & Spiess (2024) | Staggered adoption |
+| `estimator` | Reference | Data structure | Best for |
+|---|---|---|---|
+| `"twfe"` | Classic TWFE | Panel | Universal treatment timing |
+| `"cs"` | Callaway & Sant'Anna (2021) | Panel | Staggered adoption |
+| `"sa"` | Sun & Abraham (2021) | Panel | Staggered adoption |
+| `"bjs"` | Borusyak, Jaravel & Spiess (2024) | Panel | Staggered adoption |
+| `"twm"` | Wooldridge (2025) | Panel | Staggered adoption; optional cohort-specific trends (`trends = TRUE`) |
+| `"flex"` | Deb, Norton, Wooldridge & Zabel (2024) | Repeated cross-section | RCS data where the same unit is not tracked over time |
 
 ## Installation
 
@@ -64,7 +67,7 @@ pak::pak("yo5uke/fixes")
 library(fixes)
 ```
 
-All four estimators share the same interface:
+All six estimators share the same interface:
 
 ```{r all-estimators, eval=FALSE}
 # Classic TWFE (single treatment date)
@@ -110,6 +113,29 @@ res_bjs <- run_es(
   unit = id,
   staggered = TRUE,
   estimator = "bjs"
+)
+
+# Wooldridge (2025) Two-Way Mundlak — staggered adoption
+res_twm <- run_es(
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
+  fe = ~ id + year,
+  staggered = TRUE,
+  estimator = "twm"
+)
+
+# Deb et al. (2024) FLEX — repeated cross-section data
+res_flex <- run_es(
+  data = df_rcs,          # data with different individuals each period
+  outcome = y,
+  time = year,
+  timing = timing,        # first treatment period; NA = never treated
+  group = group_id,       # treatment group identifier (R_{ig} in Deb et al.)
+  staggered = TRUE,
+  estimator = "flex"
 )
 ```
 
@@ -255,6 +281,74 @@ plot_es(bjs)
 
 ---
 
+### Wooldridge (2025) Two-Way Mundlak — `estimator = "twm"`
+
+The Two-Way Mundlak (TWM) estimator (Wooldridge 2025, Procedure 5.1) is
+algebraically equivalent to the Sun-Abraham estimator in the no-covariate base
+case. Its main extensions are:
+
+- **`trends = TRUE`**: adds cohort-specific linear trend regressors (`d_g × t`)
+  to absorb differential pre-trends (Wooldridge 2025, Section 8). Uses
+  post-treatment cells only; pre-treatment periods identify the trend. Output
+  shows `relative_time ≥ 0` only.
+- **`covariates = ~ x1 + x2`**: full Procedure 5.1 covariate interactions with
+  cohort-demeaned treatment cells (`ẋ_ig = x_i − x̄_g`) and `i(time, x_j)`
+  conditional parallel-trends controls.
+
+```{r twm-run}
+twm <- run_es(
+  data = df_stagg,
+  outcome = y,
+  time = year,
+  timing = timing,
+  unit = id,
+  fe = ~ id + year,
+  staggered = TRUE,
+  estimator = "twm"
+)
+
+print(twm)
+```
+
+```{r twm-plot}
+plot_es(twm)
+```
+
+---
+
+### Deb, Norton, Wooldridge & Zabel (2024) FLEX — `estimator = "flex"`
+
+The FLEX estimator is designed for **repeated cross-section (RCS)** data where
+different individuals are observed in each period (no unit tracking). Unlike
+panel estimators, FLEX uses group fixed effects (`R_{ig}`) instead of unit
+fixed effects.
+
+Key requirements:
+
+- Each observation belongs to a treatment **group** (`group` argument): all
+  individuals with the same `group` value share a treatment timing.
+- `NA` timing marks never-treated groups.
+- Covariates (`covariates = ~ x1`) use group × time cell-level centering
+  (Deb et al. 2024, Eq. 2.11).
+
+```{r flex-run, eval=FALSE}
+# df_rcs: one row per individual-period, different individuals each period.
+# group_id identifies the treatment group each individual belongs to.
+flex <- run_es(
+  data = df_rcs,
+  outcome = y,
+  time = year,
+  timing = timing,   # cohort value for the group; NA = never treated
+  group = group_id,  # treatment group identifier (required for FLEX)
+  staggered = TRUE,
+  estimator = "flex"
+)
+
+plot_es(flex)
+```
+
+---
+
 ## Bootstrap simultaneous confidence bands
 
 Pointwise confidence intervals control error rates **one period at a time**.
@@ -338,15 +432,18 @@ plot_es_interactive(es)
 
 | Argument | Default | Description |
 |---|---|---|
-| `data` | — | Panel data frame |
+| `data` | — | Data frame (panel or RCS) |
 | `outcome` | — | Outcome variable (unquoted) |
 | `treatment` | `NULL` | 0/1 treatment dummy (`"twfe"` only) |
 | `time` | — | Time variable (numeric) |
 | `timing` | — | Treatment date (scalar for `"twfe"`, column for others; `NA` = never treated) |
-| `unit` | `NULL` | Unit ID column (required for `"cs"`, `"sa"`, `"bjs"`) |
+| `unit` | `NULL` | Unit ID column (required for `"cs"`, `"sa"`, `"bjs"`, `"twm"`) |
 | `fe` | `NULL` | Fixed effects formula, e.g. `~ id + year` |
-| `estimator` | `"twfe"` | `"twfe"`, `"cs"`, `"sa"`, or `"bjs"` |
+| `estimator` | `"twfe"` | `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, or `"flex"` |
 | `staggered` | `FALSE` | Set `TRUE` for unit-varying treatment timing |
+| `group` | `NULL` | **FLEX only**: unquoted group identifier (`R_{ig}`, required for `"flex"`) |
+| `trends` | `FALSE` | **TWM only**: add cohort-specific linear trends (Wooldridge 2025, Section 8) |
+| `covariates` | `NULL` | Covariate formula, e.g. `~ x1 + x2` (supported for `"twm"` and `"flex"`) |
 | `control_group` | `"nevertreated"` | CS only: `"nevertreated"` or `"notyettreated"` |
 | `cluster` | `NULL` | Clustering formula, e.g. `~ id` |
 | `baseline` | `-1` | Reference period (0 = treatment date) |

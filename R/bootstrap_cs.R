@@ -291,41 +291,18 @@
 ) {
   if (!is.null(seed)) set.seed(seed)
 
-  n_units <- nrow(psi)
-  n_gt    <- ncol(psi)
-  sqrt_n  <- sqrt(n_units)
-
   # ---- resolve column names ------------------------------------------------
   att_col <- if ("estimate"  %in% names(att_gt)) "estimate"  else "att"
   se_col  <- if ("std_error" %in% names(att_gt)) "std_error" else "se"
   att_vals <- att_gt[[att_col]]
   se_vals  <- att_gt[[se_col]]
 
-  # ---- Pilot: estimate Sigma^{1/2} via IQR (Algorithm 1, step 4) ----------
-  B_pilot    <- 199L
-  V_pilot    <- matrix(.mammen_weights(n_units * B_pilot),
-                       nrow = B_pilot, ncol = n_units)
-  # R_pilot[b, j] = sqrt(n) * colMean_i(V_{b,i} * psi_{i,j})
-  #               = (V_pilot %*% psi)[b,j] / sqrt(n)
-  R_pilot    <- (V_pilot %*% psi) / sqrt_n          # B_pilot x n_gt
-
-  iqr_normal <- stats::qnorm(0.75) - stats::qnorm(0.25)   # ≈ 1.3490
-  sigma_half <- apply(R_pilot, 2L, function(r) {
-    q <- stats::quantile(r, probs = c(0.25, 0.75), names = FALSE)
-    max((q[2L] - q[1L]) / iqr_normal, 1e-10)   # guard against zero
-  })
-
-  # ---- Main loop: B draws (vectorised) ------------------------------------
-  V_main  <- matrix(.mammen_weights(n_units * B), nrow = B, ncol = n_units)
-  R_main  <- (V_main %*% psi) / sqrt_n              # B x n_gt
-
-  # studentise each draw: divide each column by its sigma_half
-  R_std   <- sweep(abs(R_main), 2L, sigma_half, FUN = "/")
-  t_stats <- apply(R_std, 1L, max)                   # length B
-
-  # ---- Simultaneous critical value and CI margins -------------------------
-  c_hat  <- stats::quantile(t_stats, 1 - alpha, names = FALSE)
-  margin <- c_hat * sigma_half / sqrt_n              # one value per column
+  # ---- Core computation via Rcpp (bootstrap_cs_cpp) -------------------------
+  # Mammen weights are drawn inside Rcpp using R::runif(), so the same
+  # set.seed() before this call produces identical results to the pure-R version.
+  boot_result <- bootstrap_cs_cpp(psi, as.integer(B), alpha, 199L)
+  c_hat  <- boot_result$c_hat
+  margin <- boot_result$margin
 
   # ---- Assemble output ----------------------------------------------------
   out               <- gt_index

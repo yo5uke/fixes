@@ -26,13 +26,24 @@
   SA, TWM, and FLEX. Uses RcppArmadillo `arma::mat::submat()` for O(1) VCOV
   block extraction and `arma::as_scalar(w.t() * V_sub * w)` for the quadratic
   form.
-- Added `src/Makevars` and `src/Makevars.win` linking `$(BLAS_LIBS)
-  $(LAPACK_LIBS)` for cross-platform RcppArmadillo support.
-- `RcppArmadillo` added to Imports and LinkingTo in DESCRIPTION.
+- `src/cov_demeaning.cpp` — `build_cov_interactions_cpp()`: Replaces the
+  pure-R covariate demeaning loops in TWM (cohort-level centering) and FLEX
+  (group×time cell-level centering) with a single `std::unordered_map`-based
+  O(N) grouping pass followed by column-wise mean subtraction, then builds the
+  N × (K×p) treatment-cell × centred-covariate interaction matrix in C++.
+- `src/bootstrap_cs.cpp` — `bootstrap_cs_cpp()`: Replaces the R-level
+  `apply`/`sweep` calls in the CS multiplier bootstrap with RcppArmadillo DGEMM
+  for both the pilot and main stages. Uses `R::runif()` for Mammen weight
+  generation (column-major fill order matches R's `matrix()`) so results are
+  numerically identical to the pure-R path under the same `set.seed()`.
+- Added `src/Makevars` and `src/Makevars.win` linking `$(LAPACK_LIBS)
+  $(BLAS_LIBS) $(FLIBS)` for cross-platform RcppArmadillo support.
+- `RcppArmadillo` added to `LinkingTo` in DESCRIPTION.
 
 ## Internal
-- 556 tests passing (29 new: trends 4, TWM-covariates 3, FLEX-covariates 3,
-  Rcpp-indicator 4, Rcpp-IW 3, plus sub-assertions).
+- 574 tests passing (47 new over v0.9.0: trends 4, TWM-covariates 3,
+  FLEX-covariates 3, Rcpp-indicator 4, Rcpp-IW 3, Rcpp-covdemeaning 6,
+  Rcpp-bootstrap 12, plus sub-assertions).
 
 ---
 
