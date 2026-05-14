@@ -1,3 +1,36 @@
+# fixes 0.9.0 (2026-05-14)
+
+## New Features
+- `run_es(estimator = "twm")`: Wooldridge (2025) Two-Way
+  Mundlak (TWM) estimator for panel data. Implements
+  Procedure 5.1 via POLS on cohort x calendar-time
+  treatment cells with two-way FE. Algebraically
+  identical to `estimator = "sa"` in the no-covariate
+  base case (verified numerically at tolerance 1e-10).
+  The `trends = TRUE` extension (cohort-specific linear
+  trend detrending, Wooldridge 2025 Section 8) is
+  reserved for v0.9.1.
+- `run_es(estimator = "flex", group = <group_id>)`:
+  Deb, Norton, Wooldridge & Zabel (2024) FLEX estimator
+  for **repeated cross-section (RCS)** data. Uses group
+  x calendar-time OLS with group+time FE (no unit FE).
+  Algebraically equivalent to the multi-step imputation
+  estimator (Proposition 2.1). New `group` argument
+  identifies the treatment group (R_{ig}) each
+  individual belongs to. Default clustering is by group.
+  Covariate interactions deferred to v0.9.1.
+- Reference PDFs converted to TXT:
+  `papers/Deb et al. (2024).txt`,
+  `papers/Woodridge (2025).txt`.
+
+## Internal
+- 517 tests passing (41 new: TWM 21, FLEX 20).
+- Both new estimators: pre-allocated integer indicator
+  matrix construction (same strategy as SA optimisation)
+  + feols() + quadratic-form VCOV. No new dependencies.
+
+---
+
 # fixes 0.8.1 (2026-05-10)
 
 ## New Features

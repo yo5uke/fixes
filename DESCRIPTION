@@ -1,8 +1,8 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
-Version: 0.8.1
-Date: 2026-05-10
+Version: 0.9.0
+Date: 2026-05-14
 Authors@R: c(
     person(
       "Yosuke", "Abe",
