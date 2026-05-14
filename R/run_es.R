@@ -55,10 +55,12 @@
 #'   repeated cross-section design (\eqn{R_{ig}} in Deb et al. 2024).  Each
 #'   group must map to exactly one value of \code{timing} (or \code{NA} for
 #'   never-treated groups).  Not used by other estimators.
-#' @param trends Logical; reserved for \code{estimator = "twm"}.  When
-#'   \code{TRUE}, cohort-specific linear trends will be added to the regression
-#'   (Wooldridge 2025, Section 8).  Not yet implemented; attempting to set
-#'   \code{TRUE} raises an informative error.  Default \code{FALSE}.
+#' @param trends Logical; for \code{estimator = "twm"} only.  When \code{TRUE},
+#'   adds cohort-specific linear trend regressors \eqn{d_g \cdot t} to the
+#'   Procedure 5.1 regression (Wooldridge 2025, Section 8), allowing each
+#'   cohort's counterfactual trend to deviate linearly from the common time
+#'   trend.  Requires at least 2 pre-treatment periods per cohort.
+#'   Default \code{FALSE}.
 #'
 #' @return A \code{data.frame} of class \code{"es_result"} with columns:
 #' \itemize{
@@ -563,9 +565,6 @@ run_es <- function(
 
   # ---- estimator = twm -------------------------------------------------------
   if (estimator == "twm") {
-    if (isTRUE(trends))
-      stop("`trends = TRUE` is not yet implemented; coming in v0.9.1.")
-
     timing_chr <- resolve_column(rlang::enexpr(timing), data)
     if (is.null(unit_chr))
       stop("`unit` is required when `estimator = 'twm'`.")
@@ -578,20 +577,23 @@ run_es <- function(
       paste(unit_chr, time_chr, sep = " + ")
     }
 
-    conf.level <- sort(unique(conf.level))
+    cov_chrs_twm <- if (!is.null(covariates)) all.vars(covariates) else NULL
+    conf.level   <- sort(unique(conf.level))
 
     twm_out <- .run_twm(
-      data        = data,
-      outcome_chr = outcome_chr,
-      timing_chr  = timing_chr,
-      time_chr    = time_chr,
-      unit_chr    = unit_chr,
-      fe_str      = fe_str,
-      baseline    = baseline,
-      cluster     = cluster,
-      vcov_type   = vcov,
-      vcov_args   = vcov_args,
-      conf.level  = conf.level
+      data           = data,
+      outcome_chr    = outcome_chr,
+      timing_chr     = timing_chr,
+      time_chr       = time_chr,
+      unit_chr       = unit_chr,
+      fe_str         = fe_str,
+      baseline       = baseline,
+      trends         = isTRUE(trends),
+      covariate_chrs = cov_chrs_twm,
+      cluster        = cluster,
+      vcov_type      = vcov,
+      vcov_args      = vcov_args,
+      conf.level     = conf.level
     )
 
     es <- twm_out$es
@@ -680,19 +682,21 @@ run_es <- function(
       warning("`fe` is ignored when `estimator = 'flex'`; ",
               "group and time fixed effects are used automatically.")
 
-    conf.level <- sort(unique(conf.level))
+    cov_chrs_flex <- if (!is.null(covariates)) all.vars(covariates) else NULL
+    conf.level    <- sort(unique(conf.level))
 
     flex_out <- .run_flex(
-      data        = data,
-      outcome_chr = outcome_chr,
-      timing_chr  = timing_chr,
-      time_chr    = time_chr,
-      group_chr   = group_chr,
-      baseline    = baseline,
-      cluster     = cluster,
-      vcov_type   = vcov,
-      vcov_args   = vcov_args,
-      conf.level  = conf.level
+      data           = data,
+      outcome_chr    = outcome_chr,
+      timing_chr     = timing_chr,
+      time_chr       = time_chr,
+      group_chr      = group_chr,
+      baseline       = baseline,
+      covariate_chrs = cov_chrs_flex,
+      cluster        = cluster,
+      vcov_type      = vcov,
+      vcov_args      = vcov_args,
+      conf.level     = conf.level
     )
 
     es <- flex_out$es

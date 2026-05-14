@@ -278,12 +278,239 @@ test_that("twm errors informatively on missing unit column", {
   )
 })
 
-test_that("twm errors when trends = TRUE (not yet implemented)", {
-  expect_error(
-    run_es(data = twm_data, outcome = y, time = year, timing = g,
+# ---------------------------------------------------------------------------
+# Test 9 — trends=FALSE explicit: regression guard for TWM ≡ SA equivalence
+# ---------------------------------------------------------------------------
+test_that("twm trends=FALSE explicit gives same result as default", {
+  res_default  <- run_es(
+    data = twm_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE, estimator = "twm"
+  )
+  res_explicit <- run_es(
+    data = twm_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", trends = FALSE
+  )
+  expect_equal(res_default$estimate,  res_explicit$estimate,  tolerance = 1e-12)
+  expect_equal(res_default$std.error, res_explicit$std.error, tolerance = 1e-12)
+})
+
+# ---------------------------------------------------------------------------
+# Test 10 — trends=TRUE column contract
+#
+# trends=TRUE uses post-treatment-only cells (Wooldridge 2025 Section 8).
+# The baseline period (l = -1) is pre-treatment and therefore not in the
+# output — sum(is_baseline) == 0, and all relative_time values are >= 0.
+# ---------------------------------------------------------------------------
+test_that("twm trends=TRUE returns es_result with required columns (post-only)", {
+  result <- suppressWarnings(run_es(
+    data = twm_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", trends = TRUE
+  ))
+
+  expect_s3_class(result, "es_result")
+  required <- c("term", "estimate", "std.error", "statistic", "p.value",
+                "relative_time", "is_baseline", "conf_low_95", "conf_high_95")
+  expect_true(all(required %in% names(result)))
+  # Post-treatment-only: no pre-treatment estimates, no artificial baseline row
+  expect_equal(sum(result$is_baseline), 0L)
+  expect_true(all(result$relative_time >= 0L),
+              label = "trends=TRUE: all relative_time values non-negative")
+  expect_true(all(is.finite(result$estimate)))
+  expect_true(all(result$std.error > 0))
+})
+
+# ---------------------------------------------------------------------------
+# Test 11 — trends=TRUE reduces ATT bias under cohort-specific pre-trend DGP
+#
+# DGP: y_it = alpha_i + lambda_t + eta_g * (year - year_mean) * 1{G_i=g}
+#           + 1.5 * w_it + eps
+# trends=FALSE: eta_g term biases post estimates away from 1.5.
+# trends=TRUE:  d_g*t regressors absorb eta_g*t → unbiased.
+# ---------------------------------------------------------------------------
+make_twm_trend_data <- function(seed = 77L, eta_1 = 0.4, eta_2 = -0.3) {
+  set.seed(seed)
+  periods <- 1993:2006
+  n_units <- 90L
+  g_vec   <- c(rep(1998L, 30L), rep(2000L, 30L), rep(NA_integer_, 30L))
+  panel   <- expand.grid(id = seq_len(n_units), year = periods,
+                         stringsAsFactors = FALSE)
+  panel   <- panel[order(panel$id, panel$year), ]
+  rownames(panel) <- NULL
+  panel$g     <- g_vec[panel$id]
+  panel$treat <- as.integer(!is.na(panel$g) & panel$year >= panel$g)
+
+  eta_i   <- c(rep(eta_1, 30L), rep(eta_2, 30L), rep(0, 30L))
+  unit_fe <- rnorm(n_units, sd = 0.5)[panel$id]
+  time_fe <- (panel$year - 1993L) * 0.1
+  trend   <- eta_i[panel$id] * (panel$year - mean(periods))
+  panel$y <- unit_fe + time_fe + trend + 1.5 * panel$treat +
+             rnorm(nrow(panel), sd = 0.2)
+  panel
+}
+
+test_that("twm trends=TRUE reduces ATT bias under cohort-specific pre-trend DGP", {
+  trend_data <- make_twm_trend_data()
+
+  res_notrend <- run_es(
+    data = trend_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", trends = FALSE
+  )
+  res_trend <- suppressWarnings(run_es(
+    data = trend_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", trends = TRUE
+  ))
+
+  true_att     <- 1.5
+  post_notrend <- res_notrend$estimate[res_notrend$relative_time >= 0 &
+                                         !res_notrend$is_baseline]
+  post_trend   <- res_trend$estimate[res_trend$relative_time >= 0 &
+                                       !res_trend$is_baseline]
+
+  bias_notrend <- sqrt(mean((post_notrend - true_att)^2))
+  bias_trend   <- sqrt(mean((post_trend   - true_att)^2))
+
+  expect_lt(bias_trend, bias_notrend,
+            label = "trends=TRUE RMSE < trends=FALSE RMSE under pre-trend DGP")
+})
+
+# ---------------------------------------------------------------------------
+# Test 12 — warning when cohort has fewer than 2 pre-treatment periods
+# ---------------------------------------------------------------------------
+test_that("twm trends=TRUE warns when cohort has < 2 pre-treatment periods", {
+  set.seed(9L)
+  warn_data       <- data.frame(
+    id   = rep(1:10, each = 4),
+    year = rep(1:4, 10),
+    y    = rnorm(40),
+    stringsAsFactors = FALSE
+  )
+  warn_data$g <- ifelse(warn_data$id <= 5L, 2L, NA_integer_)
+
+  expect_warning(
+    run_es(data = warn_data, outcome = y, time = year, timing = g,
            unit = id, fe = ~ id + year, staggered = TRUE,
            estimator = "twm", trends = TRUE),
-    regexp = "trends.*not yet implemented|not yet implemented.*trends",
+    regexp = "fewer than 2 pre.treatment periods",
     ignore.case = TRUE
   )
+})
+
+# ---------------------------------------------------------------------------
+# Test 13 — covariates: column contract unchanged
+# ---------------------------------------------------------------------------
+test_that("twm covariates: column contract and baseline row unchanged", {
+  twm_cov_data <- twm_data
+  set.seed(101L)
+  twm_cov_data$x <- rnorm(nrow(twm_cov_data))
+
+  result <- suppressWarnings(run_es(
+    data = twm_cov_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", covariates = ~ x
+  ))
+
+  expect_s3_class(result, "es_result")
+  required <- c("term", "estimate", "std.error", "statistic", "p.value",
+                "relative_time", "is_baseline", "conf_low_95", "conf_high_95")
+  expect_true(all(required %in% names(result)))
+  expect_equal(sum(result$is_baseline), 1L)
+  non_base <- result[!result$is_baseline, ]
+  expect_true(all(is.finite(non_base$estimate)))
+  expect_true(all(non_base$std.error > 0))
+})
+
+# ---------------------------------------------------------------------------
+# Test 14 — covariates: orthogonal covariate does not shift ATT estimates
+# ---------------------------------------------------------------------------
+test_that("twm covariates: orthogonal covariate leaves ATT estimates unchanged", {
+  set.seed(202L)
+  twm_cov_data        <- twm_data
+  twm_cov_data$x_orth <- rnorm(nrow(twm_cov_data))   # pure noise
+
+  res_nocov <- run_es(
+    data = twm_cov_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE, estimator = "twm"
+  )
+  res_cov <- suppressWarnings(run_es(
+    data = twm_cov_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", covariates = ~ x_orth
+  ))
+
+  common_l <- intersect(
+    res_nocov$relative_time[!res_nocov$is_baseline],
+    res_cov$relative_time[!res_cov$is_baseline]
+  )
+  get_est <- function(res, ls)
+    res$estimate[res$relative_time %in% ls & !res$is_baseline][
+      order(res$relative_time[res$relative_time %in% ls & !res$is_baseline])]
+
+  expect_equal(get_est(res_nocov, common_l), get_est(res_cov, common_l),
+               tolerance = 0.2,
+               label = "orthogonal covariate does not shift ATT estimates by >0.2")
+})
+
+# ---------------------------------------------------------------------------
+# Test 15 — covariates: reduces ATT bias under differential pre-trend DGP
+#
+# DGP: y_it = alpha_i + lambda_t + x_i * (t - t0) * 0.2 + 1.5 * w_it + eps
+#      x_i correlated with cohort → x_i*(t-t0) creates differential pre-trends
+# Without covariates: OLS conflates ATT with x_i*t term → biased.
+# With covariates=~x: i(time,x) terms absorb x_i*(t-t0) → unbiased.
+# ---------------------------------------------------------------------------
+make_twm_cov_bias_data <- function(seed = 303L) {
+  set.seed(seed)
+  periods <- 1995:2005
+  n_units <- 100L
+  g_vec   <- c(rep(1998L, 30L), rep(2000L, 30L), rep(2002L, 30L),
+               rep(NA_integer_, 10L))
+  panel <- expand.grid(id = seq_len(n_units), year = periods,
+                       stringsAsFactors = FALSE)
+  panel <- panel[order(panel$id, panel$year), ]
+  rownames(panel) <- NULL
+  panel$g     <- g_vec[panel$id]
+  panel$treat <- as.integer(!is.na(panel$g) & panel$year >= panel$g)
+
+  x_vec         <- rnorm(n_units)
+  x_vec[1:30]   <- x_vec[1:30]  + 1.5   # cohort 1998: high x
+  x_vec[31:60]  <- x_vec[31:60] + 0.0   # cohort 2000: medium x
+  x_vec[61:90]  <- x_vec[61:90] - 1.5   # cohort 2002: low x
+  panel$x       <- x_vec[panel$id]
+
+  t0    <- min(periods)
+  panel$y <- (x_vec[panel$id] * 0.5 +
+              rnorm(n_units, sd = 0.3)[panel$id] +
+              (panel$year - t0) * 0.1 +
+              panel$x * (panel$year - t0) * 0.2 +
+              1.5 * panel$treat +
+              rnorm(nrow(panel), sd = 0.2))
+  panel
+}
+
+test_that("twm covariates: reduces ATT bias under differential pre-trend DGP", {
+  cov_data <- make_twm_cov_bias_data()
+
+  res_nocov <- run_es(
+    data = cov_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE, estimator = "twm"
+  )
+  res_cov <- suppressWarnings(run_es(
+    data = cov_data, outcome = y, time = year, timing = g,
+    unit = id, fe = ~ id + year, staggered = TRUE,
+    estimator = "twm", covariates = ~ x
+  ))
+
+  true_att   <- 1.5
+  post_nocov <- res_nocov$estimate[res_nocov$relative_time >= 0 & !res_nocov$is_baseline]
+  post_cov   <- res_cov$estimate[res_cov$relative_time >= 0 & !res_cov$is_baseline]
+
+  bias_nocov <- sqrt(mean((post_nocov - true_att)^2))
+  bias_cov   <- sqrt(mean((post_cov   - true_att)^2))
+
+  expect_lt(bias_cov, bias_nocov,
+            label = "covariates RMSE < no-covariates RMSE under differential pre-trend DGP")
 })

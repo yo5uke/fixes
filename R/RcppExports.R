@@ -5,3 +5,61 @@ compute_att_gt_cpp <- function(unit_id, time_id, outcome, cohort, cohorts, all_t
     .Call(`_fixes_compute_att_gt_cpp`, unit_id, time_id, outcome, cohort, cohorts, all_times, control_group, anticipation)
 }
 
+#' Build cohort-by-calendar-time indicator matrix
+#'
+#' For each (g, s) pair, fills column k of the output matrix with 1 for rows
+#' where \code{cohort_id[i] == gs_g[k] && time_id[i] == gs_s[k]}, and 0
+#' elsewhere.  \code{NA_integer_} values in \code{cohort_id} (never-treated
+#' units) are treated as no-cohort and always produce 0.
+#'
+#' This is a shared utility used by the SA, TWM, and FLEX estimators to
+#' replace the equivalent R nested for-loop, avoiding repeated vector
+#' allocation and R overhead per column.
+#'
+#' @param cohort_id Integer vector (length N): cohort assignment per row.
+#'   Pass \code{NA_integer_} for never-treated observations.
+#'   For FLEX, pass the cohort of each observation's group
+#'   (pre-computed as \code{timing_by_group[as.character(group_vec)]}).
+#' @param time_id Integer vector (length N): calendar time per row.
+#' @param gs_g Integer vector (length K): cohort value for each (g,s) pair.
+#' @param gs_s Integer vector (length K): calendar time for each (g,s) pair.
+#'
+#' @return An N × K integer matrix with 0/1 entries.
+#'
+#' @noRd
+build_indicator_matrix_cpp <- function(cohort_id, time_id, gs_g, gs_s) {
+    .Call(`_fixes_build_indicator_matrix_cpp`, cohort_id, time_id, gs_g, gs_s)
+}
+
+#' Interaction-weighted event-study aggregation with full VCOV
+#'
+#' Computes the cohort-size-weighted event-study estimate and its standard
+#' error for each unique event time \eqn{\ell} in \code{unique_l}:
+#' \deqn{\hat\theta(\ell) = \sum_g w_{g,\ell} \hat\tau_{g,g+\ell}}
+#' \deqn{\widehat{SE}^2(\hat\theta(\ell)) =
+#'   \mathbf{w}_\ell^\top \Sigma_\ell \mathbf{w}_\ell}
+#' where \eqn{\Sigma_\ell} is the VCOV sub-block for all cohorts at \eqn{\ell}
+#' and \eqn{w_{g,\ell} = n_g / \sum_{g' : g'+\ell \in [t_{\min}, t_{\max}]} n_{g'}}.
+#'
+#' This is a shared utility replacing the equivalent R loop in the SA, TWM,
+#' and FLEX estimators, using RcppArmadillo for the quadratic form.
+#'
+#' @param estimates Numeric vector (length K): \eqn{\hat\tau_{g,s}} estimates.
+#' @param l_vals Integer vector (length K): relative time \eqn{\ell = s - g}.
+#' @param cohort_vals Integer vector (length K): cohort \eqn{g} for each cell.
+#' @param idx_in_V Integer vector (length K): 0-based row/column index into
+#'   \code{V_full_r}.  Pass \code{-1L} for cells not found in the VCOV.
+#' @param V_full_r Numeric matrix: full VCOV from the regression.
+#' @param unique_l Sorted integer vector: all unique event times to aggregate.
+#' @param cs_keys Integer vector: cohort values (one per cohort).
+#' @param cs_vals Integer vector: cohort sizes corresponding to \code{cs_keys}.
+#' @param min_t,max_t Integer: range of observed calendar times.
+#'
+#' @return A data.frame with columns \code{relative_time}, \code{estimate},
+#'   \code{std_error}, one row per valid event time.
+#'
+#' @noRd
+aggregate_iw_cpp <- function(estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t) {
+    .Call(`_fixes_aggregate_iw_cpp`, estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t)
+}
+

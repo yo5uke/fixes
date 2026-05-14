@@ -107,10 +107,12 @@ repeated cross-section design (\eqn{R_{ig}} in Deb et al. 2024).  Each
 group must map to exactly one value of \code{timing} (or \code{NA} for
 never-treated groups).  Not used by other estimators.}
 
-\item{trends}{Logical; reserved for \code{estimator = "twm"}.  When
-\code{TRUE}, cohort-specific linear trends will be added to the regression
-(Wooldridge 2025, Section 8).  Not yet implemented; attempting to set
-\code{TRUE} raises an informative error.  Default \code{FALSE}.}
+\item{trends}{Logical; for \code{estimator = "twm"} only.  When \code{TRUE},
+adds cohort-specific linear trend regressors \eqn{d_g \cdot t} to the
+Procedure 5.1 regression (Wooldridge 2025, Section 8), allowing each
+cohort's counterfactual trend to deviate linearly from the common time
+trend.  Requires at least 2 pre-treatment periods per cohort.
+Default \code{FALSE}.}
 }
 \value{
 A \code{data.frame} of class \code{"es_result"} with columns:

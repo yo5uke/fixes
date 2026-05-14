@@ -57,11 +57,13 @@
                      time_chr,
                      unit_chr,
                      fe_str,
-                     baseline   = -1L,
-                     cluster    = NULL,
-                     vcov_type  = "HC1",
-                     vcov_args  = list(),
-                     conf.level = 0.95) {
+                     baseline       = -1L,
+                     trends         = FALSE,
+                     covariate_chrs = NULL,
+                     cluster        = NULL,
+                     vcov_type      = "HC1",
+                     vcov_args      = list(),
+                     conf.level     = 0.95) {
 
   baseline <- as.integer(baseline)
 
@@ -107,9 +109,19 @@
 
   # All feasible (g, s) pairs — same structure as SA's (g, l) pairs, but
   # here s is CALENDAR time and l = s - g is derived afterwards.
+  #
+  # When trends = TRUE (Wooldridge 2025, Section 8), include only POST-TREATMENT
+  # periods (s >= g).  The pre-treatment data then identifies the cohort-specific
+  # trend, so adding d_g*t to the regression is not collinear with the treatment
+  # cells.  When trends = FALSE, include all periods as usual.
   gs_pairs <- do.call(rbind, lapply(cohorts, function(g) {
     excl_s <- g + baseline                        # excluded calendar period
-    fs     <- all_periods[all_periods != excl_s]  # all other calendar periods
+    if (isTRUE(trends)) {
+      # post-treatment only; if excl_s >= g it falls in the post window → exclude
+      fs <- all_periods[all_periods >= g & all_periods != excl_s]
+    } else {
+      fs <- all_periods[all_periods != excl_s]    # all periods (pre + post)
+    }
     if (length(fs) == 0L) return(NULL)
     data.frame(g = g, s = fs, stringsAsFactors = FALSE)
   }))
@@ -118,23 +130,26 @@
     stop("No cohort-by-period interactions could be constructed. ",
          "Check that timing, time, and baseline are consistent.")
 
-  K       <- nrow(gs_pairs)
-  N       <- nrow(data)
-  ind_mat <- matrix(0L, nrow = N, ncol = K)
+  K         <- nrow(gs_pairs)
+  N         <- nrow(data)
   col_names <- character(K)
-
   k <- 0L
   for (g in cohorts) {
-    g_mask <- !is.na(timing_vec) & timing_vec == g   # computed once per cohort
     for (j in which(gs_pairs$g == g)) {
       s <- gs_pairs$s[j]
       k <- k + 1L
-      # Safe string for negative calendar times (unlikely but handled)
-      s_safe <- if (s < 0L) paste0("neg", -s) else as.character(s)
+      s_safe       <- if (s < 0L) paste0("neg", -s) else as.character(s)
       col_names[k] <- paste0(".twm__g__", g, "__t__", s_safe)
-      ind_mat[, k] <- as.integer(g_mask & data[[time_chr]] == s)
     }
   }
+
+  # Build indicator matrix via Rcpp.
+  ind_mat <- build_indicator_matrix_cpp(
+    cohort_id = as.integer(timing_vec),
+    time_id   = as.integer(data[[time_chr]]),
+    gs_g      = as.integer(gs_pairs$g),
+    gs_s      = as.integer(gs_pairs$s)
+  )
   colnames(ind_mat) <- col_names
 
   # tau_meta: maps column index k → (g, s, l, prefixed feols coefficient name)
@@ -149,11 +164,85 @@
 
   data$.twm_X <- ind_mat
 
-  formula_str <- if (nzchar(fe_str)) {
-    paste0(outcome_chr, " ~ .twm_X | ", fe_str)
+  # ---- Optional: cohort-specific linear trends (Wooldridge 2025, Section 8) --
+  # Procedure 5.1 + trends uses POLS with cohort + time FE (NOT unit FE).
+  # With unit FE, d_g (cohort indicator) is absorbed, making d_g*t collinear
+  # with the treatment cell indicators.  Switching to cohort + time FE keeps
+  # d_g explicit so d_g*t (the trend column) is identifiable.
+  # Each cohort gets its own linear trend regressor: value = t if G_i=g, else 0.
+  if (isTRUE(trends)) {
+    K_trend     <- length(cohorts)
+    trend_mat   <- matrix(0L, nrow = N, ncol = K_trend)
+    trend_names <- character(K_trend)
+    for (gi in seq_along(cohorts)) {
+      g      <- cohorts[gi]
+      g_mask <- !is.na(timing_vec) & timing_vec == g
+      trend_mat[g_mask, gi] <- as.integer(data[[time_chr]][g_mask])
+      trend_names[gi]       <- paste0(".twm_trend__g__", g)
+
+      pre_periods <- all_periods[all_periods < g]
+      if (length(pre_periods) < 2L)
+        warning("Cohort ", g, " has fewer than 2 pre-treatment periods; ",
+                "cohort-specific linear trend may not be identified.")
+    }
+    colnames(trend_mat) <- trend_names
+    data$.twm_T_X <- trend_mat
+    formula_trend <- " + .twm_T_X"
   } else {
-    paste0(outcome_chr, " ~ .twm_X")
+    formula_trend <- ""
   }
+  fe_str_eff <- fe_str
+
+  # ---- Optional: covariate interactions (Wooldridge 2025, Procedure 5.1) -----
+  # With unit FE, x_i main effects and d_g*x_i terms are absorbed.  What needs
+  # adding: (a) treatment-cell × centred-cov interactions (δ_{g,s} parameters),
+  # and (b) time × covariate interactions for conditional parallel trends.
+  # Centering: ẋ_ig = x_i - x̄_g (cohort mean per Eq. 5.2).
+  if (!is.null(covariate_chrs) && length(covariate_chrs) > 0L) {
+    for (cv in covariate_chrs)
+      if (!cv %in% names(data)) stop("Covariate '", cv, "' not found in data.")
+
+    cov_mat   <- as.matrix(data[, covariate_chrs, drop = FALSE])
+    n_cov     <- ncol(cov_mat)
+    x_centred <- matrix(0.0, nrow = N, ncol = n_cov)
+
+    for (gi in seq_along(cohorts)) {
+      g_mask <- !is.na(timing_vec) & timing_vec == cohorts[gi]
+      for (j in seq_len(n_cov))
+        x_centred[g_mask, j] <-
+          cov_mat[g_mask, j] - mean(cov_mat[g_mask, j], na.rm = TRUE)
+    }
+
+    # K * n_cov columns: for each (g,s) pair k and covariate j:
+    # column = ind_mat[,k] * ẋ_ig  (i.e. 1{G_i=g,t=s} * (x_i - x̄_g))
+    cov_int_mat <- matrix(0.0, nrow = N, ncol = K * n_cov)
+    ci_names    <- character(K * n_cov)
+    for (j in seq_len(n_cov))
+      for (kk in seq_len(K)) {
+        col_idx              <- (j - 1L) * K + kk
+        cov_int_mat[, col_idx] <- ind_mat[, kk] * x_centred[, j]
+        ci_names[col_idx]    <- paste0(".twm_cov_X_", covariate_chrs[j],
+                                       "__k__", kk)
+      }
+    colnames(cov_int_mat) <- ci_names
+    data$.twm_cov_X       <- cov_int_mat
+
+    # Time × covariate terms for conditional parallel trends
+    # i(time, x_j, ref=excl_t) creates (T-1) coefficients per covariate.
+    excl_t     <- as.integer(cohorts[1L] + baseline)
+    time_x_str <- paste(
+      vapply(covariate_chrs, function(cv)
+        sprintf("i(%s, %s, ref = %d)", time_chr, cv, excl_t),
+        character(1L)),
+      collapse = " + ")
+    formula_cov <- paste0(" + .twm_cov_X + ", time_x_str)
+  } else {
+    formula_cov <- ""
+  }
+
+  fe_part     <- if (nzchar(fe_str_eff)) paste0(" | ", fe_str_eff) else ""
+  formula_str <- paste0(outcome_chr, " ~ .twm_X",
+                        formula_trend, formula_cov, fe_part)
 
   # ---- Run regression --------------------------------------------------------
   model_args <- list(stats::as.formula(formula_str), data = data)
@@ -203,46 +292,25 @@
   rownames(tau_gt) <- NULL
 
   # ---- IW aggregation — same formula as SA (2021) eq. (4) -------------------
-  # theta_es(l) = sum_g  tau_{g, g+l} * w(g,l)
-  # w(g,l)      = n_g / sum_{g': g'+l in [min_t, max_t]} n_{g'}
-  # Var(theta_es(l)) = w(l)' * Sigma_l * w(l)   [quadratic form on VCOV block]
+  # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
+  idx_V              <- match(tau_gt$col_name, coef_names) - 1L  # 0-based
+  idx_V[is.na(idx_V)] <- -1L
 
-  event_times <- sort(unique(tau_gt$l))
-  es_rows     <- list()
+  es <- aggregate_iw_cpp(
+    estimates   = tau_gt$estimate,
+    l_vals      = as.integer(tau_gt$l),
+    cohort_vals = as.integer(tau_gt$g),
+    idx_in_V    = idx_V,
+    V_full_r    = V_full,
+    unique_l    = as.integer(sort(unique(tau_gt$l))),
+    cs_keys     = as.integer(names(cohort_sizes)),
+    cs_vals     = as.integer(cohort_sizes),
+    min_t       = as.integer(min_t),
+    max_t       = as.integer(max_t)
+  )
 
-  for (l in event_times) {
-    sub      <- tau_gt[tau_gt$l == l, ]
-    idx_in_V <- match(sub$col_name, coef_names)
-    valid    <- !is.na(idx_in_V)
-    if (!any(valid)) next
-
-    sub_v <- sub[valid, ]
-    idx_v <- idx_in_V[valid]
-
-    in_samp  <- cohorts[(cohorts + l) >= min_t & (cohorts + l) <= max_t]
-    sz_denom <- sum(cohort_sizes[as.character(in_samp)])
-    if (sz_denom == 0L) next
-
-    w        <- cohort_sizes[as.character(sub_v$g)] / sz_denom
-    theta    <- sum(w * sub_v$estimate)
-
-    V_sub     <- V_full[idx_v, idx_v, drop = FALSE]
-    var_theta <- as.numeric(t(w) %*% V_sub %*% w)
-
-    es_rows[[length(es_rows) + 1L]] <- data.frame(
-      relative_time = l,
-      estimate      = theta,
-      std_error     = sqrt(max(var_theta, 0)),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  if (length(es_rows) == 0L)
+  if (nrow(es) == 0L)
     stop("TWM event-study aggregation produced no estimates.")
-
-  es           <- do.call(rbind, es_rows)
-  es           <- es[order(es$relative_time), ]
-  rownames(es) <- NULL
 
   # ---- Confidence intervals --------------------------------------------------
   conf.level <- sort(unique(conf.level))

@@ -1,3 +1,41 @@
+# fixes 0.10.0 (2026-05-14)
+
+## New Features
+- `run_es(estimator = "twm", trends = TRUE)`: Cohort-specific linear trend
+  detrending (Wooldridge 2025, Section 8). Adds `d_g * t` regressors so each
+  cohort's counterfactual trend can deviate linearly from the common time
+  trend. Implemented as post-treatment-only cells + trend columns; requires
+  >= 2 pre-treatment periods per cohort. Output shows `relative_time >= 0`
+  only (pre-trend testing is deferred to the no-trend model).
+- `run_es(estimator = "twm", covariates = ~ x1 + x2)`: Full Wooldridge (2025)
+  Procedure 5.1 covariate interactions. Adds treatment-cell × cohort-demeaned
+  covariate terms (`ẋ_{ig} = x_i - x̄_g`) and `i(time, x_j)` conditional
+  parallel-trends controls (Eqs. 5.2-5.3).
+- `run_es(estimator = "flex", covariates = ~ x1 + x2)`: Full Deb et al. (2024)
+  Eq. 3.1 covariate interactions for RCS data. Cell-level centering
+  `X_{i,t} - X̄_{g,t}` (Eq. 2.11) with `i(time, x_j)` and `i(group, x_j)`
+  conditional PT controls.
+
+## Performance (Rcpp Phase 2)
+- `src/indicator_matrix.cpp` — `build_indicator_matrix_cpp()`: Replaces the
+  pure-R nested for-loop that fills the 0/1 indicator matrix in the SA, TWM,
+  and FLEX estimators. Single shared Rcpp utility, O(N×K) integer fill with
+  no R allocation overhead per column.
+- `src/iw_aggregation.cpp` — `aggregate_iw_cpp()`: Replaces the R event-time
+  aggregation loop and the `t(w) %*% V_sub %*% w` quadratic-form VCOV step in
+  SA, TWM, and FLEX. Uses RcppArmadillo `arma::mat::submat()` for O(1) VCOV
+  block extraction and `arma::as_scalar(w.t() * V_sub * w)` for the quadratic
+  form.
+- Added `src/Makevars` and `src/Makevars.win` linking `$(BLAS_LIBS)
+  $(LAPACK_LIBS)` for cross-platform RcppArmadillo support.
+- `RcppArmadillo` added to Imports and LinkingTo in DESCRIPTION.
+
+## Internal
+- 556 tests passing (29 new: trends 4, TWM-covariates 3, FLEX-covariates 3,
+  Rcpp-indicator 4, Rcpp-IW 3, plus sub-assertions).
+
+---
+
 # fixes 0.9.0 (2026-05-14)
 
 ## New Features

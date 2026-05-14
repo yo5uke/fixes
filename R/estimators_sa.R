@@ -122,22 +122,27 @@
     stop("No cohort-by-period interactions could be constructed. ",
          "Check that the timing column, time column, and baseline are consistent.")
 
-  K       <- nrow(gl_pairs)
-  N       <- nrow(data)
-  ind_mat <- matrix(0L, nrow = N, ncol = K)
+  K         <- nrow(gl_pairs)
+  N         <- nrow(data)
   col_names <- character(K)
-
   k <- 0L
   for (g in cohorts) {
-    g_mask <- !is.na(timing_vec) & timing_vec == g  # computed ONCE per cohort
     for (j in which(gl_pairs$g == g)) {
-      l     <- gl_pairs$l[j]
-      k     <- k + 1L
+      l <- gl_pairs$l[j]
+      k <- k + 1L
       col_names[k] <- paste0(".sa__", g, "__",
                              if (l < 0L) paste0("neg", -l) else as.character(l))
-      ind_mat[, k] <- as.integer(g_mask & reltime_vec == l)
     }
   }
+
+  # Build indicator matrix via Rcpp (replaces nested R for-loop).
+  # SA uses relative time as the "s" axis: cohort_id=timing, time_id=reltime.
+  ind_mat <- build_indicator_matrix_cpp(
+    cohort_id = as.integer(timing_vec),
+    time_id   = as.integer(reltime_vec),
+    gs_g      = as.integer(gl_pairs$g),
+    gs_s      = as.integer(gl_pairs$l)
+  )
   colnames(ind_mat) <- col_names
 
   # catt_meta: used in CATT extraction (feols prepends ".sa_X" to col names)
@@ -233,55 +238,27 @@
   # ---- IW aggregation — SA (2021), eq. (4) ----------------------------------
   # theta_es(l) = sum_g  delta_{g,l} * w(g,l)
   # w(g,l)      = n_g / sum_{g': g'+l in [min_t,max_t]} n_{g'}
-  #
   # Var(theta_es(l)) = w(l)' * Sigma_l * w(l)
-  #   Sigma_l = VCOV sub-block for {delta_{g,l}: g with valid estimate at l}
-  # Cohorts with g+l inside sample but whose CATT was dropped by fixest
-  # retain zero weight in the numerator but still contribute to the denominator
-  # (consistent with the population weight definition).
+  #
+  # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
+  idx_V              <- match(catt_df$col_name, coef_names) - 1L  # 0-based
+  idx_V[is.na(idx_V)] <- -1L
 
-  event_times <- sort(unique(catt_df$l))
-  es_rows     <- list()
+  es <- aggregate_iw_cpp(
+    estimates   = catt_df$estimate,
+    l_vals      = as.integer(catt_df$l),
+    cohort_vals = as.integer(catt_df$g),
+    idx_in_V    = idx_V,
+    V_full_r    = V_full,
+    unique_l    = as.integer(sort(unique(catt_df$l))),
+    cs_keys     = as.integer(names(cohort_sizes)),
+    cs_vals     = as.integer(cohort_sizes),
+    min_t       = as.integer(min_t),
+    max_t       = as.integer(max_t)
+  )
 
-  for (l in event_times) {
-    sub    <- catt_df[catt_df$l == l, ]
-
-    # Map each CATT column to its position in the VCOV matrix
-    idx_in_V <- match(sub$col_name, coef_names)
-    valid    <- !is.na(idx_in_V)
-    if (!any(valid)) next
-
-    sub_v    <- sub[valid, ]
-    idx_v    <- idx_in_V[valid]
-
-    # Denominator: ALL cohorts with g+l in sample (population weight definition)
-    in_samp  <- cohorts[(cohorts + l) >= min_t & (cohorts + l) <= max_t]
-    sz_denom <- sum(cohort_sizes[as.character(in_samp)])
-    if (sz_denom == 0L) next
-
-    w        <- cohort_sizes[as.character(sub_v$g)] / sz_denom
-
-    # Weighted point estimate
-    theta    <- sum(w * sub_v$estimate)
-
-    # Variance: full quadratic form over the VCOV sub-block
-    V_sub     <- V_full[idx_v, idx_v, drop = FALSE]
-    var_theta <- as.numeric(t(w) %*% V_sub %*% w)
-
-    es_rows[[length(es_rows) + 1L]] <- data.frame(
-      relative_time = l,
-      estimate      = theta,
-      std_error     = sqrt(max(var_theta, 0)),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  if (length(es_rows) == 0L)
+  if (nrow(es) == 0L)
     stop("SA event-study aggregation produced no estimates.")
-
-  es           <- do.call(rbind, es_rows)
-  es           <- es[order(es$relative_time), ]
-  rownames(es) <- NULL
 
   # ---- Confidence intervals -------------------------------------------------
   conf.level <- sort(unique(conf.level))
