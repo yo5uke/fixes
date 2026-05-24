@@ -24,29 +24,26 @@ compute_contamination_weights(
 \item{unit}{Unquoted name of the unit identifier.}
 
 \item{fe}{One-sided fixed-effects formula, e.g. \code{~ id + year}.
-When \code{NULL} (default), falls back to \code{~ <unit> + <time>}
+When \code{NULL} (default), falls back to \verb{~ <unit> + <time>}
 with a warning.}
 
 \item{baseline}{Integer reference (baseline) period excluded from the TWFE
 specification (default \code{-1L}).  Must match the \code{baseline}
-argument used in \code{\link{run_es}}.}
+argument used in \code{\link[=run_es]{run_es()}}.}
 }
 \value{
-An object of class \code{c("sa_contamination_weights",
-  "data.frame")} with one row per \code{(catt_cohort, catt_period,
-  twfe_period)} triple, and columns:
+An object of class \code{c("sa_contamination_weights", "data.frame")}
+with one row per \verb{(catt_cohort, catt_period, twfe_period)} triple,
+and columns:
 \describe{
-  \item{\code{catt_cohort}}{Cohort \eqn{e} (first treatment period).}
-  \item{\code{catt_period}}{Relative event time \eqn{\ell} of the CATT.}
-  \item{\code{twfe_period}}{Relative event time \eqn{\ell''} of the TWFE
-    coefficient being decomposed.}
-  \item{\code{weight}}{Contamination weight
-    \eqn{\omega^{\ell''}_{e,\ell}}.}
-  \item{\code{is_own}}{Logical; \code{TRUE} when
-    \code{catt_period == twfe_period}.}
+\item{\code{catt_cohort}}{Cohort \eqn{e} (first treatment period).}
+\item{\code{catt_period}}{Relative event time \eqn{\ell} of the CATT.}
+\item{\code{twfe_period}}{Relative event time \eqn{\ell''} of the TWFE
+coefficient being decomposed.}
+\item{\code{weight}}{Contamination weight \eqn{\omega^{\ell''}_{e,\ell}}.}
+\item{\code{is_own}}{Logical; \code{TRUE} when \code{catt_period == twfe_period}.}
 }
-Attributes: \code{baseline}, \code{cohorts}, \code{cohort_sizes},
-\code{incl_periods}.
+Attributes: \code{baseline}, \code{cohorts}, \code{cohort_sizes}, \code{incl_periods}.
 }
 \description{
 Estimates the contamination weights \eqn{\omega^{\ell''}_{e,\ell}} that
@@ -66,18 +63,18 @@ The resulting regression coefficient on \eqn{D^{\ell''}_{i,t}} is
 \section{Interpretation}{
 
 \itemize{
-  \item \strong{Own-period cell} (\code{catt_period == twfe_period}):
-    \eqn{\omega^{\ell}_{{e,\ell}}} represents the weight the TWFE estimator
-    places on \eqn{CATT_{e,\ell}}. Under the SA IW estimator these equal
-    the cohort-size weights \eqn{n_e / \sum n_{e'}}.
-  \item \strong{Cross-period cell} (\code{catt_period != twfe_period}):
-    Any non-zero weight indicates contamination: the TWFE coefficient
-    \eqn{\hat\mu_{\ell''}} also picks up treatment effects from period
-    \eqn{\ell \ne \ell''}.
-  \item \strong{Verification}: the OVB identity (property iii) holds
-    exactly, so \eqn{\hat\mu_{\ell''} = \sum_{(e,\ell)}
-    \omega^{\ell''}_{e,\ell} \cdot \widehat{CATT}_{e,\ell}} up to
-    floating-point precision.
+\item \strong{Own-period cell} (\code{catt_period == twfe_period}):
+\eqn{\omega^{\ell}_{{e,\ell}}} represents the weight the TWFE estimator
+places on \eqn{CATT_{e,\ell}}. Under the SA IW estimator these equal
+the cohort-size weights \eqn{n_e / \sum n_{e'}}.
+\item \strong{Cross-period cell} (\code{catt_period != twfe_period}):
+Any non-zero weight indicates contamination: the TWFE coefficient
+\eqn{\hat\mu_{\ell''}} also picks up treatment effects from period
+\eqn{\ell \ne \ell''}.
+\item \strong{Verification}: the OVB identity (property iii) holds
+exactly, so \eqn{\hat\mu_{\ell''} = \sum_{(e,\ell)}
+  \omega^{\ell''}_{e,\ell} \cdot \widehat{CATT}_{e,\ell}} up to
+floating-point precision.
 }
 }
 
@@ -103,5 +100,5 @@ event studies with heterogeneous treatment effects.
 \emph{Journal of Econometrics}, 225(2), 175--199.
 }
 \seealso{
-\code{\link{plot_contamination_weights}}, \code{\link{run_es}}
+\code{\link[=plot_contamination_weights]{plot_contamination_weights()}}, \code{\link[=run_es]{run_es()}}
 }

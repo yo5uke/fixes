@@ -1,7 +1,7 @@
 Package: fixes
 Type: Package
 Title: Tools for Creating and Visualizing Fixed-Effects Event Study Models
-Version: 0.10.0
+Version: 0.10.1
 Date: 2026-05-14
 Authors@R: c(
     person(
@@ -36,7 +36,7 @@ VignetteBuilder: knitr
 URL: https://github.com/yo5uke/fixes
 BugReports: https://github.com/yo5uke/fixes/issues
 Config/roxygen2/version: 8.0.0
-RoxygenNote: 7.3.3
+Config/roxygen2/markdown: TRUE
 LinkingTo:
     Rcpp,
     RcppArmadillo

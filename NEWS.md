@@ -1,3 +1,30 @@
+# fixes 0.10.1 (2026-05-14)
+
+## Internal
+
+- **`run_es.R` refactoring**: Extracted `.make_tidy()` and `.es_finalize()` private
+  helpers that centralise the repeated tidy-construction / baseline-row / range-filter /
+  attr-stamping pattern that was previously duplicated across the `cs`, `sa`, `bjs`,
+  `twm`, and `flex` branches (~360 lines removed).  No API change; all 593 tests pass.
+- **profvis benchmark harness**: Added `inst/profile/benchmark.R` with `profile_estimator()`
+  and `benchmark_all()` utilities.  Run interactively to generate flamegraph HTML and
+  wall-clock summary across estimators before starting Phase 3 Rcpp work.
+- **CLAUDE.md documentation**: Added `src/compute_att_gt.cpp` (shipped in v0.8.1 but
+  missing from the Rcpp Acceleration Roadmap), and updated Package Structure to list all
+  13 R source files, 5 Rcpp files, and 16 test files that now exist.
+- **Edge-case tests** (19 new, 593 total):
+  - `test-twm.R` Test 16 — `trends=TRUE` with exactly 2 pre-treatment periods succeeds
+    without warning (boundary condition of the ≥ 2 requirement).
+  - `test-twm.R` Test 17 — explicit `lead_range`/`lag_range` correctly trims TWM output
+    and preserves estimates in the shared window (exercises `.es_finalize()` filter).
+  - `test-flex.R` Test 12 — explicit `lead_range`/`lag_range` trims FLEX output correctly.
+  - `test-flex.R` Test 13 — FLEX succeeds with an all-treated panel (no never-treated
+    groups; `N_nevertreated == 0`).
+  - `test-sa.R` — explicit `lead_range`/`lag_range` trims SA output and preserves
+    estimates within the shared window.
+
+---
+
 # fixes 0.10.0 (2026-05-14)
 
 ## New Features

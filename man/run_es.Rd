@@ -117,25 +117,26 @@ Default \code{FALSE}.}
 \value{
 A \code{data.frame} of class \code{"es_result"} with columns:
 \itemize{
-  \item \code{term}, \code{estimate}, \code{std.error}, \code{statistic}, \code{p.value}
-  \item \code{conf_low_XX}, \code{conf_high_XX} (for each requested \code{conf.level})
-  \item \code{relative_time} (integer; 0 = event), \code{is_baseline} (logical; marks the reference period)
+\item \code{term}, \code{estimate}, \code{std.error}, \code{statistic}, \code{p.value}
+\item \code{conf_low_XX}, \code{conf_high_XX} (for each requested \code{conf.level})
+\item \code{relative_time} (integer; 0 = event), \code{is_baseline} (logical; marks the reference period)
 }
+
 Attributes include: \code{lead_range}, \code{lag_range}, \code{baseline}, \code{interval}, \code{call}, \code{model_formula}, \code{conf.level},
 \code{N}, \code{N_units}, \code{N_treated}, \code{N_nevertreated}, \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{staggered}, \code{sunab_used}.
 }
 \description{
 Runs an event study regression on panel data, supporting both classic (universal timing) and staggered (unit-varying timing via \code{sunab}).
-The function builds the design (lead/lag factor or \code{sunab}), estimates with \pkg{fixest}, and returns a tidy table with metadata.
+The function builds the design (lead/lag factor or \code{sunab}), estimates with \code{\link[fixest:feols]{fixest::feols()}}, and returns a tidy table with metadata.
 }
 \section{Key Features}{
 
 \itemize{
-  \item One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
-  \item Switch between Classic (factor expansion) and Staggered-SAFE (\code{method = "sunab"}).
-  \item Flexible clustering, weights, and VCOV choices (e.g., \code{vcov = "HC1" | "HC3" | "CR2" | "iid" ...}).
-  \item Automatic lead/lag window detection and customizable baseline period.
-  \item Returns an \code{"es_result"} object compatible with \code{print()} and \code{autoplot()}.
+\item One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
+\item Switch between Classic (factor expansion) and Staggered-SAFE (\code{method = "sunab"}).
+\item Flexible clustering, weights, and VCOV choices (e.g., \verb{vcov = "HC1" | "HC3" | "CR2" | "iid" ...}).
+\item Automatic lead/lag window detection and customizable baseline period.
+\item Returns an \code{"es_result"} object compatible with \code{print()} and \code{autoplot()}.
 }
 }
 

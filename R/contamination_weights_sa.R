@@ -57,55 +57,50 @@
 #' \eqn{\omega^{\ell''}_{e,\ell}}.
 #'
 #' @section Interpretation:
-#' \itemize{
-#'   \item \strong{Own-period cell} (\code{catt_period == twfe_period}):
-#'     \eqn{\omega^{\ell}_{{e,\ell}}} represents the weight the TWFE estimator
-#'     places on \eqn{CATT_{e,\ell}}. Under the SA IW estimator these equal
-#'     the cohort-size weights \eqn{n_e / \sum n_{e'}}.
-#'   \item \strong{Cross-period cell} (\code{catt_period != twfe_period}):
-#'     Any non-zero weight indicates contamination: the TWFE coefficient
-#'     \eqn{\hat\mu_{\ell''}} also picks up treatment effects from period
-#'     \eqn{\ell \ne \ell''}.
-#'   \item \strong{Verification}: the OVB identity (property iii) holds
-#'     exactly, so \eqn{\hat\mu_{\ell''} = \sum_{(e,\ell)}
-#'     \omega^{\ell''}_{e,\ell} \cdot \widehat{CATT}_{e,\ell}} up to
-#'     floating-point precision.
-#' }
+#' - **Own-period cell** (`catt_period == twfe_period`):
+#'   \eqn{\omega^{\ell}_{{e,\ell}}} represents the weight the TWFE estimator
+#'   places on \eqn{CATT_{e,\ell}}. Under the SA IW estimator these equal
+#'   the cohort-size weights \eqn{n_e / \sum n_{e'}}.
+#' - **Cross-period cell** (`catt_period != twfe_period`):
+#'   Any non-zero weight indicates contamination: the TWFE coefficient
+#'   \eqn{\hat\mu_{\ell''}} also picks up treatment effects from period
+#'   \eqn{\ell \ne \ell''}.
+#' - **Verification**: the OVB identity (property iii) holds
+#'   exactly, so \eqn{\hat\mu_{\ell''} = \sum_{(e,\ell)}
+#'   \omega^{\ell''}_{e,\ell} \cdot \widehat{CATT}_{e,\ell}} up to
+#'   floating-point precision.
 #'
 #' @param data A data.frame with one row per unit-period (balanced panel).
 #' @param time Unquoted name of the calendar time variable (numeric).
 #' @param timing Unquoted name of the first-treatment-period variable;
-#'   \code{NA} marks never-treated units.
+#'   `NA` marks never-treated units.
 #' @param unit Unquoted name of the unit identifier.
-#' @param fe One-sided fixed-effects formula, e.g. \code{~ id + year}.
-#'   When \code{NULL} (default), falls back to \code{~ <unit> + <time>}
+#' @param fe One-sided fixed-effects formula, e.g. `~ id + year`.
+#'   When `NULL` (default), falls back to `~ <unit> + <time>`
 #'   with a warning.
 #' @param baseline Integer reference (baseline) period excluded from the TWFE
-#'   specification (default \code{-1L}).  Must match the \code{baseline}
-#'   argument used in \code{\link{run_es}}.
+#'   specification (default `-1L`).  Must match the `baseline`
+#'   argument used in [run_es()].
 #'
-#' @return An object of class \code{c("sa_contamination_weights",
-#'   "data.frame")} with one row per \code{(catt_cohort, catt_period,
-#'   twfe_period)} triple, and columns:
+#' @return An object of class `c("sa_contamination_weights", "data.frame")`
+#'   with one row per `(catt_cohort, catt_period, twfe_period)` triple,
+#'   and columns:
 #' \describe{
-#'   \item{\code{catt_cohort}}{Cohort \eqn{e} (first treatment period).}
-#'   \item{\code{catt_period}}{Relative event time \eqn{\ell} of the CATT.}
-#'   \item{\code{twfe_period}}{Relative event time \eqn{\ell''} of the TWFE
+#'   \item{`catt_cohort`}{Cohort \eqn{e} (first treatment period).}
+#'   \item{`catt_period`}{Relative event time \eqn{\ell} of the CATT.}
+#'   \item{`twfe_period`}{Relative event time \eqn{\ell''} of the TWFE
 #'     coefficient being decomposed.}
-#'   \item{\code{weight}}{Contamination weight
-#'     \eqn{\omega^{\ell''}_{e,\ell}}.}
-#'   \item{\code{is_own}}{Logical; \code{TRUE} when
-#'     \code{catt_period == twfe_period}.}
+#'   \item{`weight`}{Contamination weight \eqn{\omega^{\ell''}_{e,\ell}}.}
+#'   \item{`is_own`}{Logical; `TRUE` when `catt_period == twfe_period`.}
 #' }
-#' Attributes: \code{baseline}, \code{cohorts}, \code{cohort_sizes},
-#' \code{incl_periods}.
+#' Attributes: `baseline`, `cohorts`, `cohort_sizes`, `incl_periods`.
 #'
-#' @seealso \code{\link{plot_contamination_weights}}, \code{\link{run_es}}
+#' @seealso [plot_contamination_weights()], [run_es()]
 #'
 #' @references
 #' Sun, L. and Abraham, S. (2021). Estimating dynamic treatment effects in
 #' event studies with heterogeneous treatment effects.
-#' \emph{Journal of Econometrics}, 225(2), 175--199.
+#' *Journal of Econometrics*, 225(2), 175--199.
 #'
 #' @examples
 #' \dontrun{
@@ -414,36 +409,34 @@ print.sa_contamination_weights <- function(x, digits = 3L, ...) {
 #'
 #' @description
 #' Creates a ggplot2 tile heatmap of the contamination weights returned by
-#' \code{\link{compute_contamination_weights}}.
+#' [compute_contamination_weights()].
 #'
-#' Each cell at position (\code{twfe_period}, \code{catt_label}) shows the
+#' Each cell at position (`twfe_period`, `catt_label`) shows the
 #' weight \eqn{\omega^{\ell''}_{e,\ell}}: how much of \eqn{CATT_{e,\ell}}
 #' leaks into the TWFE coefficient \eqn{\hat\mu_{\ell''}}.
-#' \itemize{
-#'   \item \strong{Diagonal cells} (\code{catt_period == twfe_period}): own-period
-#'     weights (sum across cohorts should be \eqn{\approx 1}).
-#'   \item \strong{Off-diagonal cells}: cross-period contamination (ideally
-#'     close to zero under treatment effect homogeneity).
-#' }
 #'
-#' @param x An \code{sa_contamination_weights} object from
-#'   \code{\link{compute_contamination_weights}}.
-#' @param limit_abs Numeric; symmetric colour scale limit \code{[-limit, limit]}.
+#' - **Diagonal cells** (`catt_period == twfe_period`): own-period
+#'   weights (sum across cohorts should be \eqn{\approx 1}).
+#' - **Off-diagonal cells**: cross-period contamination (ideally
+#'   close to zero under treatment effect homogeneity).
+#'
+#' @param x An `sa_contamination_weights` object from
+#'   [compute_contamination_weights()].
+#' @param limit_abs Numeric; symmetric colour scale limit `[-limit, limit]`.
 #'   Defaults to the maximum absolute weight (rounded up to one decimal).
 #' @param midpoint Numeric; midpoint of the diverging colour scale (default 0).
-#' @param low Colour for negative weights (default \code{"#2166AC"}).
-#' @param mid Colour for zero weight (default \code{"white"}).
-#' @param high Colour for positive weights (default \code{"#B2182B"}).
-#' @param theme Character; \code{"bw"} (default), \code{"minimal"}, or
-#'   \code{"classic"}.
+#' @param low Colour for negative weights (default `"#2166AC"`).
+#' @param mid Colour for zero weight (default `"white"`).
+#' @param high Colour for positive weights (default `"#B2182B"`).
+#' @param theme Character; `"bw"` (default), `"minimal"`, or `"classic"`.
 #' @param show_values Logical; overlay weight values in each tile (default
-#'   \code{FALSE}).
-#' @param value_digits Integer; decimal digits when \code{show_values = TRUE}
-#'   (default \code{2L}).
+#'   `FALSE`).
+#' @param value_digits Integer; decimal digits when `show_values = TRUE`
+#'   (default `2L`).
 #'
-#' @return A \code{\link[ggplot2]{ggplot}} object.
+#' @return A [ggplot2::ggplot()] object.
 #'
-#' @seealso \code{\link{compute_contamination_weights}}
+#' @seealso [compute_contamination_weights()]
 #'
 #' @importFrom rlang .data
 #' @export

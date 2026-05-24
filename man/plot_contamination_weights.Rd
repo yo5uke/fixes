@@ -18,9 +18,9 @@ plot_contamination_weights(
 }
 \arguments{
 \item{x}{An \code{sa_contamination_weights} object from
-\code{\link{compute_contamination_weights}}.}
+\code{\link[=compute_contamination_weights]{compute_contamination_weights()}}.}
 
-\item{limit_abs}{Numeric; symmetric colour scale limit \code{[-limit, limit]}.
+\item{limit_abs}{Numeric; symmetric colour scale limit \verb{[-limit, limit]}.
 Defaults to the maximum absolute weight (rounded up to one decimal).}
 
 \item{midpoint}{Numeric; midpoint of the diverging colour scale (default 0).}
@@ -31,8 +31,7 @@ Defaults to the maximum absolute weight (rounded up to one decimal).}
 
 \item{high}{Colour for positive weights (default \code{"#B2182B"}).}
 
-\item{theme}{Character; \code{"bw"} (default), \code{"minimal"}, or
-\code{"classic"}.}
+\item{theme}{Character; \code{"bw"} (default), \code{"minimal"}, or \code{"classic"}.}
 
 \item{show_values}{Logical; overlay weight values in each tile (default
 \code{FALSE}).}
@@ -41,22 +40,22 @@ Defaults to the maximum absolute weight (rounded up to one decimal).}
 (default \code{2L}).}
 }
 \value{
-A \code{\link[ggplot2]{ggplot}} object.
+A \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object.
 }
 \description{
 Creates a ggplot2 tile heatmap of the contamination weights returned by
-\code{\link{compute_contamination_weights}}.
+\code{\link[=compute_contamination_weights]{compute_contamination_weights()}}.
 
 Each cell at position (\code{twfe_period}, \code{catt_label}) shows the
 weight \eqn{\omega^{\ell''}_{e,\ell}}: how much of \eqn{CATT_{e,\ell}}
 leaks into the TWFE coefficient \eqn{\hat\mu_{\ell''}}.
 \itemize{
-  \item \strong{Diagonal cells} (\code{catt_period == twfe_period}): own-period
-    weights (sum across cohorts should be \eqn{\approx 1}).
-  \item \strong{Off-diagonal cells}: cross-period contamination (ideally
-    close to zero under treatment effect homogeneity).
+\item \strong{Diagonal cells} (\code{catt_period == twfe_period}): own-period
+weights (sum across cohorts should be \eqn{\approx 1}).
+\item \strong{Off-diagonal cells}: cross-period contamination (ideally
+close to zero under treatment effect homogeneity).
 }
 }
 \seealso{
-\code{\link{compute_contamination_weights}}
+\code{\link[=compute_contamination_weights]{compute_contamination_weights()}}
 }

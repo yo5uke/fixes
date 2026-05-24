@@ -23,7 +23,7 @@ plot_es_interactive(
 )
 }
 \arguments{
-\item{data}{An object of class \code{es_result} returned by \code{run_es()}.}
+\item{data}{An object of class \code{es_result} returned by \code{\link[=run_es]{run_es()}}.}
 
 \item{ci_level}{Confidence level to display (e.g., 0.95). Default is 0.95.}
 
@@ -49,7 +49,7 @@ plot_es_interactive(
 
 \item{show_simultaneous}{Logical; if \code{TRUE}, overlays a second (lighter) ribbon for
 the simultaneous bootstrap CI and extends the hover tooltip with simultaneous CI bounds.
-Requires \code{bootstrap = TRUE} in the originating \code{run_es()} call.
+Requires \code{bootstrap = TRUE} in the originating \code{\link[=run_es]{run_es()}} call.
 Default \code{FALSE}.}
 
 \item{height}{Plot height in pixels (default NULL for auto).}
@@ -66,12 +66,12 @@ displays showing coefficients, confidence intervals, and other details.
 \details{
 The hover tooltip displays:
 \itemize{
-  \item Relative time to treatment
-  \item Point estimate (coefficient)
-  \item Confidence interval bounds
-  \item Standard error
-  \item P-value
-  \item Simultaneous CI bounds (when \code{show_simultaneous = TRUE})
+\item Relative time to treatment
+\item Point estimate (coefficient)
+\item Confidence interval bounds
+\item Standard error
+\item P-value
+\item Simultaneous CI bounds (when \code{show_simultaneous = TRUE})
 }
 }
 \examples{

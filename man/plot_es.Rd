@@ -23,7 +23,7 @@ plot_es(
 )
 }
 \arguments{
-\item{data}{An object of class \code{es_result} returned by \code{run_es()}.}
+\item{data}{An object of class \code{es_result} returned by \code{\link[=run_es]{run_es()}}.}
 
 \item{ci_level}{Confidence level to display (e.g., 0.95).}
 
@@ -42,7 +42,7 @@ plot_es(
 \item{show_simultaneous}{Logical; if \code{TRUE}, overlays the simultaneous bootstrap CI
 (lighter band, alpha 0.15) alongside the standard pointwise CI (alpha 0.3), with a
 legend distinguishing the two bands.  Requires \code{bootstrap = TRUE} in the
-originating \code{run_es()} call.  Default \code{FALSE}.}
+originating \code{\link[=run_es]{run_es()}} call.  Default \code{FALSE}.}
 }
 \value{
 A \code{ggplot} object.

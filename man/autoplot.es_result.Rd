@@ -7,20 +7,20 @@
 \method{autoplot}{es_result}(object, ci_level = 0.95, type = "ribbon", ...)
 }
 \arguments{
-\item{object}{An \code{es_result} returned by \code{run_es()}.}
+\item{object}{An \code{es_result} returned by \code{\link[=run_es]{run_es()}}.}
 
-\item{ci_level}{Confidence level (numeric, e.g., 0.95). Passed to \code{plot_es()}.}
+\item{ci_level}{Confidence level (numeric, e.g., 0.95). Passed to \code{\link[=plot_es]{plot_es()}}.}
 
-\item{type}{Plot type: \code{"ribbon"} (default) or \code{"errorbar"}. Passed to \code{plot_es()}.}
+\item{type}{Plot type: \code{"ribbon"} (default) or \code{"errorbar"}. Passed to \code{\link[=plot_es]{plot_es()}}.}
 
-\item{...}{Additional arguments forwarded to \code{\link{plot_es}}.}
+\item{...}{Additional arguments forwarded to \code{\link[=plot_es]{plot_es()}}.}
 }
 \value{
-A \code{ggplot2} \code{ggplot} object.
+A \code{ggplot} object.
 }
 \description{
-S3 method that plots an \code{es_result} (from \code{run_es()}).
-It forwards arguments to \code{\link{plot_es}}.
+S3 method that plots an \code{es_result} (from \code{\link[=run_es]{run_es()}}).
+It forwards arguments to \code{\link[=plot_es]{plot_es()}}.
 }
 \examples{
 # res <- run_es(...)

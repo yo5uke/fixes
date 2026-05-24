@@ -35,7 +35,7 @@ produced by extracting \code{attr(x, "att_gt")} and giving it class
 \code{"classic"}.}
 
 \item{color}{Line and point colour used in the \code{"facet"} display
-(default \code{"#B25D91FF"}, matching \code{plot_es}).}
+(default \code{"#B25D91FF"}, matching \code{\link[=plot_es]{plot_es()}}).}
 
 \item{fill}{Ribbon fill colour in the \code{"facet"} display (default
 \code{"#B25D91FF"}).}
@@ -49,24 +49,23 @@ produced by extracting \code{attr(x, "att_gt")} and giving it class
 \item{...}{Passed to \code{\link{plot_att_gt}}.}
 }
 \value{
-A \code{\link[ggplot2]{ggplot}} object.
+A \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object.
 }
 \description{
 Visualises the full cohort-by-period ATT(g,t) matrix stored in the
 \code{att_gt} attribute of an \code{es_result} object produced by
 \code{run_es(estimator = "cs")}.  Two display styles are available:
-
 \itemize{
-  \item \code{"heatmap"}: a tile plot with calendar time \eqn{t} on the
-    x-axis and cohort \eqn{g} on the y-axis, colour-filled by the point
-    estimate.  Cells whose pointwise confidence interval excludes zero are
-    marked with a filled dot; cells that are simultaneously significant
-    (when bootstrap data are available) are additionally marked with an open
-    diamond.
-  \item \code{"facet"}: one panel per cohort showing ATT(g,t) over
-    calendar time \eqn{t} with a pointwise confidence ribbon, mirroring
-    the style of \code{\link{plot_es}}.  A lighter simultaneous CI ribbon
-    is overlaid when bootstrap data are available.
+\item \code{"heatmap"}: a tile plot with calendar time \eqn{t} on the
+x-axis and cohort \eqn{g} on the y-axis, colour-filled by the point
+estimate.  Cells whose pointwise confidence interval excludes zero are
+marked with a filled dot; cells that are simultaneously significant
+(when bootstrap data are available) are additionally marked with an open
+diamond.
+\item \code{"facet"}: one panel per cohort showing ATT(g,t) over
+calendar time \eqn{t} with a pointwise confidence ribbon, mirroring
+the style of \code{\link[=plot_es]{plot_es()}}.  A lighter simultaneous CI ribbon
+is overlaid when bootstrap data are available.
 }
 
 Both types draw a vertical dashed line at \eqn{t = g} (treatment onset)
@@ -74,7 +73,7 @@ for each cohort.
 }
 \section{Bootstrap annotation}{
 
-When \code{attr(x, "bootstrap")} is present (i.e., \code{run_es()} was
+When \code{attr(x, "bootstrap")} is present (i.e., \code{\link[=run_es]{run_es()}} was
 called with \code{bootstrap = TRUE}), both plot types add simultaneous
 inference overlays sourced from the (g,t)-level bootstrap object.
 }
@@ -90,5 +89,5 @@ plot_att_gt(cs_result, type = "facet")
 
 }
 \seealso{
-\code{\link{plot_es}}, \code{\link{run_es}}
+\code{\link[=plot_es]{plot_es()}}, \code{\link[=run_es]{run_es()}}
 }
