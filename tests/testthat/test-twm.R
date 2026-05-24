@@ -514,3 +514,91 @@ test_that("twm covariates: reduces ATT bias under differential pre-trend DGP", {
   expect_lt(bias_cov, bias_nocov,
             label = "covariates RMSE < no-covariates RMSE under differential pre-trend DGP")
 })
+
+# ---------------------------------------------------------------------------
+# Test 16 — trends=TRUE with exactly 2 pre-treatment periods (boundary condition)
+#
+# Wooldridge (2025) requires >= 2 pre-treatment periods for trends=TRUE.
+# Verify that exactly 2 periods produces valid estimates WITHOUT a warning.
+# ---------------------------------------------------------------------------
+test_that("twm trends=TRUE succeeds with exactly 2 pre-treatment periods", {
+  set.seed(555L)
+  # 10 units, periods 1:4, cohort at period 3 → exactly 2 pre-treatment periods
+  exact2_data <- data.frame(
+    id   = rep(1:10, each = 4),
+    year = rep(1:4,  10),
+    y    = rnorm(40),
+    stringsAsFactors = FALSE
+  )
+  # Units 1-7 treated at period 3 (pre-periods: 1, 2 → exactly 2)
+  # Units 8-10 never treated
+  exact2_data$g <- ifelse(exact2_data$id <= 7L, 3L, NA_integer_)
+
+  # Must NOT warn about "fewer than 2 pre-treatment periods"
+  expect_no_warning(
+    result <- run_es(
+      data      = exact2_data,
+      outcome   = y,
+      time      = year,
+      timing    = g,
+      unit      = id,
+      fe        = ~ id + year,
+      staggered = TRUE,
+      estimator = "twm",
+      trends    = TRUE
+    )
+  )
+
+  expect_s3_class(result, "es_result")
+  # trends=TRUE: post-treatment only
+  expect_true(all(result$relative_time >= 0L))
+  expect_true(all(is.finite(result$estimate)))
+})
+
+# ---------------------------------------------------------------------------
+# Test 17 — explicit lead_range / lag_range trims output correctly
+#
+# Verifies that the .es_finalize() window filter works for TWM:
+# requesting lead_range=1, lag_range=2 must return only relative_time in [-1, 2].
+# ---------------------------------------------------------------------------
+test_that("twm respects explicit lead_range and lag_range", {
+  result_full <- run_es(
+    data      = twm_data,
+    outcome   = y,
+    time      = year,
+    timing    = g,
+    unit      = id,
+    fe        = ~ id + year,
+    staggered = TRUE,
+    estimator = "twm"
+  )
+
+  result_trim <- run_es(
+    data       = twm_data,
+    outcome    = y,
+    time       = year,
+    timing     = g,
+    unit       = id,
+    fe         = ~ id + year,
+    staggered  = TRUE,
+    estimator  = "twm",
+    lead_range = 1L,
+    lag_range  = 2L
+  )
+
+  # Trimmed result must stay within [-1, 2]
+  expect_true(all(result_trim$relative_time >= -1L),
+              label = "no relative_time < -lead_range")
+  expect_true(all(result_trim$relative_time <= 2L),
+              label = "no relative_time > lag_range")
+
+  # Full result has more rows than trimmed
+  expect_gt(nrow(result_full), nrow(result_trim))
+
+  # Where they overlap, estimates must be identical
+  common_l <- intersect(result_full$relative_time, result_trim$relative_time)
+  est_full  <- result_full$estimate[match(common_l, result_full$relative_time)]
+  est_trim  <- result_trim$estimate[match(common_l, result_trim$relative_time)]
+  expect_equal(est_full, est_trim, tolerance = 1e-12,
+               label = "estimates identical within shared window")
+})

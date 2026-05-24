@@ -384,3 +384,87 @@ test_that("flex covariates: tau_gt structure, formula, and ATT recovery", {
   expect_true(all(abs(post_ests - 1.5) < 0.6),
               label = "post-treatment estimates within 0.6 of true ATT=1.5 with covariates")
 })
+
+# ---------------------------------------------------------------------------
+# Test 12 — explicit lead_range / lag_range trims output correctly
+#
+# Verifies that .es_finalize() window filter works for FLEX:
+# lead_range=1, lag_range=2 must restrict relative_time to [-1, 2].
+# ---------------------------------------------------------------------------
+test_that("flex respects explicit lead_range and lag_range", {
+  result_full <- suppressWarnings(run_es(
+    data      = flex_data,
+    outcome   = y,
+    time      = year,
+    timing    = g,
+    group     = group_id,
+    staggered = TRUE,
+    estimator = "flex"
+  ))
+
+  result_trim <- suppressWarnings(run_es(
+    data       = flex_data,
+    outcome    = y,
+    time       = year,
+    timing     = g,
+    group      = group_id,
+    staggered  = TRUE,
+    estimator  = "flex",
+    lead_range = 1L,
+    lag_range  = 2L
+  ))
+
+  expect_true(all(result_trim$relative_time >= -1L))
+  expect_true(all(result_trim$relative_time <= 2L))
+  expect_gt(nrow(result_full), nrow(result_trim))
+
+  common_l <- intersect(result_full$relative_time, result_trim$relative_time)
+  est_full  <- result_full$estimate[match(common_l, result_full$relative_time)]
+  est_trim  <- result_trim$estimate[match(common_l, result_trim$relative_time)]
+  expect_equal(est_full, est_trim, tolerance = 1e-12,
+               label = "estimates identical within shared window")
+})
+
+# ---------------------------------------------------------------------------
+# Test 13 — no never-treated groups: all groups treated
+#
+# When every group is treated (no pure control), fixest uses the remaining
+# not-yet-treated observations as controls. Verify the call succeeds and
+# returns a valid es_result (N_nevertreated == 0).
+# ---------------------------------------------------------------------------
+test_that("flex handles all-treated panel (no never-treated groups)", {
+  set.seed(888L)
+  M <- 20L
+  # Two treatment cohorts; no never-treated group
+  cohort_vals <- c(rep(2L, 2L), rep(4L, 2L))   # 4 groups, 2 cohorts
+  periods     <- 1L:6L
+  group_fe    <- rnorm(4L) * 0.5
+
+  all_treated <- do.call(rbind, lapply(seq_along(cohort_vals), function(g) {
+    do.call(rbind, lapply(periods, function(t) {
+      gc <- cohort_vals[g]
+      data.frame(
+        year     = t,
+        group_id = g,
+        g        = gc,
+        y        = group_fe[g] + t * 0.1 + as.numeric(t >= gc) * 1.5 +
+                   rnorm(M, sd = 0.5),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }))
+
+  result <- suppressWarnings(run_es(
+    data      = all_treated,
+    outcome   = y,
+    time      = year,
+    timing    = g,
+    group     = group_id,
+    staggered = TRUE,
+    estimator = "flex"
+  ))
+
+  expect_s3_class(result, "es_result")
+  expect_equal(attr(result, "N_nevertreated"), 0L)
+  expect_true(all(is.finite(result$estimate)))
+})

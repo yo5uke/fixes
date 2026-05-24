@@ -183,3 +183,47 @@ test_that("sa estimator errors informatively when timing column is missing", {
     ignore.case = TRUE
   )
 })
+
+# ---------------------------------------------------------------------------
+# Test — explicit lead_range / lag_range trims output correctly
+#
+# Verifies that .es_finalize() window filter works for SA:
+# lead_range=2, lag_range=3 must restrict relative_time to [-2, 3].
+# ---------------------------------------------------------------------------
+test_that("sa respects explicit lead_range and lag_range", {
+  sa_data <- make_sa_data()
+
+  result_full <- run_es(
+    data      = sa_data,
+    outcome   = y,
+    time      = year,
+    timing    = g,
+    unit      = id,
+    fe        = ~ id + year,
+    staggered = TRUE,
+    estimator = "sa"
+  )
+
+  result_trim <- run_es(
+    data       = sa_data,
+    outcome    = y,
+    time       = year,
+    timing     = g,
+    unit       = id,
+    fe         = ~ id + year,
+    staggered  = TRUE,
+    estimator  = "sa",
+    lead_range = 2L,
+    lag_range  = 3L
+  )
+
+  expect_true(all(result_trim$relative_time >= -2L))
+  expect_true(all(result_trim$relative_time <= 3L))
+  expect_gt(nrow(result_full), nrow(result_trim))
+
+  common_l <- intersect(result_full$relative_time, result_trim$relative_time)
+  est_full  <- result_full$estimate[match(common_l, result_full$relative_time)]
+  est_trim  <- result_trim$estimate[match(common_l, result_trim$relative_time)]
+  expect_equal(est_full, est_trim, tolerance = 1e-12,
+               label = "SA estimates identical within shared window")
+})
