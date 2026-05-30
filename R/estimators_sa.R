@@ -63,12 +63,7 @@
   baseline <- as.integer(baseline)
 
   # ---- Validate inputs -------------------------------------------------------
-  for (col in c(outcome_chr, timing_chr, time_chr, unit_chr)) {
-    if (!col %in% names(data))
-      stop("Column '", col, "' not found in data.")
-  }
-  if (!is.numeric(data[[time_chr]]))
-    stop("'", time_chr, "' must be numeric.")
+  .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
 
   # ---- Bookkeeping -----------------------------------------------------------
   data        <- data[order(data[[unit_chr]], data[[time_chr]]), ]
@@ -83,12 +78,7 @@
   never_units <- unique(data[[unit_chr]][is.na(data[[timing_chr]])])
   n_never     <- length(never_units)
 
-  cohort_sizes <- vapply(cohorts, function(g) {
-    length(unique(data[[unit_chr]][
-      !is.na(data[[timing_chr]]) & data[[timing_chr]] == g
-    ]))
-  }, integer(1L))
-  names(cohort_sizes) <- as.character(cohorts)
+  cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
 
   # ---- Build cohort x relative-time indicator matrix -------------------------
   # SA (2021) eq. (1): D_{g,l}(i,t) = 1(G_i=g) * 1(t-G_i=l)
@@ -197,14 +187,7 @@
 
   # ---- Extract coefficients and full VCOV -----------------------------------
   # Always extract the full matrix so we can do the quadratic-form variance.
-  if (!is.null(cluster) && identical(vcov_type, "HC1")) {
-    V_full <- stats::vcov(model)          # model default = clustered SE
-  } else {
-    V_full <- tryCatch(
-      stats::vcov(model, vcov = vcov_type, .vcov_args = vcov_args),
-      error = function(e) stats::vcov(model)
-    )
-  }
+  V_full     <- .model_vcov_full(model, vcov_type, cluster, vcov_args)
   coef_names <- rownames(V_full)
 
   tidy_df    <- broom::tidy(model, vcov = V_full)
@@ -241,33 +224,14 @@
   # Var(theta_es(l)) = w(l)' * Sigma_l * w(l)
   #
   # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
-  idx_V              <- match(catt_df$col_name, coef_names) - 1L  # 0-based
-  idx_V[is.na(idx_V)] <- -1L
-
-  es <- aggregate_iw_cpp(
-    estimates   = catt_df$estimate,
-    l_vals      = as.integer(catt_df$l),
-    cohort_vals = as.integer(catt_df$g),
-    idx_in_V    = idx_V,
-    V_full_r    = V_full,
-    unique_l    = as.integer(sort(unique(catt_df$l))),
-    cs_keys     = as.integer(names(cohort_sizes)),
-    cs_vals     = as.integer(cohort_sizes),
-    min_t       = as.integer(min_t),
-    max_t       = as.integer(max_t)
-  )
+  es <- .aggregate_iw(catt_df, V_full, coef_names, cohort_sizes, min_t, max_t)
 
   if (nrow(es) == 0L)
     stop("SA event-study aggregation produced no estimates.")
 
   # ---- Confidence intervals -------------------------------------------------
   conf.level <- sort(unique(conf.level))
-  for (cl in conf.level) {
-    z   <- stats::qnorm(1 - (1 - cl) / 2)
-    suf <- sprintf("%.0f", cl * 100)
-    es[[paste0("conf_low_",  suf)]] <- es$estimate - z * es$std_error
-    es[[paste0("conf_high_", suf)]] <- es$estimate + z * es$std_error
-  }
+  es <- .add_ci_columns(es, conf.level, se_col = "std_error")
 
   list(
     es           = es,

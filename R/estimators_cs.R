@@ -66,12 +66,7 @@
   anticipation  <- as.integer(anticipation)
 
   # ---- Validate inputs -------------------------------------------------------
-  for (col in c(outcome_chr, timing_chr, time_chr, unit_chr)) {
-    if (!col %in% names(data))
-      stop("Column '", col, "' not found in data.")
-  }
-  if (!is.numeric(data[[time_chr]]))
-    stop("'", time_chr, "' must be numeric.")
+  .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
   if (anticipation < 0L)
     stop("`anticipation` must be a non-negative integer.")
 
@@ -89,12 +84,7 @@
   n_never     <- length(never_units)
 
   # Cohort sizes: unique units per cohort
-  cohort_sizes <- vapply(cohorts, function(g) {
-    length(unique(data[[unit_chr]][
-      !is.na(data[[timing_chr]]) & data[[timing_chr]] == g
-    ]))
-  }, integer(1L))
-  names(cohort_sizes) <- as.character(cohorts)
+  cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
 
   # ---- ATT(g, t) — CS 2021, eq. 2.8 (unconditional) ------------------------
   # ATT(g, t) = E[Y_t - Y_{base_t} | G=g] - E[Y_t - Y_{base_t} | C_t]
@@ -244,12 +234,7 @@
 
   # ---- Confidence intervals --------------------------------------------------
   conf.level <- sort(unique(conf.level))
-  for (cl in conf.level) {
-    z   <- stats::qnorm(1 - (1 - cl) / 2)
-    suf <- sprintf("%.0f", cl * 100)
-    es[[paste0("conf_low_",  suf)]] <- es$estimate - z * es$std_error
-    es[[paste0("conf_high_", suf)]] <- es$estimate + z * es$std_error
-  }
+  es <- .add_ci_columns(es, conf.level, se_col = "std_error")
 
   list(
     es           = es,

@@ -68,12 +68,7 @@
   baseline <- as.integer(baseline)
 
   # ---- Validate inputs -------------------------------------------------------
-  for (col in c(outcome_chr, timing_chr, time_chr, unit_chr)) {
-    if (!col %in% names(data))
-      stop("Column '", col, "' not found in data.")
-  }
-  if (!is.numeric(data[[time_chr]]))
-    stop("'", time_chr, "' must be numeric.")
+  .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
 
   # ---- Bookkeeping -----------------------------------------------------------
   data        <- data[order(data[[unit_chr]], data[[time_chr]]), ]
@@ -89,10 +84,7 @@
   never_units  <- unique(data[[unit_chr]][is.na(timing_vec)])
   n_never      <- length(never_units)
 
-  cohort_sizes <- vapply(cohorts, function(g)
-    length(unique(data[[unit_chr]][!is.na(timing_vec) & timing_vec == g])),
-    integer(1L))
-  names(cohort_sizes) <- as.character(cohorts)
+  cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
 
   # ---- Build cohort x calendar-time indicator matrix -------------------------
   # TWM (Wooldridge 2025, Procedure 5.1):
@@ -249,14 +241,7 @@
   )
 
   # ---- Extract coefficients and full VCOV ------------------------------------
-  if (!is.null(cluster) && identical(vcov_type, "HC1")) {
-    V_full <- stats::vcov(model)
-  } else {
-    V_full <- tryCatch(
-      stats::vcov(model, vcov = vcov_type, .vcov_args = vcov_args),
-      error = function(e) stats::vcov(model)
-    )
-  }
+  V_full     <- .model_vcov_full(model, vcov_type, cluster, vcov_args)
   coef_names <- rownames(V_full)
   tidy_df    <- broom::tidy(model, vcov = V_full)
 
@@ -285,33 +270,14 @@
 
   # ---- IW aggregation — same formula as SA (2021) eq. (4) -------------------
   # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
-  idx_V              <- match(tau_gt$col_name, coef_names) - 1L  # 0-based
-  idx_V[is.na(idx_V)] <- -1L
-
-  es <- aggregate_iw_cpp(
-    estimates   = tau_gt$estimate,
-    l_vals      = as.integer(tau_gt$l),
-    cohort_vals = as.integer(tau_gt$g),
-    idx_in_V    = idx_V,
-    V_full_r    = V_full,
-    unique_l    = as.integer(sort(unique(tau_gt$l))),
-    cs_keys     = as.integer(names(cohort_sizes)),
-    cs_vals     = as.integer(cohort_sizes),
-    min_t       = as.integer(min_t),
-    max_t       = as.integer(max_t)
-  )
+  es <- .aggregate_iw(tau_gt, V_full, coef_names, cohort_sizes, min_t, max_t)
 
   if (nrow(es) == 0L)
     stop("TWM event-study aggregation produced no estimates.")
 
   # ---- Confidence intervals --------------------------------------------------
   conf.level <- sort(unique(conf.level))
-  for (cl in conf.level) {
-    z   <- stats::qnorm(1 - (1 - cl) / 2)
-    suf <- sprintf("%.0f", cl * 100)
-    es[[paste0("conf_low_",  suf)]] <- es$estimate - z * es$std_error
-    es[[paste0("conf_high_", suf)]] <- es$estimate + z * es$std_error
-  }
+  es <- .add_ci_columns(es, conf.level, se_col = "std_error")
 
   list(
     es           = es,
