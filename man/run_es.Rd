@@ -45,7 +45,14 @@ run_es(
 
 \item{time}{Unquoted time variable (numeric or Date).}
 
-\item{timing}{For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time. For \code{estimator = "cs"}: unquoted column giving each unit's first treatment period (\code{NA} = never treated).}
+\item{timing}{For \code{classic}: a numeric/Date (universal) or a variable (unquoted) if \code{staggered = TRUE}. For \code{sunab}: an unquoted variable with adoption time. For \code{estimator = "cs"}: unquoted column giving each unit's first treatment period (\code{NA} = never treated).
+\strong{Convention for staggered estimators (cs, sa, bjs, twm, flex, classic with \code{staggered = TRUE}):}
+\code{NA} in the \code{timing} column means the unit is \emph{never treated} and will be used as a
+control. This follows the same convention as \code{did::att_gt()}, \code{fixest::sunab()}, and
+\code{didimputation}. If \code{NA} instead represents \emph{missing} treatment timing for an otherwise
+treated unit, those observations will be silently absorbed into the control group, which
+is almost certainly wrong. For \code{estimator = "twfe"} with \code{staggered = TRUE}, a warning
+is emitted when units with \code{treatment = 1} also have \code{timing = NA}.}
 
 \item{fe}{One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects. Ignored when \code{estimator = "cs"}.}
 

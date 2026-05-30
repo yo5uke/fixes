@@ -129,6 +129,13 @@
 #' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when `method = "classic"`.
 #' @param time Unquoted time variable (numeric or Date).
 #' @param timing For `classic`: a numeric/Date (universal) or a variable (unquoted) if `staggered = TRUE`. For `sunab`: an unquoted variable with adoption time. For `estimator = "cs"`: unquoted column giving each unit's first treatment period (`NA` = never treated).
+#'   **Convention for staggered estimators (cs, sa, bjs, twm, flex, classic with `staggered = TRUE`):**
+#'   `NA` in the `timing` column means the unit is *never treated* and will be used as a
+#'   control. This follows the same convention as `did::att_gt()`, `fixest::sunab()`, and
+#'   `didimputation`. If `NA` instead represents *missing* treatment timing for an otherwise
+#'   treated unit, those observations will be silently absorbed into the control group, which
+#'   is almost certainly wrong. For `estimator = "twfe"` with `staggered = TRUE`, a warning
+#'   is emitted when units with `treatment = 1` also have `timing = NA`.
 #' @param fe One-sided fixed-effects formula, e.g., `~ id + year`. Can be `NULL` for no fixed effects. Ignored when `estimator = "cs"`.
 #' @param lead_range,lag_range Integers for pre/post windows. If `NULL`, determined automatically.
 #' @param covariates One-sided formula of additional controls, e.g., `~ x1 + log(x2)`.
@@ -894,6 +901,39 @@ run_es <- function(
   timing_chr <- NULL
   if (staggered) {
     timing_chr <- resolve_column(rlang::enexpr(timing), data)
+
+    # Warn when a unit has treatment = 1 in some rows but timing = NA.
+    # NA is the "never treated" sentinel, so such units are silently used as
+    # controls — correct if intentional, dangerous if NA means missing timing.
+    treated_na_timing <- data[[treatment_chr]] == 1L & is.na(data[[timing_chr]])
+    if (any(treated_na_timing, na.rm = TRUE)) {
+      if (!is.null(unit_chr)) {
+        problem_units <- unique(data[[unit_chr]][treated_na_timing])
+        n_prob <- length(problem_units)
+        unit_str <- if (n_prob <= 5L) {
+          paste(problem_units, collapse = ", ")
+        } else {
+          paste(c(utils::head(problem_units, 5L), "..."), collapse = ", ")
+        }
+        warning(
+          n_prob, " unit(s) have `treatment = 1` in at least one row but `timing = NA`: ",
+          unit_str, ".\n",
+          "These units are treated as never-treated controls. ",
+          "If NA means 'never treated', this is correct. ",
+          "If NA represents missing treatment timing, remove or impute these rows.",
+          call. = FALSE
+        )
+      } else {
+        n_rows <- sum(treated_na_timing, na.rm = TRUE)
+        warning(
+          n_rows, " row(s) have `treatment = 1` but `timing = NA`. ",
+          "These rows are treated as never-treated controls. ",
+          "If NA means 'never treated', this is correct. ",
+          "If NA represents missing treatment timing, remove or impute these rows.",
+          call. = FALSE
+        )
+      }
+    }
   } else {
     timing_val <- timing
     if (is.character(timing_val) && !timing_val %in% names(data)) {

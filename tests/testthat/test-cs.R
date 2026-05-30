@@ -76,7 +76,6 @@ test_that("cs estimator returns es_result object", {
     time          = year,
     timing        = g,
     unit          = id,
-    fe            = ~ id + year,
     staggered     = TRUE,
     estimator     = "cs",
     control_group = "nevertreated"
@@ -144,7 +143,6 @@ test_that("cs ATT(g,t) estimates are numerically close to did::att_gt()", {
     time          = year,
     timing        = g,
     unit          = id,
-    fe            = ~ id + year,
     staggered     = TRUE,
     estimator     = "cs",
     control_group = "nevertreated"
@@ -182,7 +180,6 @@ test_that("cs estimator handles never-treated units correctly", {
     time          = year,
     timing        = g,
     unit          = id,
-    fe            = ~ id + year,
     staggered     = TRUE,
     estimator     = "cs",
     control_group = "nevertreated"
@@ -214,7 +211,6 @@ test_that("cs estimator errors informatively when timing column is missing", {
       time          = year,
       timing        = g,
       unit          = id,
-      fe            = ~ id + year,
       staggered     = TRUE,
       estimator     = "cs"
     ),

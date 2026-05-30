@@ -1,3 +1,22 @@
+# fixes 0.11.1 (2026-05-30)
+
+## Improvements
+
+- **`run_es()` — diagnostic warning for ambiguous `timing = NA`** (classic TWFE,
+  `staggered = TRUE` only): a `warning()` is now emitted when any unit has
+  `treatment = 1` in at least one row but `timing = NA`. Such units are silently
+  absorbed as never-treated controls — correct when `NA` is intentional, but
+  dangerous when `NA` represents genuinely missing treatment timing. The warning
+  names up to 5 affected unit IDs (when `unit` is supplied) for quick diagnosis.
+
+- **`@param timing` documentation clarified**: all staggered estimators (cs, sa,
+  bjs, twm, flex, classic with `staggered = TRUE`) share the same `NA = never
+  treated` convention as `did::att_gt()` and `fixest::sunab()`. The roxygen
+  documentation now states this explicitly and notes the risk of silent
+  misclassification when `NA` represents missing data rather than "never treated".
+
+---
+
 # fixes 0.11.0 (2026-05-24)
 
 ## New Features
