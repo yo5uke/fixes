@@ -1,3 +1,117 @@
+# fixes 0.11.0 (2026-05-24)
+
+## New Features
+
+- **`honest_sensitivity()` — honest robust inference (Rambachan & Roth 2023)**
+  ([R/honest_did.R](R/honest_did.R)): sensitivity analysis for event-study / DiD
+  designs when parallel trends may be violated. Instead of assuming parallel
+  trends holds exactly, it reports confidence sets for a post-treatment effect
+  under progressively weaker restrictions on the difference in trends, and a
+  *breakdown value* (the largest restriction at which the effect is still
+  significant):
+
+  ```r
+  res <- run_es(df, outcome = y, treatment = treat, time = year, timing = 6,
+                fe = ~ id + year)
+  h <- honest_sensitivity(res, type = "relative_magnitude",
+                          Mvec = c(0, 0.5, 1, 1.5, 2))
+  plot_honest(h)
+  ```
+
+  - Restriction families: `"relative_magnitude"` (\eqn{\Delta^{RM}(\bar M)}) and
+    `"smoothness"` (\eqn{\Delta^{SD}(M)}).
+  - Inference via the Andrews-Roth-Pakes (ARP) **conditional** moment-inequality
+    test — a pure-R reimplementation (no dependency on the HonestDiD package).
+  - Works directly from a `run_es()` `es_result` (estimator `"twfe"`: classic or
+    `method = "sunab"`, which now carry the event-study coefficient covariance
+    via the new `es_vcov` attribute), or from a raw `betahat` / `sigma` pair for
+    any estimator.
+  - `plot_honest()` / `autoplot()` draw the "top-down" sensitivity plot;
+    `print.honest_result()` reports the breakdown value.
+  - Validated against the **HonestDiD** reference package (method
+    `"Conditional"`): \eqn{\Delta^{SD}} (single post period) matches to machine
+    precision; \eqn{\Delta^{RM}} matches to grid resolution. Heavy numeric
+    helpers (`lpSolveAPI`, `Rglpk`, `TruncatedNormal`, `Matrix`, `pracma`) are in
+    `Suggests` and gated with `requireNamespace()`.
+
+## Internal / Refactor
+
+- **Estimator-core consolidation** (behaviour-preserving): factored the
+  boilerplate duplicated across `run_es()`, `calc_att()`, `run_did()`, and the
+  five estimator backends into shared helpers in
+  [R/utils-internal.R](R/utils-internal.R) — `.resolve_col()` (NSE column
+  resolution), `.add_ci_columns()` (CI construction), `.validate_panel_cols()`,
+  `.compute_cohort_sizes()`, `.model_vcov_full()`, and `.aggregate_iw()`. The
+  `calc_att()` aggregation loops were vectorised. All existing tests pass
+  unchanged.
+
+- **`run_did()` — basic TWFE DiD estimator** ([R/run_did.R](R/run_did.R)):
+  New function for classic two-way fixed-effects difference-in-differences.
+  Accepts a pre-built binary treatment indicator `D_it` and returns a
+  `did_result` S3 object with full `modelsummary` / `tinytable` compatibility:
+
+  ```r
+  df$D <- as.integer(df$treated & df$year >= 2006)
+  result <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+  print(result)
+  modelsummary::modelsummary(result)   # tinytable output (modelsummary >= 2.0)
+  ```
+
+  - NSE API consistent with `run_es()` and `calc_att()` — specify variables
+    by name, not by formula construction.
+  - `fe` auto-inferred as `~ unit + time` when both `unit` and `time` are
+    supplied and `fe = NULL`.
+  - `tidy.did_result()` delegates to `broom::tidy.fixest()` for full
+    regression table (all regressors); `glance.did_result()` delegates to
+    `broom::glance.fixest()` for model-level stats (`within.r.squared`,
+    `nobs`, `AIC`, etc.).
+  - `print.did_result()` shows a clean header: estimator, sample sizes,
+    FE spec, VCOV type.
+  - Outcome expressions like `log(y)` supported.
+  - `modelsummary` and `tinytable` added to Suggests.
+
+- **`calc_att()` — ATT aggregation function** ([R/calc_att.R](R/calc_att.R)): New
+  function that separates "calculating ATT" from "running an event study".
+  While `run_es()` produces a full dynamic event-study curve (effects by
+  relative time), `calc_att()` yields aggregated ATT estimates with a clear,
+  minimal interface:
+
+  ```r
+  calc_att(data, outcome = y, time = year, timing = g, unit = id,
+           estimator = "cs",
+           aggregation = "simple")     # overall ATT
+  calc_att(..., aggregation = "by_cohort")  # ATT per cohort
+  calc_att(..., aggregation = "by_time")    # ATT per calendar period
+  ```
+
+  - **Estimators**: `"cs"` (Callaway-Sant'Anna 2021) and `"bjs"` (Borusyak
+    et al. 2024). SA, TWM, FLEX are event-study-only estimators and are not
+    supported (use `run_es()`).
+  - **Aggregation formulas (CS)** match `did::aggte()` for point estimates:
+    - `"simple"`: exposure-weighted average over all post-treatment (g,t) pairs.
+    - `"by_cohort"`: mean ATT(g,t) over post-treatment periods per cohort.
+    - `"by_time"`: cohort-size-weighted ATT per calendar period.
+  - **SEs**: independence assumption (diagonal delta-method). Systematically
+    smaller than `did::aggte` SEs, which use influence-function variance
+    accounting for within-cohort time correlation. Cluster-robust SE for BJS
+    aggregations planned for v0.12.
+  - **Returns** an `att_result` S3 object (data.frame subclass) with columns
+    `group`, `estimate`, `std.error`, `statistic`, `p.value`,
+    `conf_low_XX`/`conf_high_XX`.  Attributes: `aggregation`, `estimator`,
+    `N`, `N_units`, `N_treated`, `control_group` (CS only), `att_gt` (raw
+    CS ATT(g,t) table), `tau_it` (BJS unit-time effects table).
+  - **`print.att_result()`** S3 method provides a concise summary.
+
+## Testing
+
+- **48 new tests** in `tests/testthat/test-att.R`:
+  - Return type and column contract for all aggregation types
+  - CS point estimates match `did::aggte()` at tolerance 1e-4
+  - BJS estimates match manual `mean(tau_it$tau_hat)` at tolerance 1e-12
+  - Multiple `conf.level` support verified
+
+---
+
 # fixes 0.10.1 (2026-05-14)
 
 ## Internal

@@ -12,33 +12,31 @@ status](https://www.r-pkg.org/badges/version/fixes)](https://CRAN.R-project.org/
 
 ## Overview
 
-`fixes` is an R package for **event study analysis** in panel data — the
-workhorse tool for visualizing parallel trends and dynamic treatment
-effects in difference-in-differences research.
+`fixes` is an R package for **difference-in-differences estimation** in
+panel data. It covers the three stages of a modern DiD workflow:
 
-Version 0.10.0 supports six estimators for panel and repeated
-cross-section data, all accessible through the same `run_es()`
-interface.
+| Stage | Function | What it does |
+|----|----|----|
+| 1\. Event study | `run_es()` | Dynamic treatment effects by relative time (6 estimators) |
+| 2\. ATT aggregation | `calc_att()` | Aggregated ATT — overall, by cohort, by calendar time |
+| 3\. Basic DiD | `run_did()` | Single-coefficient TWFE DiD with `modelsummary` support |
+| 4\. Sensitivity | `honest_sensitivity()` | Robust inference under violations of parallel trends (Rambachan & Roth 2023) |
+| Visualisation | `plot_es()` | Static ggplot2 event study plot |
+| Visualisation | `plot_att_gt()` | ATT(g,t) heatmap / facet plot (CS estimator) |
+| Visualisation | `plot_es_interactive()` | Interactive plotly plot with hover tooltips |
+| Visualisation | `plot_honest()` | Sensitivity plot of robust CIs vs. restriction size |
 
-**Key functions:**
+**Estimators** (selected via the `estimator` argument in `run_es()` and
+`calc_att()`):
 
-| Function                | What it does                                      |
-|-------------------------|---------------------------------------------------|
-| `run_es()`              | Estimate an event study (6 estimators available)  |
-| `plot_es()`             | Static ggplot2 event study plot                   |
-| `plot_att_gt()`         | Visualize the full ATT(g,t) matrix (CS estimator) |
-| `plot_es_interactive()` | Interactive plotly plot with hover tooltips       |
-
-**Estimators** (selected via the `estimator` argument in `run_es()`):
-
-| `estimator` | Reference | Data structure | Best for |
-|----|----|----|----|
-| `"twfe"` | Classic TWFE | Panel | Universal treatment timing |
-| `"cs"` | Callaway & Sant’Anna (2021) | Panel | Staggered adoption |
-| `"sa"` | Sun & Abraham (2021) | Panel | Staggered adoption |
-| `"bjs"` | Borusyak, Jaravel & Spiess (2024) | Panel | Staggered adoption |
-| `"twm"` | Wooldridge (2025) | Panel | Staggered adoption; optional cohort-specific trends (`trends = TRUE`) |
-| `"flex"` | Deb, Norton, Wooldridge & Zabel (2024) | Repeated cross-section | RCS data where the same unit is not tracked over time |
+| `estimator` | Reference | Best for |
+|----|----|----|
+| `"twfe"` | Classic TWFE | Universal treatment timing |
+| `"cs"` | Callaway & Sant’Anna (2021) | Staggered adoption |
+| `"sa"` | Sun & Abraham (2021) | Staggered adoption |
+| `"bjs"` | Borusyak, Jaravel & Spiess (2024) | Staggered adoption |
+| `"twm"` | Wooldridge (2025) | Staggered adoption; optional cohort trends |
+| `"flex"` | Deb, Norton, Wooldridge & Zabel (2024) | Repeated cross-section data |
 
 ## Installation
 
@@ -56,97 +54,85 @@ pak::pak("yo5uke/fixes")
 library(fixes)
 ```
 
-All six estimators share the same interface:
-
-``` r
-# Classic TWFE (single treatment date)
-res_twfe <- run_es(
-  data = df,
-  outcome = y,
-  treatment = treat,
-  time = period,
-  timing = 5,
-  fe = ~ id + period
-)
-
-# Sun & Abraham (2021) — staggered adoption
-res_sa <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
-  fe = ~ id + year,
-  staggered = TRUE,
-  estimator = "sa"
-)
-
-# Callaway & Sant'Anna (2021) — staggered adoption
-res_cs <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
-  staggered = TRUE,
-  estimator = "cs",
-  control_group = "nevertreated"
-)
-
-# Borusyak, Jaravel & Spiess (2024) — staggered adoption
-res_bjs <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
-  staggered = TRUE,
-  estimator = "bjs"
-)
-
-# Wooldridge (2025) Two-Way Mundlak — staggered adoption
-res_twm <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
-  fe = ~ id + year,
-  staggered = TRUE,
-  estimator = "twm"
-)
-
-# Deb et al. (2024) FLEX — repeated cross-section data
-res_flex <- run_es(
-  data = df_rcs,          # data with different individuals each period
-  outcome = y,
-  time = year,
-  timing = timing,        # first treatment period; NA = never treated
-  group = group_id,       # treatment group identifier (R_{ig} in Deb et al.)
-  staggered = TRUE,
-  estimator = "flex"
-)
-```
-
 ------------------------------------------------------------------------
 
-## Classic event study (single treatment date)
+## Basic DiD — `run_did()`
 
-Use `run_es()` with a fixed event date. Here we use `fixest::base_did`,
-a simulated balanced panel where all units are treated at period 5.
+For a simple two-way FE DiD with a single treatment coefficient, use
+`run_did()`. Output is fully compatible with
+`modelsummary::modelsummary()` and `tinytable::tt()`.
+
+There are two equivalent ways to specify the treatment:
+
+``` r
+# Option A: supply a pre-built D_it indicator
+df$D <- as.integer(df$treated & df$year >= 2006)
+res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+```
+
+``` r
+# Option B: let run_did() construct D_it from group indicator + timing
+res <- run_did(df, outcome = y, treatment = treated,
+               time = year, timing = 2006,
+               fe = ~ id + year)
+```
+
+Both options produce a `did_result` object:
 
 ``` r
 df <- fixest::base_did
 
+# Build a universal-timing DiD dataset
+df$D <- as.integer(df$treat == 1 & df$period >= 5)
+
+res <- run_did(
+  data    = df,
+  outcome = y,
+  treatment = D,
+  fe      = ~ id + period,
+  cluster = ~ id
+)
+
+print(res)
+```
+
+    ## DiD Estimation  [TWFE]
+    ## N = 1080 obs | 330 treated obs
+    ## FE: id + period 
+    ## VCOV: cluster | Cluster: id 
+    ## 
+    ##   term estimate std.error statistic  p.value
+    ## 1    D      4.5     0.544      8.27 3.94e-13
+
+`run_did()` integrates with the `broom` and `modelsummary` ecosystems:
+
+``` r
+broom::tidy(res)          # all coefficients (treatment + any covariates)
+broom::glance(res)        # nobs, within R², AIC, ...
+modelsummary::modelsummary(res)   # regression table via tinytable
+```
+
+------------------------------------------------------------------------
+
+## Event study — `run_es()`
+
+All six estimators share the same interface.
+
+### Classic TWFE (single treatment date)
+
+Use `run_es()` with a fixed event date. Here we use `fixest::base_did`,
+a balanced panel where all units are treated at period 5.
+
+``` r
 es <- run_es(
-  data = df,
-  outcome = y, # outcome variable (unquoted)
-  treatment = treat, # 0/1 treatment indicator
-  time = period, # time variable
-  timing = 5, # treatment occurs at period 5
-  fe = ~ id + period,
-  cluster = ~id,
-  baseline = -1 # period -1 is the reference (default)
+  data      = df,
+  outcome   = y,
+  treatment = treat,
+  time      = period,
+  timing    = 5,
+  fe        = ~ id + period,
+  cluster   = ~ id,
+  baseline  = -1
 )
 
 print(es)
@@ -155,7 +141,7 @@ print(es)
     ## Event Study Result (fixes)
     ##   N: 1080  | Units: NA  | Treated units: 1080  | Never-treated: NA 
     ##   FE: id + period
-    ##   VCOV: HC1  | Cluster: id 
+    ##   VCOV: cluster  | Cluster: id 
     ##   Method: classic  | lead_range: 4  lag_range: 5  baseline: -1
 
 ``` r
@@ -166,37 +152,31 @@ plot_es(es)
 
 ------------------------------------------------------------------------
 
-## Staggered adoption
+### Staggered adoption
 
 When units adopt treatment at different times, the classic TWFE
-estimator can be biased. `fixes` provides three modern alternatives.
+estimator can be biased. `fixes` provides modern alternatives.
 
-**Setup:** create a shared dataset from `fixest::base_stagg`.
-Never-treated units use `NA` for their timing column — this is the
-convention for all three staggered estimators.
+**Setup:** `fixest::base_stagg` — never-treated units have `NA` timing.
 
 ``` r
 df_stagg <- fixest::base_stagg
 df_stagg$timing <- df_stagg$year_treated
-df_stagg$timing[df_stagg$year_treated == 10000] <- NA # mark never-treated
+df_stagg$timing[df_stagg$year_treated == 10000] <- NA
 ```
 
-### Callaway & Sant’Anna (2021) — `estimator = "cs"`
-
-Estimates a separate ATT(g,t) for every combination of cohort g and
-calendar time t, then aggregates to the event-study curve. Comparison
-group can be never-treated units (default) or not-yet-treated units.
+#### Callaway & Sant’Anna (2021) — `estimator = "cs"`
 
 ``` r
 cs <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing, # first treatment period; NA = never treated
-  unit = id,
-  staggered = TRUE,
-  estimator = "cs",
-  control_group = "nevertreated" # or "notyettreated"
+  data          = df_stagg,
+  outcome       = y,
+  time          = year,
+  timing        = timing,
+  unit          = id,
+  staggered     = TRUE,
+  estimator     = "cs",
+  control_group = "nevertreated"
 )
 
 print(cs)
@@ -216,9 +196,6 @@ plot_es(cs)
 
 #### Visualise the full ATT(g,t) matrix
 
-`plot_att_gt()` shows every cohort × calendar-time cell, making it easy
-to spot anticipation effects or heterogeneous dynamics.
-
 ``` r
 plot_att_gt(cs, type = "heatmap")
 ```
@@ -233,24 +210,20 @@ plot_att_gt(cs, type = "facet")
 
 ------------------------------------------------------------------------
 
-### Sun & Abraham (2021) — `estimator = "sa"`
-
-Builds cohort × horizon interaction terms, then aggregates with
-cohort-share weights. Gives the same result as `fixest::sunab()` but
-through the unified `run_es()` interface.
+#### Sun & Abraham (2021) — `estimator = "sa"`
 
 ``` r
 sa <- run_es(
-  data = df_stagg,
-  outcome = y,
+  data      = df_stagg,
+  outcome   = y,
   treatment = treated,
-  time = year,
-  timing = timing,
-  unit = id,
-  fe = ~ id + year,
+  time      = year,
+  timing    = timing,
+  unit      = id,
+  fe        = ~ id + year,
   staggered = TRUE,
   estimator = "sa",
-  cluster = ~id
+  cluster   = ~ id
 )
 
 print(sa)
@@ -270,22 +243,15 @@ plot_es(sa)
 
 ------------------------------------------------------------------------
 
-### Borusyak, Jaravel & Spiess (2024) — `estimator = "bjs"`
-
-A three-step imputation approach:
-
-1.  Fit a TWFE model on **untreated** observations only (never-treated +
-    not-yet-treated).
-2.  Impute each treated unit’s counterfactual outcome.
-3.  Average the imputed treatment effects by event-study horizon.
+#### Borusyak, Jaravel & Spiess (2024) — `estimator = "bjs"`
 
 ``` r
 bjs <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
+  data      = df_stagg,
+  outcome   = y,
+  time      = year,
+  timing    = timing,
+  unit      = id,
   staggered = TRUE,
   estimator = "bjs"
 )
@@ -307,28 +273,20 @@ plot_es(bjs)
 
 ------------------------------------------------------------------------
 
-### Wooldridge (2025) Two-Way Mundlak — `estimator = "twm"`
+#### Wooldridge (2025) Two-Way Mundlak — `estimator = "twm"`
 
-The Two-Way Mundlak (TWM) estimator (Wooldridge 2025, Procedure 5.1) is
-algebraically equivalent to the Sun-Abraham estimator in the
-no-covariate base case. Its main extensions are:
-
-- **`trends = TRUE`**: adds cohort-specific linear trend regressors
-  (`d_g × t`) to absorb differential pre-trends (Wooldridge 2025,
-  Section 8). Uses post-treatment cells only; pre-treatment periods
-  identify the trend. Output shows `relative_time ≥ 0` only.
-- **`covariates = ~ x1 + x2`**: full Procedure 5.1 covariate
-  interactions with cohort-demeaned treatment cells (`ẋ_ig = x_i − x̄_g`)
-  and `i(time, x_j)` conditional parallel-trends controls.
+Algebraically equivalent to Sun-Abraham in the base case.
+`trends = TRUE` adds cohort-specific linear trend regressors to absorb
+differential pre-trends (output shows `relative_time ≥ 0` only).
 
 ``` r
 twm <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
-  fe = ~ id + year,
+  data      = df_stagg,
+  outcome   = y,
+  time      = year,
+  timing    = timing,
+  unit      = id,
+  fe        = ~ id + year,
   staggered = TRUE,
   estimator = "twm"
 )
@@ -350,30 +308,19 @@ plot_es(twm)
 
 ------------------------------------------------------------------------
 
-### Deb, Norton, Wooldridge & Zabel (2024) FLEX — `estimator = "flex"`
+#### Deb, Norton, Wooldridge & Zabel (2024) FLEX — `estimator = "flex"`
 
-The FLEX estimator is designed for **repeated cross-section (RCS)** data
-where different individuals are observed in each period (no unit
-tracking). Unlike panel estimators, FLEX uses group fixed effects
-(`R_{ig}`) instead of unit fixed effects.
-
-Key requirements:
-
-- Each observation belongs to a treatment **group** (`group` argument):
-  all individuals with the same `group` value share a treatment timing.
-- `NA` timing marks never-treated groups.
-- Covariates (`covariates = ~ x1`) use group × time cell-level centering
-  (Deb et al. 2024, Eq. 2.11).
+Designed for **repeated cross-section** data (different individuals each
+period). Requires a `group` argument identifying the treatment group
+each observation belongs to.
 
 ``` r
-# df_rcs: one row per individual-period, different individuals each period.
-# group_id identifies the treatment group each individual belongs to.
 flex <- run_es(
-  data = df_rcs,
-  outcome = y,
-  time = year,
-  timing = timing,   # cohort value for the group; NA = never treated
-  group = group_id,  # treatment group identifier (required for FLEX)
+  data      = df_rcs,
+  outcome   = y,
+  time      = year,
+  timing    = timing,
+  group     = group_id,
   staggered = TRUE,
   estimator = "flex"
 )
@@ -383,33 +330,68 @@ plot_es(flex)
 
 ------------------------------------------------------------------------
 
+## ATT aggregation — `calc_att()`
+
+After estimating `run_es()` with a staggered estimator, `calc_att()`
+computes a single aggregated ATT — or one per cohort / per calendar
+period.
+
+``` r
+# Overall ATT
+att_simple <- calc_att(
+  data        = df_stagg,
+  outcome     = y,
+  time        = year,
+  timing      = timing,
+  unit        = id,
+  estimator   = "cs",
+  aggregation = "simple"
+)
+
+print(att_simple)
+```
+
+    ## ATT Estimation  [estimator: CS | aggregation: Simple (overall)]
+    ## N = 950 obs | 95 units | 45 treated
+    ## 
+    ##   group estimate std.error statistic  p.value conf_low_95 conf_high_95
+    ## 1    NA   -0.755     0.226     -3.35 0.000813        -1.2       -0.313
+
+``` r
+# Per-cohort ATT
+calc_att(df_stagg, y, year, timing, unit = id,
+         estimator = "cs", aggregation = "by_cohort")
+
+# Per-calendar-period ATT
+calc_att(df_stagg, y, year, timing, unit = id,
+         estimator = "cs", aggregation = "by_time")
+```
+
+Supported estimators for `calc_att()`: `"cs"` (Callaway-Sant’Anna 2021)
+and `"bjs"` (Borusyak et al. 2024).
+
+------------------------------------------------------------------------
+
 ## Bootstrap simultaneous confidence bands
 
-Pointwise confidence intervals control error rates **one period at a
-time**. When you display 15 pre- and post-treatment estimates on a
-single plot, the chance that at least one interval incorrectly excludes
-zero can be much higher than the nominal 5%.
-
-**Simultaneous** bands (Callaway & Sant’Anna 2021, Corollary 1) provide
-joint coverage: with probability ≥ 1 − α, the entire event-study curve
-is contained within the band.
-
-Use `bootstrap = TRUE` in `run_es()` and `show_simultaneous = TRUE` in
-`plot_es()`:
+Pointwise CIs control error rates one period at a time. When you plot 15
+pre- and post-treatment estimates, the joint false-positive rate may
+exceed 5 %. Simultaneous bands (Callaway & Sant’Anna 2021, Corollary 1)
+provide joint coverage across the entire event-study curve.
 
 ``` r
 cs_boot <- run_es(
-  data = df_stagg,
-  outcome = y,
-  time = year,
-  timing = timing,
-  unit = id,
-  staggered = TRUE,
-  estimator = "cs",
+  data          = df_stagg,
+  outcome       = y,
+  time          = year,
+  timing        = timing,
+  unit          = id,
+  staggered     = TRUE,
+  estimator     = "cs",
   control_group = "nevertreated",
-  bootstrap = TRUE, # run multiplier bootstrap (Algorithm 1, CS 2021)
-  B = 999, # number of bootstrap draws; 999 recommended in practice
-  boot_seed = 42 # for reproducibility
+  bootstrap     = TRUE,
+  B             = 999,
+  boot_seed     = 42
 )
 ```
 
@@ -418,12 +400,39 @@ cs_boot <- run_es(
 plot_es(cs_boot, show_simultaneous = TRUE)
 ```
 
-The simultaneous band is always at least as wide as the pointwise band.
-The interactive plot also gains a second ribbon trace:
-
 ``` r
 plot_es_interactive(cs_boot, show_simultaneous = TRUE)
 ```
+
+------------------------------------------------------------------------
+
+## Honest sensitivity analysis — `honest_sensitivity()`
+
+Event-study estimates rely on the **parallel trends** assumption. Rather
+than testing pre-trends and hoping for the best, `honest_sensitivity()`
+implements Rambachan & Roth (2023): it reports confidence sets for a
+post-treatment effect under progressively weaker restrictions on how
+different post-treatment violations of parallel trends can be from the
+pre-trends, plus a *breakdown value* — the largest violation at which
+the effect is still significant.
+
+``` r
+res <- run_es(df, outcome = y, treatment = treat, time = year, timing = 6,
+              fe = ~ id + year)
+
+# Relative-magnitude restriction: post violation <= Mbar x max pre violation
+h <- honest_sensitivity(res, type = "relative_magnitude",
+                        Mvec = c(0, 0.5, 1, 1.5, 2))
+print(h)          # robust CIs per Mbar + the original (parallel-trends) CI
+plot_honest(h)    # "top-down" sensitivity plot
+```
+
+Use `type = "smoothness"` for the (bounded second difference)
+restriction. Inference uses the Andrews-Roth-Pakes conditional test — a
+pure-R reimplementation validated against the **HonestDiD** package. For
+estimators other than `"twfe"`, pass `betahat` and `sigma` directly. The
+numeric helpers (`lpSolveAPI`, `Rglpk`, `TruncatedNormal`, `Matrix`,
+`pracma`) are optional `Suggests`.
 
 ------------------------------------------------------------------------
 
@@ -432,22 +441,20 @@ plot_es_interactive(cs_boot, show_simultaneous = TRUE)
 `plot_es()` works with results from any estimator.
 
 ``` r
-# Error bars instead of ribbon
 plot_es(es, type = "errorbar")
 ```
 
 ![](man/figures/README-plot-options-1.png)<!-- -->
 
 ``` r
-# Multiple CI levels at once
 es_multi <- run_es(
-  data = df,
-  outcome = y,
+  data      = df,
+  outcome   = y,
   treatment = treat,
-  time = period,
-  timing = 5,
-  fe = ~ id + period,
-  cluster = ~id,
+  time      = period,
+  timing    = 5,
+  fe        = ~ id + period,
+  cluster   = ~ id,
   conf.level = c(0.90, 0.95, 0.99)
 )
 plot_es(es_multi, ci_level = 0.90, theme_style = "minimal")
@@ -457,16 +464,31 @@ plot_es(es_multi, ci_level = 0.90, theme_style = "minimal")
 
 ### Interactive plots
 
-`plot_es_interactive()` produces a plotly chart with hover tooltips
-(requires the `plotly` package).
-
 ``` r
 plot_es_interactive(es)
 ```
 
 ------------------------------------------------------------------------
 
-## Key `run_es()` arguments
+## Key arguments
+
+### `run_did()`
+
+| Argument | Default | Description |
+|----|----|----|
+| `data` | — | Data frame (panel) |
+| `outcome` | — | Outcome variable (unquoted; expressions like `log(y)` OK) |
+| `treatment` | — | Binary D_it indicator, or group dummy when `timing` is set |
+| `timing` | `NULL` | Scalar treatment period; auto-constructs `D_it = treatment*(time>=timing)` |
+| `fe` | `NULL` | FE formula `~ id + year`; auto-inferred from `unit` + `time` if omitted |
+| `unit` | `NULL` | Unit identifier (for FE inference and sample-size metadata) |
+| `time` | `NULL` | Time variable (for FE inference and `timing`-based D_it construction) |
+| `covariates` | `NULL` | Additional controls, e.g. `~ x1 + x2` |
+| `cluster` | `NULL` | Clustering: formula `~ id`, column name, or vector |
+| `conf.level` | `0.95` | CI level(s); vector allowed |
+| `vcov` | `"HC1"` | VCOV type; cluster-robust SE used automatically when `cluster` is set |
+
+### `run_es()`
 
 | Argument | Default | Description |
 |----|----|----|
@@ -475,23 +497,35 @@ plot_es_interactive(es)
 | `treatment` | `NULL` | 0/1 treatment dummy (`"twfe"` only) |
 | `time` | — | Time variable (numeric) |
 | `timing` | — | Treatment date (scalar for `"twfe"`, column for others; `NA` = never treated) |
-| `unit` | `NULL` | Unit ID column (required for `"cs"`, `"sa"`, `"bjs"`, `"twm"`) |
+| `unit` | `NULL` | Unit ID (required for `"cs"`, `"sa"`, `"bjs"`, `"twm"`) |
 | `fe` | `NULL` | Fixed effects formula, e.g. `~ id + year` |
 | `estimator` | `"twfe"` | `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, or `"flex"` |
 | `staggered` | `FALSE` | Set `TRUE` for unit-varying treatment timing |
-| `group` | `NULL` | **FLEX only**: unquoted group identifier (`R_{ig}`, required for `"flex"`) |
-| `trends` | `FALSE` | **TWM only**: add cohort-specific linear trends (Wooldridge 2025, Section 8) |
-| `covariates` | `NULL` | Covariate formula, e.g. `~ x1 + x2` (supported for `"twm"` and `"flex"`) |
+| `group` | `NULL` | **FLEX only**: treatment group identifier |
+| `trends` | `FALSE` | **TWM only**: cohort-specific linear trends |
+| `covariates` | `NULL` | Controls (supported for `"twm"` and `"flex"`) |
 | `control_group` | `"nevertreated"` | CS only: `"nevertreated"` or `"notyettreated"` |
 | `cluster` | `NULL` | Clustering formula, e.g. `~ id` |
-| `baseline` | `-1` | Reference period (0 = treatment date) |
-| `lead_range` | auto | Pre-treatment periods to show |
-| `lag_range` | auto | Post-treatment periods to show |
-| `conf.level` | `0.95` | CI level(s); vector allowed, e.g. `c(0.90, 0.95)` |
-| `vcov` | `"HC1"` | VCOV type (any `fixest::vcov()` type) |
-| `bootstrap` | `FALSE` | CS only: run multiplier bootstrap for simultaneous CIs |
-| `B` | `999` | CS bootstrap: number of draws |
-| `boot_seed` | `NULL` | CS bootstrap: RNG seed for reproducibility |
+| `baseline` | `-1` | Reference period |
+| `conf.level` | `0.95` | CI level(s); vector allowed |
+| `vcov` | `"HC1"` | VCOV type |
+| `bootstrap` | `FALSE` | CS only: multiplier bootstrap for simultaneous CIs |
+| `B` | `999` | Bootstrap draws |
+| `boot_seed` | `NULL` | Bootstrap RNG seed |
+
+### `calc_att()`
+
+| Argument | Default | Description |
+|----|----|----|
+| `data` | — | Data frame (panel) |
+| `outcome` | — | Outcome variable (unquoted) |
+| `time` | — | Calendar time variable |
+| `timing` | — | First treatment period per unit; `NA` = never treated |
+| `unit` | — | Unit identifier (required) |
+| `estimator` | `"cs"` | `"cs"` or `"bjs"` |
+| `aggregation` | `"simple"` | `"simple"`, `"by_cohort"`, or `"by_time"` |
+| `control_group` | `"nevertreated"` | CS only |
+| `conf.level` | `0.95` | CI level(s) |
 
 ------------------------------------------------------------------------
 
