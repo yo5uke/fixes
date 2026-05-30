@@ -226,21 +226,9 @@ run_es <- function(
   }
 
   # ---- helpers -------------------------------------------------------------
-  resolve_column <- function(expr, data, allow_call = FALSE) {
-    if (rlang::is_symbol(expr)) {
-      var <- rlang::as_string(expr)
-      if (!var %in% names(data)) {
-        stop("Column '", var, "' not found.")
-      }
-      return(var)
-    } else if (allow_call && rlang::is_call(expr)) {
-      return(rlang::expr_text(expr))
-    } else if (is.character(expr) && expr %in% names(data)) {
-      return(expr)
-    } else {
-      stop("Invalid column/expression: ", rlang::expr_text(expr))
-    }
-  }
+  # NSE column resolution is provided by the shared `.resolve_col()` helper in
+  # R/utils-internal.R; alias it locally so the call sites below stay unchanged.
+  resolve_column <- .resolve_col
   .must_exist <- function(cols, data) {
     cols <- as.character(cols)
     miss <- setdiff(cols, names(data))
@@ -761,6 +749,9 @@ run_es <- function(
       }
     }
 
+    # Full coefficient VCOV, retained for honest_sensitivity() downstream.
+    V_full_es <- .model_vcov_full(model, vcov, cluster, vcov_args)
+
     # extract relative time from terms like "sunab::timing_var:: -2"
     rel <- suppressWarnings(as.integer(gsub(".*::(-?\\d+)$", "\\1", tidy$term)))
     tidy$relative_time <- rel
@@ -818,6 +809,14 @@ run_es <- function(
     tidy$is_baseline <- tidy$relative_time == baseline
     tidy <- tidy |> dplyr::arrange(.data$relative_time)
 
+    # Event-study coefficient VCOV (ordered by relative time) — built from the
+    # original coefficient term names before they are relabelled below.
+    es_vcov <- .build_es_vcov(
+      V_full_es,
+      tidy$term[!tidy$is_baseline],
+      tidy$relative_time[!tidy$is_baseline]
+    )
+
     # Update term column to show relative_time as numeric string
     tidy$term <- as.character(tidy$relative_time)
 
@@ -858,7 +857,7 @@ run_es <- function(
       NA_integer_
     }
     attr(tidy, "fe") <- fe_rhs_text
-    attr(tidy, "vcov_type") <- vcov
+    attr(tidy, "vcov_type") <- if (!is.null(cluster) && identical(vcov, "HC1")) "cluster" else vcov
     attr(tidy, "cluster_vars") <- if (inherits(cluster, "formula")) {
       rlang::expr_text(rlang::f_rhs(cluster))
     } else {
@@ -866,6 +865,7 @@ run_es <- function(
     }
     attr(tidy, "staggered") <- staggered
     attr(tidy, "sunab_used") <- TRUE
+    attr(tidy, "es_vcov") <- es_vcov
 
     class(tidy) <- c("es_result", "data.frame")
     return(tidy)
@@ -1023,6 +1023,10 @@ run_es <- function(
     tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
   }
 
+  # Full coefficient VCOV (same cluster/vcov precedence used to build `tidy`),
+  # retained for honest_sensitivity() downstream.
+  V_full_es <- .model_vcov_full(model, vcov, cluster, vcov_args)
+
   # Extract relative_time from i() terms - vectorized for performance
   # Format: "fixest::var::value:treatment" (3 parts) or "var::value" (2 parts)
   terms_char <- as.character(tidy$term)
@@ -1093,6 +1097,14 @@ run_es <- function(
         .data$relative_time <= lag_range
     )
 
+  # Event-study coefficient VCOV (ordered by relative time) — built from the
+  # original coefficient term names before they are relabelled below.
+  es_vcov <- .build_es_vcov(
+    V_full_es,
+    tidy$term[!tidy$is_baseline],
+    tidy$relative_time[!tidy$is_baseline]
+  )
+
   # Update term column to show relative_time as requested
   tidy$term <- as.character(tidy$relative_time)
 
@@ -1131,7 +1143,7 @@ run_es <- function(
   attr(tidy, "N_treated") <- N_treat
   attr(tidy, "N_nevertreated") <- N_never
   attr(tidy, "fe") <- fe_rhs_text
-  attr(tidy, "vcov_type") <- vcov
+  attr(tidy, "vcov_type") <- if (!is.null(cluster) && identical(vcov, "HC1")) "cluster" else vcov
   attr(tidy, "cluster_vars") <- if (inherits(cluster, "formula")) {
     rlang::expr_text(rlang::f_rhs(cluster))
   } else {
@@ -1139,6 +1151,7 @@ run_es <- function(
   }
   attr(tidy, "staggered") <- staggered
   attr(tidy, "sunab_used") <- FALSE
+  attr(tidy, "es_vcov") <- es_vcov
 
   class(tidy) <- c("es_result", "data.frame")
   tidy
