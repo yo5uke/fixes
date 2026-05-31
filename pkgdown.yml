@@ -1,0 +1,9 @@
+pandoc: 3.8.3
+pkgdown: 2.2.0
+pkgdown_sha: ~
+articles:
+  fixes-intro: fixes-intro.html
+last_built: 2026-05-31T02:50Z
+urls:
+  reference: https://yo5uke.com/fixes/reference
+  article: https://yo5uke.com/fixes/articles
