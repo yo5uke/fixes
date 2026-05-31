@@ -14,6 +14,10 @@
 ^reviews$
 ^cran-comments\.md$
 
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+
 # Development / profiling scripts (not part of the package)
 ^bench_.*\.R$
 ^diag_.*\.R$

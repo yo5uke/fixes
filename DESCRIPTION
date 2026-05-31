@@ -46,7 +46,7 @@ Suggests:
     pracma,
     HonestDiD
 VignetteBuilder: knitr
-URL: https://github.com/yo5uke/fixes
+URL: https://github.com/yo5uke/fixes, https://yo5uke.com/fixes/
 BugReports: https://github.com/yo5uke/fixes/issues
 Config/roxygen2/version: 8.0.0
 Config/roxygen2/markdown: TRUE

@@ -1,0 +1,50 @@
+url: https://yo5uke.com/fixes/
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left:  [reference, articles, news]
+    right: [search, github]
+
+reference:
+  - title: Estimation
+    desc: >
+      Estimate event-study curves, aggregated ATT, and basic two-way FE DiD.
+    contents:
+      - run_es
+      - calc_att
+      - run_did
+
+  - title: Sensitivity analysis
+    desc: Robust inference under violations of parallel trends.
+    contents:
+      - honest_sensitivity
+
+  - title: Visualization
+    desc: Plot event studies, ATT(g,t) matrices, and sensitivity results.
+    contents:
+      - plot_es
+      - plot_es_interactive
+      - plot_att_gt
+      - plot_honest
+      - plot_contamination_weights
+
+  - title: Diagnostics
+    desc: Contamination-weight diagnostics for the Sun-Abraham estimator.
+    contents:
+      - compute_contamination_weights
+
+  - title: S3 methods
+    desc: broom and ggplot2 integration for result objects.
+    contents:
+      - autoplot.es_result
+      - tidy.did_result
+      - glance.did_result
+
+articles:
+  - title: Get started
+    navbar: ~
+    contents:
+      - fixes-intro

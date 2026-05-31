@@ -4,6 +4,9 @@
 .Ruserdata
 inst/doc
 
+# pkgdown site (deployed to gh-pages via GitHub Actions)
+docs/
+
 # Claude Code related files
 .claude/
 CLAUDE.md
