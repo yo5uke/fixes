@@ -132,6 +132,15 @@
   # single matrix column in data (.flex_X); feols expands internally.
   # feols prepends ".flex_X" → coefficient ".flex_X.flex__g__2__t__1"
 
+  .assert_integerish(data[[time_chr]], time_chr)
+  .assert_integerish(data[[timing_chr]], timing_chr)
+
+  if (!any((cohorts + baseline) %in% all_periods))
+    warning("Excluded calendar period g + baseline (baseline = ", baseline,
+            ") is not observed for any cohort, so no reference period was ",
+            "excluded. Check the time grid spacing and the `baseline` ",
+            "argument.", call. = FALSE)
+
   # All feasible (g, s) pairs
   gs_pairs <- do.call(rbind, lapply(cohorts, function(g) {
     excl_s <- g + baseline

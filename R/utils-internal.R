@@ -61,6 +61,17 @@
     stop("'", time_chr, "' must be numeric.")
 }
 
+# Assert that a numeric vector is integer-valued (NAs allowed).  The CS, SA,
+# TWM, and FLEX backends coerce time/timing with as.integer(), which silently
+# truncates fractional values and would misassign treatment cells.
+.assert_integerish <- function(v, name) {
+  vv <- v[!is.na(v)]
+  if (length(vv) > 0L && is.numeric(vv) && any(vv != round(vv)))
+    stop("'", name, "' must be integer-valued for this estimator ",
+         "(fractional values would be truncated when building treatment ",
+         "cells). Rescale it to integers, e.g. via a consecutive time index.")
+}
+
 # Cohort sizes = number of unique units per cohort.  Returns a named integer
 # vector keyed by cohort (as character).  Used by CS, SA, and TWM (FLEX counts
 # unique groups instead and keeps its own logic).

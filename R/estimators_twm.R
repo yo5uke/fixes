@@ -106,6 +106,15 @@
   # periods (s >= g).  The pre-treatment data then identifies the cohort-specific
   # trend, so adding d_g*t to the regression is not collinear with the treatment
   # cells.  When trends = FALSE, include all periods as usual.
+  .assert_integerish(data[[time_chr]], time_chr)
+  .assert_integerish(data[[timing_chr]], timing_chr)
+
+  if (!any((cohorts + baseline) %in% all_periods))
+    warning("Excluded calendar period g + baseline (baseline = ", baseline,
+            ") is not observed for any cohort, so no reference period was ",
+            "excluded. Check the time grid spacing and the `baseline` ",
+            "argument.", call. = FALSE)
+
   gs_pairs <- do.call(rbind, lapply(cohorts, function(g) {
     excl_s <- g + baseline                        # excluded calendar period
     if (isTRUE(trends)) {

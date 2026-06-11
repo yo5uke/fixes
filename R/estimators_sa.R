@@ -83,30 +83,33 @@
   # ---- Build cohort x relative-time indicator matrix -------------------------
   # SA (2021) eq. (1): D_{g,l}(i,t) = 1(G_i=g) * 1(t-G_i=l)
   #
-  # Optimisation: instead of adding 76 indicator columns to the data frame
-  # (one per (g,l) pair) and passing the bloated frame to feols(), we build a
-  # pre-allocated integer matrix and pass it as a single matrix column (.sa_X).
-  # feols() then sees the same 76 regressors but receives a lean data frame
-  # (only outcome + FE variables + the matrix), eliminating the ~120 ms of GC
-  # pressure that comes from feols copying 76 × 40,000 × 4 bytes of indicators.
-  #
-  # Key facts:
-  #   - Coefficient estimates are bit-for-bit identical to the reference loop
-  #     (same regression, same collinearity handling — verified in proto_sa_compact3.R)
-  #   - feols prepends the matrix-column name ".sa_X" to each coefficient name:
-  #     ".sa__1995__neg5" → ".sa_X.sa__1995__neg5"  (handled in CATT extraction)
-  #   - feols timing: wide (76 cols) ~240 ms → compact (matrix col) ~105 ms
+  # The K indicators are passed to feols() as a single matrix column (.sa_X)
+  # rather than K separate data-frame columns, avoiding a copy of the full
+  # frame per regressor.  feols prepends the matrix-column name to each
+  # coefficient: ".sa__1995__neg5" → ".sa_X.sa__1995__neg5" (handled in the
+  # CATT extraction below).
+
+  .assert_integerish(data[[time_chr]], time_chr)
+  .assert_integerish(data[[timing_chr]], timing_chr)
 
   timing_vec  <- data[[timing_chr]]
   reltime_vec <- data[[time_chr]] - timing_vec   # NA for never-treated
 
-  # All feasible (g, l) pairs — same logic as the reference for loop
+  # All feasible (g, l) pairs
   gl_pairs <- do.call(rbind, lapply(cohorts, function(g) {
     fl <- all_periods - g
     fl <- fl[fl != baseline]
     if (length(fl) == 0L) return(NULL)
     data.frame(g = g, l = fl, stringsAsFactors = FALSE)
   }))
+
+  # The reference period is removed via `fl != baseline`; if no cohort can
+  # ever reach relative time `baseline` the regression is unnormalised.
+  if (!any(vapply(cohorts, function(g) baseline %in% (all_periods - g),
+                  logical(1L))))
+    warning("Relative period `baseline = ", baseline, "` is not feasible for ",
+            "any cohort, so no reference period was excluded. Check the time ",
+            "grid spacing and the `baseline` argument.", call. = FALSE)
 
   if (is.null(gl_pairs) || nrow(gl_pairs) == 0L)
     stop("No cohort-by-period interactions could be constructed. ",
@@ -142,8 +145,6 @@
          g        = gl_pairs$g[k],
          l        = gl_pairs$l[k]))
 
-  # Pass indicator matrix as a single matrix column; feols reads the K columns
-  # directly without the data-frame allocation overhead of 76 separate vectors.
   data$.sa_X  <- ind_mat
 
   formula_str <- if (nzchar(fe_str)) {
@@ -151,28 +152,6 @@
   } else {
     paste0(outcome_chr, " ~ .sa_X")
   }
-
-  # REFERENCE IMPLEMENTATION (pre-optimisation)
-  # Retained for correctness verification.
-  #
-  # int_cols  <- character(0)
-  # catt_meta_old <- list()
-  # for (g in cohorts) {
-  #   feasible_l <- all_periods - g
-  #   feasible_l <- feasible_l[feasible_l != baseline]
-  #   g_mask <- !is.na(data[[timing_chr]]) & data[[timing_chr]] == g
-  #   for (l in feasible_l) {
-  #     safe_l <- if (l < 0L) paste0("neg", -l) else as.character(l)
-  #     col    <- paste0(".sa__", g, "__", safe_l)
-  #     data[[col]] <- as.integer(
-  #       g_mask & (data[[time_chr]] - data[[timing_chr]]) == l
-  #     )
-  #     int_cols <- c(int_cols, col)
-  #     catt_meta_old[[...]] <- list(col = col, g = g, l = l)
-  #   }
-  # }
-  # rhs_str <- paste(int_cols, collapse = " + ")
-  # formula_str <- paste0(outcome_chr, " ~ ", rhs_str, " | ", fe_str)
 
   model_args <- list(stats::as.formula(formula_str), data = data)
   if (!is.null(cluster)) model_args$cluster <- cluster
