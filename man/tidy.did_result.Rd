@@ -23,7 +23,7 @@ A data frame with columns \code{term}, \code{estimate}, \code{std.error},
 Returns a tidy data frame of model coefficients from a \code{\link[=run_did]{run_did()}} result.
 Delegates to \code{\link[broom:tidy.fixest]{broom::tidy.fixest()}} on the underlying \code{fixest} model so
 that all regressors (treatment and covariates) appear in the output — the
-format expected by \code{\link[modelsummary:modelsummary]{modelsummary::modelsummary()}}.
+format expected by \code{modelsummary::modelsummary()}.
 }
 \examples{
 \dontrun{

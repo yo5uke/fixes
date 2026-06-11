@@ -16,8 +16,7 @@
 #'
 #' @return A `ggplot` object.
 #' @seealso [honest_sensitivity()]
-#' @importFrom ggplot2 ggplot aes geom_errorbar geom_point geom_hline labs
-#'   theme_bw scale_color_manual
+#' @importFrom ggplot2 ggplot aes geom_errorbar geom_point geom_hline labs theme_bw scale_color_manual
 #' @importFrom rlang .data
 #' @export
 plot_honest <- function(x, ...) {

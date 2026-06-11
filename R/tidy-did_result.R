@@ -4,7 +4,7 @@
 #' Returns a tidy data frame of model coefficients from a [run_did()] result.
 #' Delegates to [broom::tidy.fixest()] on the underlying `fixest` model so
 #' that all regressors (treatment and covariates) appear in the output — the
-#' format expected by [modelsummary::modelsummary()].
+#' format expected by `modelsummary::modelsummary()`.
 #'
 #' @param x A `did_result` object returned by [run_did()].
 #' @param conf.int Logical; add `conf.low`/`conf.high` columns? Default `FALSE`.
