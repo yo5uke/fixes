@@ -1,3 +1,77 @@
+# fixes 0.11.2 (2026-06-11)
+
+## Bug fixes (silent-corruption class)
+
+- **CS estimator: character / factor unit IDs produced silently wrong results**
+  (`run_es(estimator = "cs")` and `calc_att(estimator = "cs")`): unit IDs were
+  coerced with `as.integer()`, which turns every character ID into `NA` — all
+  units collapsed into one inside the Rcpp kernel and the ATT(g,t) table was
+  meaningless, with no error raised. Unit IDs are now densely re-encoded with
+  `match()`; character, factor, and arbitrary numeric IDs give results
+  identical to integer IDs.
+
+- **CS estimator: a cohort with `timing == 0` leaked into the control group**:
+  `0L` was the internal never-treated sentinel, so a genuine cohort first
+  treated at time 0 (e.g., event-time-centred data) was silently used as
+  never-treated controls. `time`/`timing` are now shifted by a common internal
+  offset so the sentinel can never collide; results are invariant to common
+  shifts of the time axis.
+
+- **Classic staggered TWFE dropped the entire never-treated control group**
+  (`estimator = "twfe"`, `staggered = TRUE`): the relative-time variable is
+  `NA` for never-treated units and `fixest::feols()` removes rows with NA
+  regressors, so every control row was excluded from the estimation sample
+  (visible only as a fixest NOTE). Those rows are now assigned the (excluded)
+  baseline level — their event dummies are identically zero because the `i()`
+  interaction is multiplied by `treatment = 0` — so the control group is
+  correctly retained. `N_treated` / `N_nevertreated` metadata still reflect
+  the original NA pattern.
+
+- **`method = "sunab"` dropped the entire never-treated control group**:
+  `fixest::sunab()` has no NA-cohort convention and drops those rows.
+  Never-treated units are now recoded internally to a cohort far beyond the
+  sample period (the `fixest::base_stagg` convention) and retained as
+  controls. Verified numerically identical to a direct
+  `fixest::feols(y ~ sunab(...))` call using the same recoding.
+
+- **Rcpp (unit, time) lookup key**: replaced the multiplicative hash (which
+  could collide for time values above 1,000,003, e.g. Unix timestamps) with a
+  collision-free 64-bit `(unit << 32) | time` key in
+  `src/compute_att_gt.cpp`.
+
+## Improved input validation
+
+- CS: clear, actionable error when the time grid does not advance in steps of
+  1 (the `g - 1` base-period assumption), instead of the generic
+  "No ATT(g,t) estimates were computed".
+- CS: warning that names cohorts skipped because their base period
+  (`g - 1 - anticipation`) is not observed.
+- CS / SA / TWM / FLEX: fractional `time` / `timing` values now raise an error
+  instead of being silently truncated by `as.integer()` (new shared helper
+  `.assert_integerish()`).
+- SA / TWM / FLEX: warning when the requested `baseline` reference period is
+  not feasible for any cohort, in which case no period would be excluded and
+  the regression is unnormalised.
+
+## Performance
+
+- Verified on a 400,000-row staggered panel (20,000 units × 20 periods):
+  every estimator completes in roughly 1–3 s (CS bootstrap with B = 999
+  ≈ 3 s), peak memory ≈ 1.3 GB.
+- BJS: singleton-unit FE recovery vectorised (was O(#singletons × N), which
+  could take minutes on large unbalanced panels).
+- CS: event-study aggregation and bootstrap influence-function bookkeeping
+  vectorised (`match()` on keys instead of per-cohort scans).
+
+## Tests
+
+- New `tests/testthat/test-robustness.R` (19 assertions) covering all of the
+  above: ID-type invariance, time-shift invariance, control-group retention
+  (classic TWFE and sunab vs. direct fixest reference), grid-spacing errors,
+  fractional-time rejection, and BJS singleton imputation.
+
+---
+
 # fixes 0.11.1 (2026-05-30)
 
 ## Improvements

@@ -36,10 +36,30 @@ Two INFO messages appeared during the check (not warnings or notes):
 
 None (new package, not yet on CRAN).
 
-## New in this submission (0.11.1)
+## New in this submission (0.11.2)
 
 This document covers changes since v0.8.1, the last version for which
 `cran-comments.md` was updated.
+
+### Bug fixes (v0.11.2)
+
+Four silent-corruption bugs were fixed (see NEWS.md for details):
+
+- CS estimator: character/factor unit IDs were destroyed by `as.integer()`
+  coercion, producing wrong results with no error. Unit IDs are now
+  re-encoded with `match()`.
+- CS estimator: a cohort with `timing == 0` collided with the internal
+  never-treated sentinel and leaked into the control group. Time values are
+  now offset internally.
+- Classic staggered TWFE and `method = "sunab"` silently dropped all
+  never-treated rows (NA relative time / NA cohort); the control group is
+  now retained, matching the documented `NA = never treated` convention.
+- New validation: fractional `time`/`timing` rejected (previously truncated),
+  informative error for non-consecutive time grids (CS), warning for
+  infeasible `baseline` (SA/TWM/FLEX).
+
+Scalability was verified on a 400,000-row staggered panel: all estimators
+complete in 1–4 s.
 
 ### New estimators and functions (v0.9.0 – v0.11.0)
 
