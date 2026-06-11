@@ -92,18 +92,49 @@
   # SE² = s²(ΔY | G=g)/n_g + s²(ΔY | C_t)/n_C   (delta method)
 
   # ---- ATT(g,t) via Rcpp (compute_att_gt_cpp) --------------------------------
-  # Replaces the R nested loop; see REFERENCE IMPLEMENTATION below.
-  # Encoding: never-treated units get cohort value 0L in the integer vector.
-  cohort_int <- as.integer(data[[timing_chr]])
+  # Encoding for the C++ kernel:
+  #   * unit ids:    dense 1..n via match() — character, factor, and
+  #     non-integer numeric identifiers would otherwise be destroyed by
+  #     as.integer() (character -> NA collapses every unit into one).
+  #   * time/timing: must be integer-valued; both are shifted by a common
+  #     offset so every value is >= 1, freeing 0L as the never-treated
+  #     sentinel (a real cohort at time 0 would otherwise be silently
+  #     absorbed into the control group).
+  .assert_integerish(data[[time_chr]], time_chr)
+  .assert_integerish(data[[timing_chr]], timing_chr)
+
+  # Base period g - 1 - anticipation assumes a consecutive integer time grid.
+  base_periods <- cohorts - 1L - anticipation
+  if (!any(base_periods %in% all_periods)) {
+    spacing <- if (length(all_periods) > 1L) min(diff(all_periods)) else 1
+    stop("No cohort has its base period (g - 1 - anticipation) in the sample. ",
+         "The CS estimator assumes the time grid advances in steps of 1 ",
+         "(observed minimum spacing: ", spacing, "). Rescale `time` and ",
+         "`timing` to consecutive integers, e.g. ",
+         "(time - min(time)) / spacing, and re-run.")
+  }
+  if (!all(base_periods %in% all_periods)) {
+    skipped <- cohorts[!base_periods %in% all_periods]
+    warning("Cohort(s) ", paste(skipped, collapse = ", "), " skipped: ",
+            "base period (g - 1 - anticipation) not observed in the sample.",
+            call. = FALSE)
+  }
+
+  unit_int <- match(data[[unit_chr]], unique(data[[unit_chr]]))
+
+  min_val <- min(c(all_periods, cohorts))
+  offset  <- if (min_val <= 0) 1L - as.integer(min_val) else 0L
+
+  cohort_int <- as.integer(data[[timing_chr]]) + offset
   cohort_int[is.na(cohort_int)] <- 0L
 
   cpp_result <- compute_att_gt_cpp(
-    unit_id       = as.integer(data[[unit_chr]]),
-    time_id       = as.integer(data[[time_chr]]),
+    unit_id       = unit_int,
+    time_id       = as.integer(data[[time_chr]]) + offset,
     outcome       = as.numeric(data[[outcome_chr]]),
     cohort        = cohort_int,
-    cohorts       = as.integer(cohorts),
-    all_times     = as.integer(all_periods),
+    cohorts       = as.integer(cohorts) + offset,
+    all_times     = as.integer(all_periods) + offset,
     control_group = control_group,
     anticipation  = as.integer(anticipation)
   )
@@ -114,8 +145,8 @@
          "are consistent with the panel structure.")
 
   att_gt <- data.frame(
-    g             = cpp_result$g,
-    t             = cpp_result$t,
+    g             = cpp_result$g - offset,
+    t             = cpp_result$t - offset,
     relative_time = as.integer(cpp_result$t - cpp_result$g),
     estimate      = cpp_result$att,
     std_error     = cpp_result$se,
@@ -123,63 +154,6 @@
   )
   att_gt          <- att_gt[order(att_gt$g, att_gt$t), ]
   rownames(att_gt) <- NULL
-
-  # REFERENCE IMPLEMENTATION (replaced by compute_att_gt_cpp)
-  # Retained for correctness verification.
-  #
-  # att_rows <- list()
-  # for (g in cohorts) {
-  #   base_t <- g - 1L - anticipation
-  #   if (!base_t %in% all_periods) next
-  #   cohort_units <- unique(data[[unit_chr]][
-  #     !is.na(data[[timing_chr]]) & data[[timing_chr]] == g
-  #   ])
-  #   base_g <- data[data[[unit_chr]] %in% cohort_units & data[[time_chr]] == base_t,
-  #                  c(unit_chr, outcome_chr), drop = FALSE]
-  #   names(base_g)[names(base_g) == outcome_chr] <- ".y_base"
-  #   for (t in all_periods) {
-  #     if (t == base_t) next
-  #     out_g <- data[data[[unit_chr]] %in% cohort_units & data[[time_chr]] == t,
-  #                   c(unit_chr, outcome_chr), drop = FALSE]
-  #     names(out_g)[names(out_g) == outcome_chr] <- ".y_t"
-  #     mg      <- merge(out_g, base_g, by = unit_chr)
-  #     if (nrow(mg) == 0L) next
-  #     delta_g <- mg$.y_t - mg$.y_base
-  #     n_g     <- nrow(mg)
-  #     mean_g  <- mean(delta_g)
-  #     se2_g   <- if (n_g > 1L) stats::var(delta_g) / n_g else 0
-  #     if (control_group == "nevertreated") {
-  #       ctrl_units <- never_units
-  #     } else {
-  #       nyt <- (is.na(data[[timing_chr]]) | data[[timing_chr]] > t) &
-  #              (is.na(data[[timing_chr]]) | data[[timing_chr]] != g)
-  #       ctrl_units <- unique(data[[unit_chr]][nyt])
-  #     }
-  #     if (length(ctrl_units) == 0L) next
-  #     out_c <- data[data[[unit_chr]] %in% ctrl_units & data[[time_chr]] == t,
-  #                   c(unit_chr, outcome_chr), drop = FALSE]
-  #     names(out_c)[names(out_c) == outcome_chr] <- ".y_t"
-  #     base_c <- data[data[[unit_chr]] %in% ctrl_units & data[[time_chr]] == base_t,
-  #                    c(unit_chr, outcome_chr), drop = FALSE]
-  #     names(base_c)[names(base_c) == outcome_chr] <- ".y_base"
-  #     mc      <- merge(out_c, base_c, by = unit_chr)
-  #     if (nrow(mc) == 0L) next
-  #     delta_c <- mc$.y_t - mc$.y_base
-  #     n_c     <- nrow(mc)
-  #     mean_c  <- mean(delta_c)
-  #     se2_c   <- if (n_c > 1L) stats::var(delta_c) / n_c else 0
-  #     att_rows[[length(att_rows) + 1L]] <- data.frame(
-  #       g = g, t = t, relative_time = as.integer(t - g),
-  #       estimate = mean_g - mean_c, std_error = sqrt(se2_g + se2_c),
-  #       stringsAsFactors = FALSE
-  #     )
-  #   }
-  # }
-  # if (length(att_rows) == 0L)
-  #   stop("No ATT(g,t) estimates were computed. ...")
-  # att_gt <- do.call(rbind, att_rows)
-  # att_gt <- att_gt[order(att_gt$g, att_gt$t), ]
-  # rownames(att_gt) <- NULL
 
   # ---- Event-study aggregation — CS 2021, Table 1, eq. 3.4 -----------------
   # theta_es(l) = sum_{g: g+l in [min_t, max_t]} ATT(g, g+l) * w(g, l)
@@ -190,6 +164,7 @@
 
   event_times <- sort(unique(att_gt$relative_time))
   es_rows     <- list()
+  key_gt      <- paste(att_gt$g, att_gt$t, sep = "\r")  # O(1) (g,t) row lookup
 
   for (l in event_times) {
     # Cohorts for which g+l falls within the sample
@@ -197,10 +172,9 @@
     elig      <- cohorts[in_sample]
 
     # Restrict to cohorts for which ATT(g, g+l) was actually estimated
-    has_est <- vapply(elig, function(g) {
-      any(att_gt$g == g & att_gt$t == (g + l))
-    }, logical(1L))
-    elig <- elig[has_est]
+    idx  <- match(paste(elig, elig + l, sep = "\r"), key_gt)
+    elig <- elig[!is.na(idx)]
+    idx  <- idx[!is.na(idx)]
 
     if (length(elig) == 0L) next
 
@@ -209,13 +183,8 @@
     if (total == 0L) next
     w <- sz / total
 
-    theta  <- 0
-    vtheta <- 0
-    for (j in seq_along(elig)) {
-      row    <- att_gt[att_gt$g == elig[j] & att_gt$t == (elig[j] + l), ]
-      theta  <- theta  + w[j] * row$estimate
-      vtheta <- vtheta + w[j]^2 * row$std_error^2
-    }
+    theta  <- sum(w * att_gt$estimate[idx])
+    vtheta <- sum(w^2 * att_gt$std_error[idx]^2)
 
     es_rows[[length(es_rows) + 1L]] <- data.frame(
       relative_time = l,

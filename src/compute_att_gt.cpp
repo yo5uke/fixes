@@ -72,13 +72,12 @@ Rcpp::DataFrame compute_att_gt_cpp(
   int N = unit_id.size();
 
   // ---- Index observations by (unit, time) for O(1) lookup ------------------
-  // Key: unit*1000003 + time  (collision-free for typical panel sizes;
-  //      using a prime multiplier keeps the distribution uniform)
+  // Key: (unit << 32) | time  (collision-free for any pair of int32 values)
   // Value: row index in the input vectors
   std::unordered_map<long long, int> obs_index;
   obs_index.reserve(N * 2);
   for (int i = 0; i < N; ++i) {
-    long long key = (long long)unit_id[i] * 1000003LL + time_id[i];
+    long long key = (((long long)unit_id[i]) << 32) | (unsigned int)time_id[i];
     obs_index[key] = i;
   }
 
@@ -137,7 +136,7 @@ Rcpp::DataFrame compute_att_gt_cpp(
     std::unordered_map<int, double> base_g;   // unit -> Y_i(base_t)
     base_g.reserve(treat_units.size() * 2);
     for (int u : treat_units) {
-      long long key = (long long)u * 1000003LL + base_t;
+      long long key = (((long long)u) << 32) | (unsigned int)base_t;
       auto oit = obs_index.find(key);
       if (oit != obs_index.end()) base_g[u] = outcome[oit->second];
     }
@@ -153,7 +152,7 @@ Rcpp::DataFrame compute_att_gt_cpp(
         auto bit = base_g.find(u);
         if (bit == base_g.end()) continue;
 
-        long long key = (long long)u * 1000003LL + t;
+        long long key = (((long long)u) << 32) | (unsigned int)t;
         auto oit = obs_index.find(key);
         if (oit != obs_index.end())
           delta_treat.push_back(outcome[oit->second] - bit->second);
@@ -170,8 +169,8 @@ Rcpp::DataFrame compute_att_gt_cpp(
         // We do it inline here; the unordered_set lookup is O(1) per unit.
         delta_ctrl.reserve(never_set.size());
         for (int u : never_set) {
-          long long key_t    = (long long)u * 1000003LL + t;
-          long long key_base = (long long)u * 1000003LL + base_t;
+          long long key_t    = (((long long)u) << 32) | (unsigned int)t;
+          long long key_base = (((long long)u) << 32) | (unsigned int)base_t;
           auto oit_t    = obs_index.find(key_t);
           auto oit_base = obs_index.find(key_base);
           if (oit_t != obs_index.end() && oit_base != obs_index.end())
@@ -186,8 +185,8 @@ Rcpp::DataFrame compute_att_gt_cpp(
           bool is_nyt = (uc == 0 || uc > t) && (uc != g);
           if (!is_nyt) continue;
 
-          long long key_t    = (long long)u * 1000003LL + t;
-          long long key_base = (long long)u * 1000003LL + base_t;
+          long long key_t    = (((long long)u) << 32) | (unsigned int)t;
+          long long key_base = (((long long)u) << 32) | (unsigned int)base_t;
           auto oit_t    = obs_index.find(key_t);
           auto oit_base = obs_index.find(key_base);
           if (oit_t != obs_index.end() && oit_base != obs_index.end())
