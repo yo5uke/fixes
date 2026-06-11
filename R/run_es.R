@@ -708,6 +708,17 @@ run_es <- function(
     }
     timing_chr <- resolve_column(rlang::enexpr(timing), data)
 
+    # fixest::sunab() has no NA-cohort convention: rows with an NA cohort are
+    # dropped from the estimation sample, silently discarding the entire
+    # never-treated control group.  Recode never-treated units to a cohort far
+    # beyond the sample (the convention used by fixest::base_stagg), which
+    # sunab treats as never-treated controls.
+    n_na_timing_rows <- sum(is.na(data[[timing_chr]]))
+    if (n_na_timing_rows > 0L) {
+      never_code <- max(data[[time_chr]], na.rm = TRUE) + 10000
+      data[[timing_chr]][is.na(data[[timing_chr]])] <- never_code
+    }
+
     # Get sunab function from fixest namespace and make it available in the formula environment
     # This ensures sunab is accessible when feols evaluates the formula
     sunab_fn <- getFromNamespace("sunab", "fixest")
@@ -843,7 +854,9 @@ run_es <- function(
       NA_integer_
     }
     N_treat <- if (timing_chr %in% names(data)) {
-      sum(!is.na(data[[timing_chr]]))
+      # never-treated rows were recoded to `never_code` above, so count
+      # them via the pre-recode NA tally.
+      nrow(data) - n_na_timing_rows
     } else {
       NA_integer_
     }
@@ -989,6 +1002,20 @@ run_es <- function(
   }
   if (baseline < -lead_range || baseline > lag_range) {
     stop("`baseline` outside [-lead_range, lag_range].")
+  }
+
+  # N_treated/N_nevertreated metadata must reflect the original NA pattern,
+  # captured here before never-treated rows are patched below.
+  ..k_known <- !is.na(data$..k)
+
+  # Keep never-treated controls in the estimation sample.  With staggered
+  # timing their ..k is NA (timing = NA), and feols drops every row with an
+  # NA regressor — silently excluding the whole control group.  The i()
+  # dummies are interacted with `treatment` (0 on these rows), so any non-NA
+  # filler produces all-zero dummies; the baseline value is used so the rows
+  # fall in the already-excluded reference level.
+  if (staggered) {
+    data$..k[is.na(data$..k)] <- as.integer(baseline)
   }
 
   # Build formula using i()
@@ -1163,9 +1190,9 @@ run_es <- function(
   } else {
     NA_integer_
   }
-  N_treat <- sum(!is.na(data$..k))
+  N_treat <- sum(..k_known)
   N_never <- if (!is.na(N_units) && !is.null(unit_chr)) {
-    treated_by_unit <- tapply(!is.na(data$..k), data[[unit_chr]], any)
+    treated_by_unit <- tapply(..k_known, data[[unit_chr]], any)
     sum(!treated_by_unit)
   } else {
     NA_integer_
