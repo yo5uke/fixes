@@ -132,12 +132,11 @@
   # Collapse: for each unit, pick the unique non-NA timing value.
   timing_vals <- data[[timing_chr]]
   # Build unit_timing[k] = timing for the k-th position in all_units
+  # (vectorised; with duplicated positions the last row wins, matching the
+  # original loop)
   unit_timing <- rep(NA_real_, n_units)
-  for (k in seq_len(nrow(data))) {
-    if (!is.na(timing_vals[k])) {
-      unit_timing[unit_pos[k]] <- timing_vals[k]
-    }
-  }
+  ok <- !is.na(timing_vals)
+  unit_timing[unit_pos[ok]] <- timing_vals[ok]
   # unit_timing is now length n_units; NA = never-treated
 
   # ---- initialise output matrix ---------------------------------------------
@@ -252,11 +251,12 @@
     }
     w <- sz / total
 
+    key_gt <- paste(gt_index$g, gt_index$t, sep = "\r")
     for (k in seq_along(eligible_g)) {
       g_k <- eligible_g[k]
       t_k <- g_k + ell
-      col_k <- gt_index$col_idx[gt_index$g == g_k & gt_index$t == t_k]
-      if (length(col_k) != 1L) {
+      col_k <- gt_index$col_idx[match(paste(g_k, t_k, sep = "\r"), key_gt)]
+      if (is.na(col_k)) {
         next
       }
       psi_es[, j] <- psi_es[, j] + w[k] * psi_gt[, col_k]

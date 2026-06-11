@@ -22,8 +22,8 @@
 #' are demeaned within each cohort \eqn{\times} horizon cell (eq. 8), and the
 #' unit-level scores form a cluster sandwich.  The FWL projection term for
 #' untreated observations (which accounts for uncertainty in \eqn{\hat\alpha_i}
-#' and \eqn{\hat\beta_t} from Step 1) is omitted in Phase 1 as a conservative
-#' approximation; exact BJS SE deferred to Phase 2.
+#' and \eqn{\hat\beta_t} from Step 1) is omitted, making the reported SE a
+#' conservative approximation of the exact BJS SE.
 #'
 #' @param data data.frame with one row per unit-period (balanced panel).
 #' @param outcome_chr Column name (character) for the outcome variable.
@@ -117,11 +117,11 @@
 
   singleton_u <- unique(u_keys[is.na(alpha_hat[u_keys])])
   if (length(singleton_u) > 0L) {
-    for (uid in singleton_u) {
-      idx <- omega0_u_chr == uid
-      if (!any(idx)) next
-      b_sub <- beta_hat[omega0_t_chr[idx]]
-      alpha_hat[uid] <- mean(omega0[[outcome_chr]][idx] - b_sub, na.rm = TRUE)
+    sel <- omega0_u_chr %in% singleton_u
+    if (any(sel)) {
+      resid0 <- omega0[[outcome_chr]][sel] - beta_hat[omega0_t_chr[sel]]
+      means  <- tapply(resid0, omega0_u_chr[sel], mean, na.rm = TRUE)
+      alpha_hat[names(means)] <- means
     }
   }
 
@@ -158,7 +158,7 @@
 
     tau_h <- mean(h_data$.tau_hat)
 
-    # ---- SE: BJS (2024) Theorem 3, eqs. (7)-(8) — conservative Phase 1 ----
+    # ---- SE: BJS (2024) Theorem 3, eqs. (7)-(8) — conservative ------------
     # Partition treated obs at horizon h into cells by cohort g.
     # tau_tilde_{g,h} (eq. 8): cohort-horizon cell mean of tau_hat_it.
     # eps_tilde_it (treated): tau_hat_it - tau_tilde_{g(i),h}.
@@ -167,7 +167,7 @@
     #
     # Conservative approximation: the FWL projection term for untreated obs
     # (capturing uncertainty in alpha_hat_i and beta_hat_t from Step 1) is
-    # omitted here.  Exact BJS SE including that term is deferred to Phase 2.
+    # omitted here.
     h_data$.tau_tilde <- stats::ave(h_data$.tau_hat, h_data[[timing_chr]], FUN = mean)
     h_data$.eps_tilde <- h_data$.tau_hat - h_data$.tau_tilde
 
