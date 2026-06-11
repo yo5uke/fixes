@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">fixes</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -36,6 +36,34 @@
       <small>Source: <a href="https://github.com/yo5uke/fixes/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.11.2" id="fixes-0112-2026-06-11">fixes 0.11.2 (2026-06-11)<a class="anchor" aria-label="anchor" href="#fixes-0112-2026-06-11"></a></h2>
+<div class="section level3">
+<h3 id="bug-fixes-silent-corruption-class-0-11-2">Bug fixes (silent-corruption class)<a class="anchor" aria-label="anchor" href="#bug-fixes-silent-corruption-class-0-11-2"></a></h3>
+<ul><li><p><strong>CS estimator: character / factor unit IDs produced silently wrong results</strong> (<code>run_es(estimator = "cs")</code> and <code>calc_att(estimator = "cs")</code>): unit IDs were coerced with <code><a href="https://rdrr.io/r/base/integer.html" class="external-link">as.integer()</a></code>, which turns every character ID into <code>NA</code> — all units collapsed into one inside the Rcpp kernel and the ATT(g,t) table was meaningless, with no error raised. Unit IDs are now densely re-encoded with <code><a href="https://rdrr.io/r/base/match.html" class="external-link">match()</a></code>; character, factor, and arbitrary numeric IDs give results identical to integer IDs.</p></li>
+<li><p><strong>CS estimator: a cohort with <code>timing == 0</code> leaked into the control group</strong>: <code>0L</code> was the internal never-treated sentinel, so a genuine cohort first treated at time 0 (e.g., event-time-centred data) was silently used as never-treated controls. <code>time</code>/<code>timing</code> are now shifted by a common internal offset so the sentinel can never collide; results are invariant to common shifts of the time axis.</p></li>
+<li><p><strong>Classic staggered TWFE dropped the entire never-treated control group</strong> (<code>estimator = "twfe"</code>, <code>staggered = TRUE</code>): the relative-time variable is <code>NA</code> for never-treated units and <code><a href="https://lrberge.github.io/fixest/reference/feols.html" class="external-link">fixest::feols()</a></code> removes rows with NA regressors, so every control row was excluded from the estimation sample (visible only as a fixest NOTE). Those rows are now assigned the (excluded) baseline level — their event dummies are identically zero because the <code>i()</code> interaction is multiplied by <code>treatment = 0</code> — so the control group is correctly retained. <code>N_treated</code> / <code>N_nevertreated</code> metadata still reflect the original NA pattern.</p></li>
+<li><p><strong><code>method = "sunab"</code> dropped the entire never-treated control group</strong>: <code><a href="https://lrberge.github.io/fixest/reference/sunab.html" class="external-link">fixest::sunab()</a></code> has no NA-cohort convention and drops those rows. Never-treated units are now recoded internally to a cohort far beyond the sample period (the <code><a href="https://lrberge.github.io/fixest/reference/base_stagg.html" class="external-link">fixest::base_stagg</a></code> convention) and retained as controls. Verified numerically identical to a direct <code>fixest::feols(y ~ sunab(...))</code> call using the same recoding.</p></li>
+<li><p><strong>Rcpp (unit, time) lookup key</strong>: replaced the multiplicative hash (which could collide for time values above 1,000,003, e.g. Unix timestamps) with a collision-free 64-bit <code>(unit &lt;&lt; 32) | time</code> key in <code>src/compute_att_gt.cpp</code>.</p></li>
+</ul></div>
+<div class="section level3">
+<h3 id="improved-input-validation-0-11-2">Improved input validation<a class="anchor" aria-label="anchor" href="#improved-input-validation-0-11-2"></a></h3>
+<ul><li>CS: clear, actionable error when the time grid does not advance in steps of 1 (the <code>g - 1</code> base-period assumption), instead of the generic “No ATT(g,t) estimates were computed”.</li>
+<li>CS: warning that names cohorts skipped because their base period (<code>g - 1 - anticipation</code>) is not observed.</li>
+<li>CS / SA / TWM / FLEX: fractional <code>time</code> / <code>timing</code> values now raise an error instead of being silently truncated by <code><a href="https://rdrr.io/r/base/integer.html" class="external-link">as.integer()</a></code> (new shared helper <code>.assert_integerish()</code>).</li>
+<li>SA / TWM / FLEX: warning when the requested <code>baseline</code> reference period is not feasible for any cohort, in which case no period would be excluded and the regression is unnormalised.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="performance-0-11-2">Performance<a class="anchor" aria-label="anchor" href="#performance-0-11-2"></a></h3>
+<ul><li>Verified on a 400,000-row staggered panel (20,000 units × 20 periods): every estimator completes in roughly 1–3 s (CS bootstrap with B = 999 ≈ 3 s), peak memory ≈ 1.3 GB.</li>
+<li>BJS: singleton-unit FE recovery vectorised (was O(#singletons × N), which could take minutes on large unbalanced panels).</li>
+<li>CS: event-study aggregation and bootstrap influence-function bookkeeping vectorised (<code><a href="https://rdrr.io/r/base/match.html" class="external-link">match()</a></code> on keys instead of per-cohort scans).</li>
+</ul></div>
+<div class="section level3">
+<h3 id="tests-0-11-2">Tests<a class="anchor" aria-label="anchor" href="#tests-0-11-2"></a></h3>
+<ul><li>New <code>tests/testthat/test-robustness.R</code> (19 assertions) covering all of the above: ID-type invariance, time-shift invariance, control-group retention (classic TWFE and sunab vs. direct fixest reference), grid-spacing errors, fractional-time rejection, and BJS singleton imputation.</li>
+</ul><hr></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.11.1" id="fixes-0111-2026-05-30">fixes 0.11.1 (2026-05-30)<a class="anchor" aria-label="anchor" href="#fixes-0111-2026-05-30"></a></h2>
 <div class="section level3">
