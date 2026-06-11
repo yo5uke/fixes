@@ -69,7 +69,7 @@
 }
 
 # Aggregate BJS tau_it to a summary data.frame.
-# SEs are approximate (naive sample SE); cluster-robust SE deferred to v0.12.
+# SEs are approximate (naive sample SE of the unit-time effects).
 .agg_bjs <- function(bjs_out, aggregation) {
   tau_it <- bjs_out$tau_it   # all treated (i,t) obs; tau_hat = Y_it - Y_hat_it(0)
 
@@ -142,7 +142,7 @@
 #'
 #' @section Standard errors (BJS estimator):
 #' BJS SEs are approximate (naive sample variance of unit-time effects).
-#' Cluster-robust SE for BJS aggregations is planned for v0.12.
+#' Cluster-robust SEs for BJS aggregations are planned for a future release.
 #'
 #' @param data A data.frame containing panel data.
 #' @param outcome Unquoted outcome variable (name or expression, e.g., `log(y)`).

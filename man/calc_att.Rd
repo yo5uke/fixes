@@ -113,7 +113,7 @@ with \eqn{w(g,t) = n_g / \sum_{g' \le t} n_{g'}}.
 \section{Standard errors (BJS estimator)}{
 
 BJS SEs are approximate (naive sample variance of unit-time effects).
-Cluster-robust SE for BJS aggregations is planned for v0.12.
+Cluster-robust SEs for BJS aggregations are planned for a future release.
 }
 
 \seealso{
