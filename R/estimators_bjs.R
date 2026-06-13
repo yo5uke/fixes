@@ -45,6 +45,11 @@
 #'   \item{\code{n_never}}{Number of never-treated units.}
 #'   \item{\code{cohorts}}{Sorted numeric vector of cohort values.}
 #'   \item{\code{n_obs_omega0}}{Number of observations used in Step 1.}
+#'   \item{\code{n_unimputed}}{Number of treated observations whose
+#'     counterfactual could not be imputed (missing FE level) and were
+#'     therefore excluded from aggregation.}
+#'   \item{\code{n_treated_obs}}{Size of \eqn{\Omega_1} (treated observations)
+#'     before the unimputable rows were dropped.}
 #' }
 #' @noRd
 .run_bjs <- function(data,
@@ -138,6 +143,11 @@
                     n_na, 100 * n_na / nrow(omega1)),
             "due to missing FE levels; excluded from aggregation.")
 
+  # Number of treated observations that could not be imputed (missing FE level),
+  # retained for the result so callers can audit how much of Omega_1 was dropped.
+  n_unimputed <- n_na
+  n_omega1    <- nrow(omega1)
+
   omega1$.y_hat0  <- y_hat0
   omega1$.tau_hat <- omega1[[outcome_chr]] - omega1$.y_hat0
   omega1$.rel_t   <- as.integer(omega1[[time_chr]] - omega1[[timing_chr]])
@@ -218,6 +228,8 @@
     tau_it       = tau_it,
     n_never      = n_never,
     cohorts      = cohorts,
-    n_obs_omega0 = nrow(omega0)
+    n_obs_omega0 = nrow(omega0),
+    n_unimputed  = n_unimputed,
+    n_treated_obs = n_omega1
   )
 }

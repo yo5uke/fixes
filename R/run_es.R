@@ -117,6 +117,27 @@
 #' Runs an event study regression on panel data, supporting both classic (universal timing) and staggered (unit-varying timing via `sunab`).
 #' The function builds the design (lead/lag factor or `sunab`), estimates with [fixest::feols()], and returns a tidy table with metadata.
 #'
+#' @details
+#' **How relative (event) time is defined.** `run_es()` can build the event-time
+#' axis in three different ways, and in sparse or unbalanced panels (e.g. monthly
+#' surveys observed only a few times a year) they do **not** coincide:
+#'
+#' \tabular{lll}{
+#'   \strong{Method} \tab \strong{Definition} \tab \strong{How to invoke} \cr
+#'   Calendar difference (default) \tab `(time - timing) / interval` \tab `staggered = TRUE` (or scalar `timing`) \cr
+#'   Within-unit rank \tab `dense_rank(time)` within each unit \tab `time_transform = TRUE` \cr
+#'   Pre-built event time \tab supplied column, used verbatim \tab `rel_time = <col>` \cr
+#' }
+#'
+#' In a balanced panel all three agree.  When observation spacing is irregular
+#' they diverge: for a unit observed at periods `{1, 5, 9, 20}` treated at 20,
+#' the calendar difference puts period 9 at `9 - 20 = -11`, whereas a global
+#' observed-period grid (as used by `paneltools`/`fect`'s `get.cohort()`) places
+#' it two observed waves before treatment (`-2`).  To reproduce an analysis built
+#' on such a grid, pass that grid's event-time column via `rel_time` so the
+#' design matches `fixest::feols(y ~ i(rel_time, treatment, ref) | fe)` exactly.
+#' `calc_att()` uses the same calendar-difference convention as the default here.
+#'
 #' @section Key Features:
 #' - One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
 #' - Switch between Classic (factor expansion) and Staggered-SAFE (`method = "sunab"`).
@@ -144,6 +165,16 @@
 #' @param baseline Integer baseline period (default `-1`); reference period excluded from results for both `"classic"` and `"sunab"` methods.
 #' @param interval Numeric spacing of the time variable (default `1`; ignored internally for Dates).
 #' @param time_transform Logical; if `TRUE`, creates consecutive integer time within unit.
+#' @param rel_time Optional unquoted column holding a **pre-built event time**
+#'   (time relative to treatment), e.g. the `Time_to_Treatment` produced by
+#'   `paneltools`/`fect`'s `get.cohort()`.  When supplied, `run_es()` uses this
+#'   column verbatim as the event-study factor — `i(rel_time, treatment, ref =
+#'   baseline)` — instead of computing relative time internally from `time` and
+#'   `timing`.  Never-treated / control rows should be `NA`.  Requires
+#'   `estimator = "twfe"` and `method = "classic"`; cannot be combined with
+#'   `staggered = TRUE` or `time_transform = TRUE`.  This normalises the older
+#'   `time = event_time, timing = 0` idiom.  See **Details** for how this
+#'   differs from the calendar-difference and `time_transform` conventions.
 #' @param unit Unit identifier variable (required when `estimator = "cs"` or `time_transform = TRUE`); also used for metadata when supplied.
 #' @param staggered Logical; if `TRUE`, `timing` is a variable (classic) or is used by `sunab`.
 #' @param method Either `"classic"` or `"sunab"` (default: `"classic"`).
@@ -209,6 +240,7 @@ run_es <- function(
   baseline = -1L,
   interval = 1,
   time_transform = FALSE,
+  rel_time = NULL,
   unit = NULL,
   staggered = FALSE,
   method = c("classic", "sunab"),
@@ -250,6 +282,29 @@ run_es <- function(
   unit_expr <- rlang::enexpr(unit)
   if (!is.null(unit_expr)) {
     unit_chr <- resolve_column(unit_expr, data)
+  }
+
+  # ---- rel_time: pre-built event time supplied directly --------------------
+  # When the caller already holds an event-time column (e.g. the
+  # `Time_to_Treatment` produced by paneltools/fect's get.cohort, or any
+  # cross-tool construction), `rel_time` uses it verbatim as the i() factor,
+  # bypassing run_es()'s own (time - timing)/interval relative-time arithmetic.
+  # This normalises the previous `time = event_time, timing = 0` idiom.
+  rel_time_expr <- rlang::enexpr(rel_time)
+  use_rel_time  <- !is.null(rel_time_expr) &&
+    !identical(rel_time_expr, quote(NULL))
+  if (use_rel_time) {
+    if (estimator != "twfe")
+      stop("`rel_time` is only supported for `estimator = \"twfe\"` ",
+           "(the classic event-study path).")
+    if (method == "sunab")
+      stop("`rel_time` is not supported with `method = \"sunab\"`; ",
+           "pass the pre-built event time with the default classic method.")
+    if (isTRUE(staggered))
+      stop("`rel_time` cannot be combined with `staggered = TRUE`: ",
+           "it already encodes event time relative to treatment.")
+    if (isTRUE(time_transform))
+      stop("`rel_time` cannot be combined with `time_transform = TRUE`.")
   }
 
   # time transform (dense_rank within unit)
@@ -354,7 +409,8 @@ run_es <- function(
         staggered = TRUE,
         sunab_used = FALSE,
         cs_control_group = control_group,
-        att_gt = cs_out$att_gt
+        att_gt = cs_out$att_gt,
+        dropped_cohorts = cs_out$dropped_cohorts
       )
     )
 
@@ -556,7 +612,9 @@ run_es <- function(
         cluster_vars = clustervars_chr,
         staggered = TRUE,
         sunab_used = FALSE,
-        tau_it = bjs_out$tau_it
+        tau_it = bjs_out$tau_it,
+        n_unimputed = bjs_out$n_unimputed,
+        n_treated_obs = bjs_out$n_treated_obs
       ),
       bjs_lead = TRUE
     )
@@ -909,10 +967,22 @@ run_es <- function(
   }
   data[[treatment_chr]] <- tx
 
+  # rel_time and staggered both build the event-study factor (..k) from a
+  # per-row relative-time value and use i(..k, treatment, ref = baseline);
+  # non-staggered classic instead interacts absolute time with treatment.
+  staggered_design <- staggered || use_rel_time
+
   # timing
-  timing_val <- NULL
-  timing_chr <- NULL
-  if (staggered) {
+  timing_val   <- NULL
+  timing_chr   <- NULL
+  rel_time_chr <- NULL
+  if (use_rel_time) {
+    rel_time_chr <- resolve_column(rel_time_expr, data)
+    if (!is.numeric(data[[rel_time_chr]])) {
+      stop("`rel_time` must be a numeric/integer event-time column ",
+           "(time relative to treatment; controls may be NA).")
+    }
+  } else if (staggered) {
     timing_chr <- resolve_column(rlang::enexpr(timing), data)
 
     # Warn when a unit has treatment = 1 in some rows but timing = NA.
@@ -963,7 +1033,10 @@ run_es <- function(
   }
 
   # relative_time (for range calculation and staggered case)
-  if (staggered) {
+  if (use_rel_time) {
+    # Pre-built event time is used verbatim (NA on never-treated/control rows).
+    rt <- data[[rel_time_chr]]
+  } else if (staggered) {
     .must_exist(timing_chr, data)
     rt <- (data[[time_chr]] - data[[timing_chr]]) / interval
   } else {
@@ -1014,14 +1087,14 @@ run_es <- function(
   # dummies are interacted with `treatment` (0 on these rows), so any non-NA
   # filler produces all-zero dummies; the baseline value is used so the rows
   # fall in the already-excluded reference level.
-  if (staggered) {
+  if (staggered_design) {
     data$..k[is.na(data$..k)] <- as.integer(baseline)
   }
 
   # Build formula using i()
-  # For staggered: use relative time (..k)
+  # For staggered / rel_time: use relative time (..k)
   # For non-staggered: use absolute time for i(), but will convert terms to relative time later
-  if (staggered) {
+  if (staggered_design) {
     # Use i(..k, treatment, ref = baseline)
     i_formula <- paste0(
       "fixest::i(..k, ",
@@ -1111,8 +1184,8 @@ run_es <- function(
   time_values <- suppressWarnings(as.numeric(numeric_parts))
 
   # Convert to relative time
-  if (staggered) {
-    # For staggered, ..k is already relative time
+  if (staggered_design) {
+    # For staggered / rel_time, ..k is already relative time
     tidy$relative_time <- as.integer(time_values)
   } else {
     # For non-staggered, convert absolute time to relative time

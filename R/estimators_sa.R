@@ -197,6 +197,31 @@
   catt_df$col_name  <- as.character(catt_df$col_name)
   rownames(catt_df) <- NULL
 
+  # ---- Degeneracy diagnostic ------------------------------------------------
+  # With sparse / irregular time (e.g. monthly survey waves observed only a few
+  # times a year) the saturated SA regression cannot identify many cohort x
+  # period cells: fixest drops them as collinear and the surviving CATT SEs can
+  # blow up.  Either symptom makes the IW aggregate unreliable, so warn loudly.
+  frac_dropped <- (K - nrow(catt_df)) / K
+  se_pos       <- catt_df$std_error[is.finite(catt_df$std_error) &
+                                       catt_df$std_error > 0]
+  se_blowup    <- length(se_pos) > 1L &&
+    (max(se_pos) / stats::median(se_pos) > 50)
+  if (frac_dropped > 0.5 || se_blowup) {
+    msg <- paste0(
+      "SA design appears degenerate: ", round(100 * frac_dropped),
+      "% of cohort-by-period interaction terms were dropped as collinear")
+    if (se_blowup)
+      msg <- paste0(msg, " and the largest CATT standard error is ",
+                    signif(max(se_pos), 3), " (",
+                    round(max(se_pos) / stats::median(se_pos)),
+                    "x the median)")
+    warning(msg, ". With sparse or irregular time the interaction-weighted ",
+            "estimates and their SEs can be unreliable; consider a coarser ",
+            "time resolution or another estimator (e.g. \"cs\", \"bjs\").",
+            call. = FALSE)
+  }
+
   # ---- IW aggregation — SA (2021), eq. (4) ----------------------------------
   # theta_es(l) = sum_g  delta_{g,l} * w(g,l)
   # w(g,l)      = n_g / sum_{g': g'+l in [min_t,max_t]} n_{g'}

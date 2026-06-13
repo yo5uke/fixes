@@ -51,6 +51,9 @@
 #'   \item{\code{n_never}}{Number of never-treated units.}
 #'   \item{\code{cohort_sizes}}{Named integer vector: cohort -> n_units.}
 #'   \item{\code{control_group}}{The control group used (character).}
+#'   \item{\code{dropped_cohorts}}{Numeric vector of cohorts for which no
+#'     ATT(g,t) could be estimated (base period g-1 not observed), excluded
+#'     from all aggregates.}
 #' }
 #' @noRd
 .run_cs <- function(data,
@@ -113,8 +116,8 @@
          "`timing` to consecutive integers, e.g. ",
          "(time - min(time)) / spacing, and re-run.")
   }
-  if (!all(base_periods %in% all_periods)) {
-    skipped <- cohorts[!base_periods %in% all_periods]
+  skipped <- cohorts[!base_periods %in% all_periods]
+  if (length(skipped) > 0L) {
     warning("Cohort(s) ", paste(skipped, collapse = ", "), " skipped: ",
             "base period (g - 1 - anticipation) not observed in the sample.",
             call. = FALSE)
@@ -154,6 +157,22 @@
   )
   att_gt          <- att_gt[order(att_gt$g, att_gt$t), ]
   rownames(att_gt) <- NULL
+
+  # ---- Diagnose silently-dropped cohorts ------------------------------------
+  # A cohort can vanish from att_gt even when its base period exists on the
+  # global time grid: in sparse / unbalanced panels the cohort's own units (or
+  # its comparison group) may have no observation at g - 1, so no ATT(g,t) is
+  # estimated and the cohort silently disappears from the by-cohort and
+  # event-study aggregates.  Name those cohorts and expose them to the caller.
+  estimated_cohorts <- unique(att_gt$g)
+  dropped_cohorts   <- sort(setdiff(cohorts, estimated_cohorts))
+  dropped_extra     <- setdiff(dropped_cohorts, skipped)  # not already warned
+  if (length(dropped_extra) > 0L) {
+    warning("Cohort(s) ", paste(dropped_extra, collapse = ", "), " dropped: ",
+            "base period (g-1) not observed for these cohorts. ",
+            "They are excluded from the by-cohort and event-study aggregates.",
+            call. = FALSE)
+  }
 
   # ---- Event-study aggregation — CS 2021, Table 1, eq. 3.4 -----------------
   # theta_es(l) = sum_{g: g+l in [min_t, max_t]} ATT(g, g+l) * w(g, l)
@@ -211,6 +230,7 @@
     cohorts      = cohorts,
     n_never      = n_never,
     cohort_sizes = cohort_sizes,
-    control_group = control_group
+    control_group = control_group,
+    dropped_cohorts = dropped_cohorts
   )
 }

@@ -19,6 +19,7 @@ run_es(
   baseline = -1L,
   interval = 1,
   time_transform = FALSE,
+  rel_time = NULL,
   unit = NULL,
   staggered = FALSE,
   method = c("classic", "sunab"),
@@ -69,6 +70,16 @@ is emitted when units with \code{treatment = 1} also have \code{timing = NA}.}
 \item{interval}{Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).}
 
 \item{time_transform}{Logical; if \code{TRUE}, creates consecutive integer time within unit.}
+
+\item{rel_time}{Optional unquoted column holding a \strong{pre-built event time}
+(time relative to treatment), e.g. the \code{Time_to_Treatment} produced by
+\code{paneltools}/\code{fect}'s \code{get.cohort()}.  When supplied, \code{run_es()} uses this
+column verbatim as the event-study factor — \code{i(rel_time, treatment, ref = baseline)} — instead of computing relative time internally from \code{time} and
+\code{timing}.  Never-treated / control rows should be \code{NA}.  Requires
+\code{estimator = "twfe"} and \code{method = "classic"}; cannot be combined with
+\code{staggered = TRUE} or \code{time_transform = TRUE}.  This normalises the older
+\verb{time = event_time, timing = 0} idiom.  See \strong{Details} for how this
+differs from the calendar-difference and \code{time_transform} conventions.}
 
 \item{unit}{Unit identifier variable (required when \code{estimator = "cs"} or \code{time_transform = TRUE}); also used for metadata when supplied.}
 
@@ -135,6 +146,27 @@ Attributes include: \code{lead_range}, \code{lag_range}, \code{baseline}, \code{
 \description{
 Runs an event study regression on panel data, supporting both classic (universal timing) and staggered (unit-varying timing via \code{sunab}).
 The function builds the design (lead/lag factor or \code{sunab}), estimates with \code{\link[fixest:feols]{fixest::feols()}}, and returns a tidy table with metadata.
+}
+\details{
+\strong{How relative (event) time is defined.} \code{run_es()} can build the event-time
+axis in three different ways, and in sparse or unbalanced panels (e.g. monthly
+surveys observed only a few times a year) they do \strong{not} coincide:
+
+\tabular{lll}{
+\strong{Method} \tab \strong{Definition} \tab \strong{How to invoke} \cr
+Calendar difference (default) \tab \code{(time - timing) / interval} \tab \code{staggered = TRUE} (or scalar \code{timing}) \cr
+Within-unit rank \tab \code{dense_rank(time)} within each unit \tab \code{time_transform = TRUE} \cr
+Pre-built event time \tab supplied column, used verbatim \tab \verb{rel_time = <col>} \cr
+}
+
+In a balanced panel all three agree.  When observation spacing is irregular
+they diverge: for a unit observed at periods \verb{\{1, 5, 9, 20\}} treated at 20,
+the calendar difference puts period 9 at \code{9 - 20 = -11}, whereas a global
+observed-period grid (as used by \code{paneltools}/\code{fect}'s \code{get.cohort()}) places
+it two observed waves before treatment (\code{-2}).  To reproduce an analysis built
+on such a grid, pass that grid's event-time column via \code{rel_time} so the
+design matches \code{fixest::feols(y ~ i(rel_time, treatment, ref) | fe)} exactly.
+\code{calc_att()} uses the same calendar-difference convention as the default here.
 }
 \section{Key Features}{
 
