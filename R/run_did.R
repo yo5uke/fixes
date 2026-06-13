@@ -87,7 +87,9 @@
 #'   }
 #'   Attributes: `call`, `formula_str`, `outcome`, `treatment`, `timing`,
 #'   `fe`, `vcov_type`, `cluster_vars`, `conf.level`, `N`, `N_units`,
-#'   `N_treated`, `unit`, `time`.
+#'   `N_treated`, `unit`, `time`.  `N`, `N_units`, and `N_treated` describe the
+#'   *estimation* sample (after `fixest::feols()` drops rows with missing
+#'   values), matching `nobs(model)` and `broom::glance()`, not `nrow(data)`.
 #'
 #' @examples
 #' \dontrun{
@@ -315,9 +317,19 @@ run_did <- function(
   rownames(treat_rows) <- NULL
 
   # ---- metadata --------------------------------------------------------------
-  N         <- nrow(data)
-  N_units   <- if (!is.null(unit_chr)) length(unique(data[[unit_chr]])) else NA_integer_
-  N_treated <- sum(data[[treatment_chr]] == 1L, na.rm = TRUE)
+  # Report the *estimation* sample, not nrow(data): feols silently drops rows
+  # with NA in any model variable.  This mirrors run_es(), which reports
+  # nobs(model).  The fitted-sample row indices are recovered from the model's
+  # obs_selection (each element drops rows relative to the prior step).
+  used_idx <- seq_len(nrow(data))
+  os <- model$obs_selection
+  if (!is.null(os)) for (s in os) used_idx <- used_idx[s]
+
+  N         <- stats::nobs(model)
+  N_units   <- if (!is.null(unit_chr)) {
+    length(unique(data[[unit_chr]][used_idx]))
+  } else NA_integer_
+  N_treated <- sum(data[[treatment_chr]][used_idx] == 1L, na.rm = TRUE)
 
   # vcov_type: when cluster is used with default vcov, the actual SE is
   # cluster-robust; reflect that in the metadata rather than showing "HC1".

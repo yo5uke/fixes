@@ -74,7 +74,9 @@ A \code{did_result} object (named list) with elements:
 }
 Attributes: \code{call}, \code{formula_str}, \code{outcome}, \code{treatment}, \code{timing},
 \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{conf.level}, \code{N}, \code{N_units},
-\code{N_treated}, \code{unit}, \code{time}.
+\code{N_treated}, \code{unit}, \code{time}.  \code{N}, \code{N_units}, and \code{N_treated} describe the
+\emph{estimation} sample (after \code{fixest::feols()} drops rows with missing
+values), matching \code{nobs(model)} and \code{broom::glance()}, not \code{nrow(data)}.
 }
 \description{
 Estimates a classic difference-in-differences model of the form
