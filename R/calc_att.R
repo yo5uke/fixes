@@ -133,6 +133,11 @@
 #' event-study curve (dynamic effects by relative time), and `calc_att()` when
 #' you want aggregated ATT estimates that collapse the time dimension.
 #'
+#' The result has `broom::tidy()` and `broom::glance()` methods, so it can be
+#' passed to `modelsummary::modelsummary()` (rendered with `tinytable`) to build
+#' a publication table — including stacking several estimators (e.g. [run_did()]
+#' TWFE, CS, and BJS) side by side in one table.
+#'
 #' @section Aggregation formulas (CS estimator):
 #' - **simple**: \eqn{\theta = \sum_g (n_g/n_{treated}) \cdot \overline{ATT(g,\cdot)}}
 #'   where \eqn{\overline{ATT(g,\cdot)}} is the mean over post-treatment periods.
@@ -251,8 +256,9 @@ calc_att <- function(
     agg_df     <- .agg_cs(cs_out, aggregation, conf.level)
     n_treated  <- sum(cs_out$cohort_sizes)
     n_never    <- cs_out$n_never
-    extra_attrs <- list(control_group = control_group,
-                        att_gt        = cs_out$att_gt)
+    extra_attrs <- list(control_group   = control_group,
+                        att_gt          = cs_out$att_gt,
+                        dropped_cohorts = cs_out$dropped_cohorts)
 
   } else {  # bjs
     bjs_out    <- .run_bjs(data, outcome_chr, timing_chr, time_chr, unit_chr,
@@ -260,7 +266,9 @@ calc_att <- function(
     agg_df     <- .agg_bjs(bjs_out, aggregation)
     n_treated  <- length(unique(bjs_out$tau_it$unit))
     n_never    <- bjs_out$n_never
-    extra_attrs <- list(tau_it = bjs_out$tau_it)
+    extra_attrs <- list(tau_it       = bjs_out$tau_it,
+                        n_unimputed  = bjs_out$n_unimputed,
+                        n_treated_obs = bjs_out$n_treated_obs)
   }
 
   agg_df <- .finalize_att(agg_df, conf.level)

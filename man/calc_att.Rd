@@ -98,6 +98,11 @@ aggregated to a single summary effect (\code{"simple"}), per-cohort effects
 This function complements \code{\link[=run_es]{run_es()}}: use \code{run_es()} when you want a full
 event-study curve (dynamic effects by relative time), and \code{calc_att()} when
 you want aggregated ATT estimates that collapse the time dimension.
+
+The result has \code{broom::tidy()} and \code{broom::glance()} methods, so it can be
+passed to \code{modelsummary::modelsummary()} (rendered with \code{tinytable}) to build
+a publication table — including stacking several estimators (e.g. \code{\link[=run_did]{run_did()}}
+TWFE, CS, and BJS) side by side in one table.
 }
 \section{Aggregation formulas (CS estimator)}{
 
