@@ -1,8 +1,8 @@
 Package: fixes
 Type: Package
 Title: Staggered DiD Tools: Event Studies and ATT Aggregation
-Version: 0.11.2
-Date: 2026-06-11
+Version: 0.11.2.9000
+Date: 2026-06-13
 Authors@R: c(
     person(
       "Yosuke", "Abe",

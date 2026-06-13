@@ -1,3 +1,50 @@
+# fixes 0.11.3 (development)
+
+## Bug fixes
+
+- **`run_did()` reported `nrow(data)` instead of the estimation sample size.**
+  `attr(., "N")` and `N_treated` (and the printed "N = … obs") counted all
+  rows of `data`, including those `fixest::feols()` drops for missing values,
+  disagreeing with `nobs(model)`, `broom::glance()`, and `run_es()` (which
+  already report the fitted sample). `N`, `N_units`, and `N_treated` now
+  describe the estimation sample, recovered from the model's `obs_selection`.
+  On data without missing values the numbers are unchanged.
+
+## New features
+
+- **`calc_att()` results can now be tabulated.** `att_result` gains
+  `broom::tidy()` and `broom::glance()` methods, so aggregated ATTs (overall,
+  by-cohort, or by-time; CS or BJS) can be passed to
+  `modelsummary::modelsummary()` and rendered with `tinytable`. Several
+  estimators — e.g. `run_did()` TWFE, CS, and BJS — can be stacked side by side
+  in one table. The `term` column is derived from the aggregation type
+  (`"ATT"`, `"Cohort <g>"`, `"Time <t>"`) so rows align across estimators.
+
+- **`run_es(..., rel_time = <col>)`**: pass a pre-built event-time column (time
+  relative to treatment) — e.g. the `Time_to_Treatment` from
+  `paneltools`/`fect`'s `get.cohort()` — and `run_es()` uses it verbatim as the
+  event-study factor (`i(rel_time, treatment, ref = baseline)`) instead of
+  computing relative time from `time`/`timing`. This normalises the previous
+  `time = event_time, timing = 0` idiom and, unlike that idiom, keeps
+  never-treated controls (`NA` rel_time) in the estimation sample. Requires
+  `estimator = "twfe"` and `method = "classic"`; the default calendar-difference
+  behaviour is unchanged. See the new **Details** section of `?run_es` for the
+  three relative-time conventions (calendar difference, within-unit rank,
+  pre-built) and when they diverge in sparse/unbalanced panels.
+
+## Diagnostics
+
+- **CS** now names cohorts that are silently dropped because their base period
+  `g-1` is not observed (a real hazard in sparse panels, where a cohort can
+  vanish from the by-cohort and event-study aggregates), and exposes them as
+  `attr(result, "dropped_cohorts")` on both `run_es()` and `calc_att()`.
+- **SA** warns when the saturated design is degenerate (a large share of
+  cohort×period interactions dropped as collinear, or implausibly large CATT
+  standard errors), which is easy to miss with sparse/irregular time.
+- **BJS** now reports `attr(result, "n_unimputed")` (and `n_treated_obs`): the
+  number of treated observations whose counterfactual could not be imputed and
+  were excluded from aggregation, on both `run_es()` and `calc_att()`.
+
 # fixes 0.11.2 (2026-06-11)
 
 ## Bug fixes (silent-corruption class)
