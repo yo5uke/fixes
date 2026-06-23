@@ -160,6 +160,16 @@ a full event-study curve (dynamic effects by relative time), and
 `calc_att()` when you want aggregated ATT estimates that collapse the
 time dimension.
 
+The result has
+[`broom::tidy()`](https://generics.r-lib.org/reference/tidy.html) and
+[`broom::glance()`](https://generics.r-lib.org/reference/glance.html)
+methods, so it can be passed to
+[`modelsummary::modelsummary()`](https://modelsummary.com/man/modelsummary.html)
+(rendered with `tinytable`) to build a publication table — including
+stacking several estimators (e.g.
+[`run_did()`](https://yo5uke.com/fixes/reference/run_did.md) TWFE, CS,
+and BJS) side by side in one table.
+
 ## Aggregation formulas (CS estimator)
 
 - **simple**: \\\theta = \sum_g (n_g/n\_{treated}) \cdot

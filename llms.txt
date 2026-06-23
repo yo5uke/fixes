@@ -643,6 +643,16 @@ broom and ggplot2 integration for result objects.
 
   Glance at a `did_result` object
 
+- [`tidy(`*`<att_result>`*`)`](https://yo5uke.com/fixes/reference/tidy.att_result.md)
+  :
+
+  Tidy an `att_result` object
+
+- [`glance.att_result()`](https://yo5uke.com/fixes/reference/glance.att_result.md)
+  :
+
+  Glance at an `att_result` object
+
 # Articles
 
 ### Get started

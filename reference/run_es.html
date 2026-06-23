@@ -9,7 +9,7 @@ The function builds the design (lead/lag factor or sunab), estimates with fixest
 
     <a class="navbar-brand me-2" href="../index.html">fixes</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -61,6 +61,7 @@ The function builds the design (lead/lag factor or <code>sunab</code>), estimate
 <span>  baseline <span class="op">=</span> <span class="op">-</span><span class="fl">1L</span>,</span>
 <span>  interval <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  time_transform <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  rel_time <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  unit <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  staggered <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"classic"</span>, <span class="st">"sunab"</span><span class="op">)</span>,</span>
@@ -140,6 +141,18 @@ is emitted when units with <code>treatment = 1</code> also have <code>timing = N
 
 <dt id="arg-time-transform">time_transform<a class="anchor" aria-label="anchor" href="#arg-time-transform"></a></dt>
 <dd><p>Logical; if <code>TRUE</code>, creates consecutive integer time within unit.</p></dd>
+
+
+<dt id="arg-rel-time">rel_time<a class="anchor" aria-label="anchor" href="#arg-rel-time"></a></dt>
+<dd><p>Optional unquoted column holding a <strong>pre-built event time</strong>
+(time relative to treatment), e.g. the <code>Time_to_Treatment</code> produced by
+<code>paneltools</code>/<code>fect</code>'s <code>get.cohort()</code>.  When supplied, <code>run_es()</code> uses this
+column verbatim as the event-study factor — <code>i(rel_time, treatment, ref = baseline)</code> — instead of computing relative time internally from <code>time</code> and
+<code>timing</code>.  Never-treated / control rows should be <code>NA</code>.  Requires
+<code>estimator = "twfe"</code> and <code>method = "classic"</code>; cannot be combined with
+<code>staggered = TRUE</code> or <code>time_transform = TRUE</code>.  This normalises the older
+<code>time = event_time, timing = 0</code> idiom.  See <strong>Details</strong> for how this
+differs from the calendar-difference and <code>time_transform</code> conventions.</p></dd>
 
 
 <dt id="arg-unit">unit<a class="anchor" aria-label="anchor" href="#arg-unit"></a></dt>
@@ -230,6 +243,20 @@ Default <code>FALSE</code>.</p></dd>
 <li><p><code>relative_time</code> (integer; 0 = event), <code>is_baseline</code> (logical; marks the reference period)</p></li>
 </ul><p>Attributes include: <code>lead_range</code>, <code>lag_range</code>, <code>baseline</code>, <code>interval</code>, <code>call</code>, <code>model_formula</code>, <code>conf.level</code>,
 <code>N</code>, <code>N_units</code>, <code>N_treated</code>, <code>N_nevertreated</code>, <code>fe</code>, <code>vcov_type</code>, <code>cluster_vars</code>, <code>staggered</code>, <code>sunab_used</code>.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p><strong>How relative (event) time is defined.</strong> <code>run_es()</code> can build the event-time
+axis in three different ways, and in sparse or unbalanced panels (e.g. monthly
+surveys observed only a few times a year) they do <strong>not</strong> coincide:</p>
+<table class="table table"><tr><td><strong>Method</strong></td><td><strong>Definition</strong></td><td><strong>How to invoke</strong></td></tr><tr><td>Calendar difference (default)</td><td><code>(time - timing) / interval</code></td><td><code>staggered = TRUE</code> (or scalar <code>timing</code>)</td></tr><tr><td>Within-unit rank</td><td><code>dense_rank(time)</code> within each unit</td><td><code>time_transform = TRUE</code></td></tr><tr><td>Pre-built event time</td><td>supplied column, used verbatim</td><td><code>rel_time = &lt;col&gt;</code></td></tr></table><p>In a balanced panel all three agree.  When observation spacing is irregular
+they diverge: for a unit observed at periods <code>{1, 5, 9, 20}</code> treated at 20,
+the calendar difference puts period 9 at <code>9 - 20 = -11</code>, whereas a global
+observed-period grid (as used by <code>paneltools</code>/<code>fect</code>'s <code>get.cohort()</code>) places
+it two observed waves before treatment (<code>-2</code>).  To reproduce an analysis built
+on such a grid, pass that grid's event-time column via <code>rel_time</code> so the
+design matches <code>fixest::feols(y ~ i(rel_time, treatment, ref) | fe)</code> exactly.
+<code><a href="calc_att.html">calc_att()</a></code> uses the same calendar-difference convention as the default here.</p>
     </div>
     <div class="section level2">
     <h2 id="key-features">Key Features<a class="anchor" aria-label="anchor" href="#key-features"></a></h2>

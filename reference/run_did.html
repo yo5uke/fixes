@@ -39,7 +39,7 @@ event-study estimates use run_es()."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">fixes</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -192,7 +192,9 @@ Ignored in favour of cluster-robust SE when <code>cluster</code> is supplied and
 
 </dl><p>Attributes: <code>call</code>, <code>formula_str</code>, <code>outcome</code>, <code>treatment</code>, <code>timing</code>,
 <code>fe</code>, <code>vcov_type</code>, <code>cluster_vars</code>, <code>conf.level</code>, <code>N</code>, <code>N_units</code>,
-<code>N_treated</code>, <code>unit</code>, <code>time</code>.</p>
+<code>N_treated</code>, <code>unit</code>, <code>time</code>.  <code>N</code>, <code>N_units</code>, and <code>N_treated</code> describe the
+<em>estimation</em> sample (after <code><a href="https://lrberge.github.io/fixest/reference/feols.html" class="external-link">fixest::feols()</a></code> drops rows with missing
+values), matching <code>nobs(model)</code> and <code><a href="https://generics.r-lib.org/reference/glance.html" class="external-link">broom::glance()</a></code>, not <code>nrow(data)</code>.</p>
     </div>
 
     <div class="section level2">

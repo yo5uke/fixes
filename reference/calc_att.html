@@ -13,7 +13,7 @@ aggregated to a single summary effect (&quot;simple&quot;), per-cohort effects
 
     <a class="navbar-brand me-2" href="../index.html">fixes</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -193,6 +193,10 @@ raw ATT(g,t) table), <code>tau_it</code> (BJS unit-time effects table).</p>
     <p>This function complements <code><a href="run_es.html">run_es()</a></code>: use <code><a href="run_es.html">run_es()</a></code> when you want a full
 event-study curve (dynamic effects by relative time), and <code>calc_att()</code> when
 you want aggregated ATT estimates that collapse the time dimension.</p>
+<p>The result has <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">broom::tidy()</a></code> and <code><a href="https://generics.r-lib.org/reference/glance.html" class="external-link">broom::glance()</a></code> methods, so it can be
+passed to <code><a href="https://modelsummary.com/man/modelsummary.html" class="external-link">modelsummary::modelsummary()</a></code> (rendered with <code>tinytable</code>) to build
+a publication table — including stacking several estimators (e.g. <code><a href="run_did.html">run_did()</a></code>
+TWFE, CS, and BJS) side by side in one table.</p>
     </div>
     <div class="section level2">
     <h2 id="aggregation-formulas-cs-estimator-">Aggregation formulas (CS estimator)<a class="anchor" aria-label="anchor" href="#aggregation-formulas-cs-estimator-"></a></h2>

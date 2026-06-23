@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">fixes</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.11.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -37,7 +37,29 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="0.11.2" id="fixes-0112-2026-06-11">fixes 0.11.2 (2026-06-11)<a class="anchor" aria-label="anchor" href="#fixes-0112-2026-06-11"></a></h2>
+<h2 class="pkg-version" data-toc-text="0.11.3" id="fixes-0113-development">fixes 0.11.3 (development)<a class="anchor" aria-label="anchor" href="#fixes-0113-development"></a></h2>
+<div class="section level3">
+<h3 id="bug-fixes-0-11-3">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-11-3"></a></h3>
+<ul><li>
+<strong><code><a href="../reference/run_did.html">run_did()</a></code> reported <code>nrow(data)</code> instead of the estimation sample size.</strong> <code>attr(., "N")</code> and <code>N_treated</code> (and the printed “N = … obs”) counted all rows of <code>data</code>, including those <code><a href="https://lrberge.github.io/fixest/reference/feols.html" class="external-link">fixest::feols()</a></code> drops for missing values, disagreeing with <code>nobs(model)</code>, <code><a href="https://generics.r-lib.org/reference/glance.html" class="external-link">broom::glance()</a></code>, and <code><a href="../reference/run_es.html">run_es()</a></code> (which already report the fitted sample). <code>N</code>, <code>N_units</code>, and <code>N_treated</code> now describe the estimation sample, recovered from the model’s <code>obs_selection</code>. On data without missing values the numbers are unchanged.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="new-features-0-11-3">New features<a class="anchor" aria-label="anchor" href="#new-features-0-11-3"></a></h3>
+<ul><li><p><strong><code><a href="../reference/calc_att.html">calc_att()</a></code> results can now be tabulated.</strong> <code>att_result</code> gains <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">broom::tidy()</a></code> and <code><a href="https://generics.r-lib.org/reference/glance.html" class="external-link">broom::glance()</a></code> methods, so aggregated ATTs (overall, by-cohort, or by-time; CS or BJS) can be passed to <code><a href="https://modelsummary.com/man/modelsummary.html" class="external-link">modelsummary::modelsummary()</a></code> and rendered with <code>tinytable</code>. Several estimators — e.g. <code><a href="../reference/run_did.html">run_did()</a></code> TWFE, CS, and BJS — can be stacked side by side in one table. The <code>term</code> column is derived from the aggregation type (<code>"ATT"</code>, <code>"Cohort &lt;g&gt;"</code>, <code>"Time &lt;t&gt;"</code>) so rows align across estimators.</p></li>
+<li><p><strong><code>run_es(..., rel_time = &lt;col&gt;)</code></strong>: pass a pre-built event-time column (time relative to treatment) — e.g. the <code>Time_to_Treatment</code> from <code>paneltools</code>/<code>fect</code>’s <code>get.cohort()</code> — and <code><a href="../reference/run_es.html">run_es()</a></code> uses it verbatim as the event-study factor (<code>i(rel_time, treatment, ref = baseline)</code>) instead of computing relative time from <code>time</code>/<code>timing</code>. This normalises the previous <code>time = event_time, timing = 0</code> idiom and, unlike that idiom, keeps never-treated controls (<code>NA</code> rel_time) in the estimation sample. Requires <code>estimator = "twfe"</code> and <code>method = "classic"</code>; the default calendar-difference behaviour is unchanged. See the new <strong>Details</strong> section of <code><a href="../reference/run_es.html">?run_es</a></code> for the three relative-time conventions (calendar difference, within-unit rank, pre-built) and when they diverge in sparse/unbalanced panels.</p></li>
+</ul></div>
+<div class="section level3">
+<h3 id="diagnostics-0-11-3">Diagnostics<a class="anchor" aria-label="anchor" href="#diagnostics-0-11-3"></a></h3>
+<ul><li>
+<strong>CS</strong> now names cohorts that are silently dropped because their base period <code>g-1</code> is not observed (a real hazard in sparse panels, where a cohort can vanish from the by-cohort and event-study aggregates), and exposes them as <code>attr(result, "dropped_cohorts")</code> on both <code><a href="../reference/run_es.html">run_es()</a></code> and <code><a href="../reference/calc_att.html">calc_att()</a></code>.</li>
+<li>
+<strong>SA</strong> warns when the saturated design is degenerate (a large share of cohort×period interactions dropped as collinear, or implausibly large CATT standard errors), which is easy to miss with sparse/irregular time.</li>
+<li>
+<strong>BJS</strong> now reports <code>attr(result, "n_unimputed")</code> (and <code>n_treated_obs</code>): the number of treated observations whose counterfactual could not be imputed and were excluded from aggregation, on both <code><a href="../reference/run_es.html">run_es()</a></code> and <code><a href="../reference/calc_att.html">calc_att()</a></code>.</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.11.2" id="fixes-0112-2026-06-11">fixes 0.11.2 (2026-06-11)<a class="anchor" aria-label="anchor" href="#fixes-0112-2026-06-11"></a></h2><p class="text-muted">CRAN release: 2026-06-11</p>
 <div class="section level3">
 <h3 id="bug-fixes-silent-corruption-class-0-11-2">Bug fixes (silent-corruption class)<a class="anchor" aria-label="anchor" href="#bug-fixes-silent-corruption-class-0-11-2"></a></h3>
 <ul><li><p><strong>CS estimator: character / factor unit IDs produced silently wrong results</strong> (<code>run_es(estimator = "cs")</code> and <code>calc_att(estimator = "cs")</code>): unit IDs were coerced with <code><a href="https://rdrr.io/r/base/integer.html" class="external-link">as.integer()</a></code>, which turns every character ID into <code>NA</code> — all units collapsed into one inside the Rcpp kernel and the ATT(g,t) table was meaningless, with no error raised. Unit IDs are now densely re-encoded with <code><a href="https://rdrr.io/r/base/match.html" class="external-link">match()</a></code>; character, factor, and arbitrary numeric IDs give results identical to integer IDs.</p></li>

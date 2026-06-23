@@ -24,6 +24,7 @@ run_es(
   baseline = -1L,
   interval = 1,
   time_transform = FALSE,
+  rel_time = NULL,
   unit = NULL,
   staggered = FALSE,
   method = c("classic", "sunab"),
@@ -115,6 +116,20 @@ run_es(
 - time_transform:
 
   Logical; if `TRUE`, creates consecutive integer time within unit.
+
+- rel_time:
+
+  Optional unquoted column holding a **pre-built event time** (time
+  relative to treatment), e.g. the `Time_to_Treatment` produced by
+  `paneltools`/`fect`'s `get.cohort()`. When supplied, `run_es()` uses
+  this column verbatim as the event-study factor —
+  `i(rel_time, treatment, ref = baseline)` — instead of computing
+  relative time internally from `time` and `timing`. Never-treated /
+  control rows should be `NA`. Requires `estimator = "twfe"` and
+  `method = "classic"`; cannot be combined with `staggered = TRUE` or
+  `time_transform = TRUE`. This normalises the older
+  `time = event_time, timing = 0` idiom. See **Details** for how this
+  differs from the calendar-difference and `time_transform` conventions.
 
 - unit:
 
@@ -215,6 +230,31 @@ Attributes include: `lead_range`, `lag_range`, `baseline`, `interval`,
 `call`, `model_formula`, `conf.level`, `N`, `N_units`, `N_treated`,
 `N_nevertreated`, `fe`, `vcov_type`, `cluster_vars`, `staggered`,
 `sunab_used`.
+
+## Details
+
+**How relative (event) time is defined.** `run_es()` can build the
+event-time axis in three different ways, and in sparse or unbalanced
+panels (e.g. monthly surveys observed only a few times a year) they do
+**not** coincide:
+
+|  |  |  |
+|----|----|----|
+| **Method** | **Definition** | **How to invoke** |
+| Calendar difference (default) | `(time - timing) / interval` | `staggered = TRUE` (or scalar `timing`) |
+| Within-unit rank | `dense_rank(time)` within each unit | `time_transform = TRUE` |
+| Pre-built event time | supplied column, used verbatim | `rel_time = <col>` |
+
+In a balanced panel all three agree. When observation spacing is
+irregular they diverge: for a unit observed at periods `{1, 5, 9, 20}`
+treated at 20, the calendar difference puts period 9 at `9 - 20 = -11`,
+whereas a global observed-period grid (as used by `paneltools`/`fect`'s
+`get.cohort()`) places it two observed waves before treatment (`-2`). To
+reproduce an analysis built on such a grid, pass that grid's event-time
+column via `rel_time` so the design matches
+`fixest::feols(y ~ i(rel_time, treatment, ref) | fe)` exactly.
+[`calc_att()`](https://yo5uke.com/fixes/reference/calc_att.md) uses the
+same calendar-difference convention as the default here.
 
 ## Key Features
 

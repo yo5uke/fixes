@@ -133,7 +133,12 @@ A `did_result` object (named list) with elements:
 
 Attributes: `call`, `formula_str`, `outcome`, `treatment`, `timing`,
 `fe`, `vcov_type`, `cluster_vars`, `conf.level`, `N`, `N_units`,
-`N_treated`, `unit`, `time`.
+`N_treated`, `unit`, `time`. `N`, `N_units`, and `N_treated` describe
+the *estimation* sample (after
+[`fixest::feols()`](https://lrberge.github.io/fixest/reference/feols.html)
+drops rows with missing values), matching `nobs(model)` and
+[`broom::glance()`](https://generics.r-lib.org/reference/glance.html),
+not `nrow(data)`.
 
 ## Examples
 
