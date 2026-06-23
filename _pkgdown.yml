@@ -42,6 +42,8 @@ reference:
       - autoplot.es_result
       - tidy.did_result
       - glance.did_result
+      - tidy.att_result
+      - glance.att_result
 
 articles:
   - title: Get started
