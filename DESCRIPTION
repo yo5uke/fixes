@@ -25,7 +25,8 @@ Imports:
     tibble,
     rlang,
     Rcpp,
-    scales
+    scales,
+    parallel
 License: MIT + file LICENSE
 Encoding: UTF-8
 Suggests:

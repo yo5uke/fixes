@@ -79,6 +79,73 @@ build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key) {
     .Call(`_fixes_build_cov_interactions_cpp`, cov_mat, ind_mat, group_key)
 }
 
+#' K-way fixed-effects demeaning by alternating projections
+#'
+#' Demeans each column of \code{M} with respect to all fixed-effect
+#' dimensions simultaneously (Gauss-Seidel sweeps over the FE dimensions
+#' until the largest subtracted group mean falls below \code{tol} times the
+#' column scale). With a single FE dimension one sweep is exact.
+#'
+#' Columns are independent, so they are distributed over OpenMP threads;
+#' the per-column arithmetic is unchanged by the thread count, making the
+#' result bit-identical for any \code{nthreads}.
+#'
+#' \code{fe_ids} must contain dense 0-based level indices per dimension and
+#' the rows must already form the final estimation sample (NA rows and
+#' singleton FE levels removed by the caller, see \code{.fit_fe_ols()}).
+#'
+#' @param M Numeric matrix (N x C): columns to demean (outcome + regressors).
+#' @param fe_ids Integer matrix (N x Q): 0-based FE level index per dimension.
+#' @param n_levels Integer vector (length Q): number of levels per dimension.
+#' @param tol Relative convergence tolerance on subtracted group means.
+#' @param max_iter Maximum number of full sweeps per column.
+#' @param nthreads Number of OpenMP threads (ignored without OpenMP).
+#'
+#' @return A list with \code{M} (demeaned copy) and \code{converged}.
+#'
+#' @noRd
+demean_kway_cpp <- function(M, fe_ids, n_levels, tol, max_iter, nthreads) {
+    .Call(`_fixes_demean_kway_cpp`, M, fe_ids, n_levels, tol, max_iter, nthreads)
+}
+
+#' Sequential Cholesky with keep-first column dropping
+#'
+#' In-place C++ counterpart of the previous R implementation in
+#' \code{.chol_seq_drop()}: columns of \code{XtX} are processed left to
+#' right; a column is dropped when its diagonal is numerically zero
+#' relative to \code{d_pre} (absorbed by the FEs) or when its residual
+#' diagonal after projecting on the previously kept columns falls below
+#' \code{tol} times its own diagonal (collinear with kept columns).
+#'
+#' @param XtX Symmetric cross-product matrix (K x K).
+#' @param d_pre Numeric vector (length K): pre-demeaning column scales.
+#' @param tol Relative drop tolerance.
+#'
+#' @return A list with \code{kept} (1-based indices of kept columns) and
+#'   \code{R} (upper-triangular Cholesky factor of the kept block).
+#'
+#' @noRd
+chol_seq_drop_cpp <- function(XtX, d_pre, tol) {
+    .Call(`_fixes_chol_seq_drop_cpp`, XtX, d_pre, tol)
+}
+
+#' Symmetric cross product M'M with OpenMP column parallelism
+#'
+#' Computes \code{crossprod(M)} with a fixed per-entry accumulation order,
+#' so the result is bit-identical for any thread count. Columns of the
+#' output are distributed over threads; the inner accumulation processes
+#' the left columns in blocks of four to reduce memory traffic.
+#'
+#' @param M Numeric matrix (N x C).
+#' @param nthreads Number of OpenMP threads (ignored without OpenMP).
+#'
+#' @return C x C numeric matrix M'M (no dimnames).
+#'
+#' @noRd
+crossprod_omp_cpp <- function(M, nthreads) {
+    .Call(`_fixes_crossprod_omp_cpp`, M, nthreads)
+}
+
 #' Alternating-projections solver for a two-way fixed-effects model
 #'
 #' Solves \eqn{Y = \alpha_{unit} + \beta_{time} + \varepsilon} by

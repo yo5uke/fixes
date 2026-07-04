@@ -56,6 +56,47 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// demean_kway_cpp
+List demean_kway_cpp(NumericMatrix M, IntegerMatrix fe_ids, IntegerVector n_levels, double tol, int max_iter, int nthreads);
+RcppExport SEXP _fixes_demean_kway_cpp(SEXP MSEXP, SEXP fe_idsSEXP, SEXP n_levelsSEXP, SEXP tolSEXP, SEXP max_iterSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type M(MSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type fe_ids(fe_idsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type n_levels(n_levelsSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(demean_kway_cpp(M, fe_ids, n_levels, tol, max_iter, nthreads));
+    return rcpp_result_gen;
+END_RCPP
+}
+// chol_seq_drop_cpp
+List chol_seq_drop_cpp(NumericMatrix XtX, NumericVector d_pre, double tol);
+RcppExport SEXP _fixes_chol_seq_drop_cpp(SEXP XtXSEXP, SEXP d_preSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type XtX(XtXSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type d_pre(d_preSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(chol_seq_drop_cpp(XtX, d_pre, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
+// crossprod_omp_cpp
+NumericMatrix crossprod_omp_cpp(NumericMatrix M, int nthreads);
+RcppExport SEXP _fixes_crossprod_omp_cpp(SEXP MSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type M(MSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(crossprod_omp_cpp(M, nthreads));
+    return rcpp_result_gen;
+END_RCPP
+}
 // solve_fe_2way_cpp
 List solve_fe_2way_cpp(NumericVector y, IntegerVector unit_id, IntegerVector time_id, int n_unit, int n_time, double tol, int max_iter);
 RcppExport SEXP _fixes_solve_fe_2way_cpp(SEXP ySEXP, SEXP unit_idSEXP, SEXP time_idSEXP, SEXP n_unitSEXP, SEXP n_timeSEXP, SEXP tolSEXP, SEXP max_iterSEXP) {
@@ -112,6 +153,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
     {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 3},
+    {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 6},
+    {"_fixes_chol_seq_drop_cpp", (DL_FUNC) &_fixes_chol_seq_drop_cpp, 3},
+    {"_fixes_crossprod_omp_cpp", (DL_FUNC) &_fixes_crossprod_omp_cpp, 2},
     {"_fixes_solve_fe_2way_cpp", (DL_FUNC) &_fixes_solve_fe_2way_cpp, 7},
     {"_fixes_build_indicator_matrix_cpp", (DL_FUNC) &_fixes_build_indicator_matrix_cpp, 4},
     {"_fixes_aggregate_iw_cpp", (DL_FUNC) &_fixes_aggregate_iw_cpp, 10},
