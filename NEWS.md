@@ -1,4 +1,4 @@
-# fixes 0.11.3 (development)
+# fixes 0.12.0 (2026-07-05)
 
 ## Bug fixes
 
@@ -44,6 +44,41 @@
 - **BJS** now reports `attr(result, "n_unimputed")` (and `n_treated_obs`): the
   number of treated observations whose counterfactual could not be imputed and
   were excluded from aggregation, on both `run_es()` and `calc_att()`.
+
+## Internals — reduced `fixest` dependency
+
+The long-term plan of trimming the `fixest` dependency (see `CLAUDE.md`)
+begins in this release. Two internal engines now replace `fixest::feols()`
+in most estimators; **all user-facing APIs, output columns, and numerics are
+unchanged** — every change here is verified against the previous
+`fixest`-based results to numerical agreement (`tolerance = 1e-6`, typically
+much closer).
+
+- **BJS Step 1** (fixed-effects nuisance regression) is now estimated by an
+  internal alternating-projections solver (`src/fe_solver.cpp`) instead of
+  `fixest::feols(y ~ 0 | unit + time)` + `fixest::fixef()`. It reproduces
+  `fixest`'s estimation sample exactly, including the iterative removal of
+  singleton fixed-effect levels (dropping one singleton can create another).
+- **SA, TWM, FLEX, and `compute_contamination_weights()`** now run their
+  saturated cohort × period regressions through a new internal FE-OLS engine
+  (`R/fe_ols.R`, `src/demean_kway.cpp`, `src/fe_ols_kernels.cpp`): k-way
+  fixed-effects demeaning, keep-first collinearity dropping, and iid /
+  heteroskedasticity-robust (HC1) / one-way cluster-robust standard errors
+  that reproduce `fixest`'s default small-sample corrections exactly
+  (`ssc(adj = TRUE, cluster.adj = TRUE)`, nested-fixed-effect accounting).
+  Requests the internal engine cannot reproduce exactly — multi-way
+  clustering, custom `vcov_args`, or fixed-effect specifications that are not
+  plain columns — are transparently delegated to `fixest`, so every code
+  path keeps returning identical results.
+- The regressions are parallelised with OpenMP (falls back to sequential
+  execution where OpenMP is unavailable) and are within a few percent of
+  `fixest`'s multi-threaded speed on saturated designs with hundreds of
+  cohort × period columns. Thread count defaults to half the detected
+  physical cores and can be set with `options(fixes.nthreads = <n>)`.
+- `fixest` remains the estimation engine for classic TWFE / `method =
+  "sunab"` in `run_es()`, for `run_did()`, and as the fallback described
+  above; it is still a required (`Imports`) dependency. `parallel` (base R)
+  is now also imported, for core-count detection only.
 
 # fixes 0.11.2 (2026-06-11)
 
