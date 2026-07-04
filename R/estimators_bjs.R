@@ -94,27 +94,25 @@
 
   # ---- Step 1: Estimate FEs on Ω₀ (Theorem 2, Step 1) ----------------------
   # Y_it = alpha_i + beta_t + eps_it,  (i,t) in Omega_0
-  step1_formula <- stats::as.formula(
-    paste0(outcome_chr, " ~ 0 | ", unit_chr, " + ", time_chr)
-  )
-  step1_model <- tryCatch(
-    fixest::feols(step1_formula, data = omega0, warn = FALSE, notes = FALSE),
+  # Estimated with the internal alternating-projections solver; it drops NA
+  # outcomes and singleton FE levels the same way fixest::feols() does.
+  step1_fit <- tryCatch(
+    .solve_fe_2way(omega0[[outcome_chr]], omega0[[unit_chr]],
+                   omega0[[time_chr]]),
     error = function(e)
       stop("BJS Step 1: FE regression on untreated observations failed: ",
            e$message)
   )
 
   # ---- Step 2: Impute Y_hat_it(0) and compute tau_hat_it (Theorem 2, Step 2)
-  # Y_hat_it(0) = alpha_hat_i + beta_hat_t  via fixef() lookup
-  # Using fixef() directly avoids predict()-level NA issues for FE models.
-  fe_vals   <- fixest::fixef(step1_model)
-  alpha_hat <- fe_vals[[unit_chr]]   # named: unit_id  -> unit FE
-  beta_hat  <- fe_vals[[time_chr]]   # named: time_val -> time FE
+  # Y_hat_it(0) = alpha_hat_i + beta_hat_t  via named lookup
+  alpha_hat <- step1_fit$alpha   # named: unit_id  -> unit FE
+  beta_hat  <- step1_fit$beta    # named: time_val -> time FE
 
-  # Fixest's Gauss-Seidel demeaning cannot recover unit FEs for "singleton"
-  # units (those with exactly 1 observation in omega0).  Their FE is
-  # closed-form from Theorem 2: alpha_hat_i = Y_{i,t} - beta_hat_t.
-  # We patch those entries before the imputation lookup below.
+  # The solver does not estimate unit FEs for "singleton" units (those with
+  # exactly 1 observation in omega0).  Their FE is closed-form from
+  # Theorem 2: alpha_hat_i = Y_{i,t} - beta_hat_t.  We patch those entries
+  # before the imputation lookup below.
   omega0_u_chr <- as.character(omega0[[unit_chr]])
   omega0_t_chr <- as.character(omega0[[time_chr]])
   u_keys       <- as.character(omega1[[unit_chr]])

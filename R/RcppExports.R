@@ -79,6 +79,37 @@ build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key) {
     .Call(`_fixes_build_cov_interactions_cpp`, cov_mat, ind_mat, group_key)
 }
 
+#' Alternating-projections solver for a two-way fixed-effects model
+#'
+#' Solves \eqn{Y = \alpha_{unit} + \beta_{time} + \varepsilon} by
+#' Gauss-Seidel alternating means with Irons-Tuck acceleration on the
+#' time-FE vector.
+#'
+#' The estimation sample must already exclude NA outcomes and singleton
+#' FE levels, and \code{unit_id}/\code{time_id} must be dense 0-based
+#' indices (see \code{.solve_fe_2way()}, which prepares both).
+#'
+#' Only the sums \eqn{\alpha_i + \beta_t} are identified; no normalization
+#' is applied, so callers must always use \code{alpha} and \code{beta}
+#' jointly.
+#'
+#' @param y Numeric outcome vector (length N, no NAs).
+#' @param unit_id Integer vector (length N): 0-based unit index per row.
+#' @param time_id Integer vector (length N): 0-based time index per row.
+#' @param n_unit Number of unit levels.
+#' @param n_time Number of time levels.
+#' @param tol Relative convergence tolerance on the time-FE vector.
+#' @param max_iter Maximum number of Gauss-Seidel sweeps.
+#'
+#' @return A list with \code{alpha} (length \code{n_unit}), \code{beta}
+#'   (length \code{n_time}), \code{iterations}, \code{converged}, and
+#'   \code{last_delta} (the last sweep-to-sweep change).
+#'
+#' @noRd
+solve_fe_2way_cpp <- function(y, unit_id, time_id, n_unit, n_time, tol, max_iter) {
+    .Call(`_fixes_solve_fe_2way_cpp`, y, unit_id, time_id, n_unit, n_time, tol, max_iter)
+}
+
 #' Build cohort-by-calendar-time indicator matrix
 #'
 #' For each (g, s) pair, fills column k of the output matrix with 1 for rows

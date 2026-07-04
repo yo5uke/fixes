@@ -56,6 +56,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// solve_fe_2way_cpp
+List solve_fe_2way_cpp(NumericVector y, IntegerVector unit_id, IntegerVector time_id, int n_unit, int n_time, double tol, int max_iter);
+RcppExport SEXP _fixes_solve_fe_2way_cpp(SEXP ySEXP, SEXP unit_idSEXP, SEXP time_idSEXP, SEXP n_unitSEXP, SEXP n_timeSEXP, SEXP tolSEXP, SEXP max_iterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type unit_id(unit_idSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type time_id(time_idSEXP);
+    Rcpp::traits::input_parameter< int >::type n_unit(n_unitSEXP);
+    Rcpp::traits::input_parameter< int >::type n_time(n_timeSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
+    rcpp_result_gen = Rcpp::wrap(solve_fe_2way_cpp(y, unit_id, time_id, n_unit, n_time, tol, max_iter));
+    return rcpp_result_gen;
+END_RCPP
+}
 // build_indicator_matrix_cpp
 IntegerMatrix build_indicator_matrix_cpp(IntegerVector cohort_id, IntegerVector time_id, IntegerVector gs_g, IntegerVector gs_s);
 RcppExport SEXP _fixes_build_indicator_matrix_cpp(SEXP cohort_idSEXP, SEXP time_idSEXP, SEXP gs_gSEXP, SEXP gs_sSEXP) {
@@ -95,6 +112,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
     {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 3},
+    {"_fixes_solve_fe_2way_cpp", (DL_FUNC) &_fixes_solve_fe_2way_cpp, 7},
     {"_fixes_build_indicator_matrix_cpp", (DL_FUNC) &_fixes_build_indicator_matrix_cpp, 4},
     {"_fixes_aggregate_iw_cpp", (DL_FUNC) &_fixes_aggregate_iw_cpp, 10},
     {NULL, NULL, 0}
