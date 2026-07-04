@@ -290,29 +290,38 @@ compute_contamination_weights <- function(
   }
   fml <- stats::as.formula(fml_str)
 
+  # Only point coefficients are needed, so the internal FE-OLS engine runs
+  # with iid VCOV (cheapest); the fixest formula path remains for FE
+  # specifications that are not plain column sums.
+  X_aux <- X_mat
+  colnames(X_aux) <- .mat_coef_names(".aux_X", X_colnames)
+  fe_vars_aux <- .parse_fe_list(fe_rhs_text, data)
+
   for (k_z in seq_len(K_z)) {
     g_k <- gl_all$g[k_z]
     l_k <- gl_all$l[k_z]
 
-    wdata$.aux_resp <- Z_mat[, k_z]
-
-    model <- tryCatch(
-      fixest::feols(fml, data = wdata, warn = FALSE, notes = FALSE),
-      error = function(e) {
-        warning(
-          "Auxiliary regression for CATT(g=",
-          g_k,
-          ", l=",
-          l_k,
-          ") failed: ",
-          e$message,
-          "; weights set to NA."
-        )
-        NULL
+    coefs <- tryCatch({
+      if (isFALSE(fe_vars_aux)) {
+        wdata$.aux_resp <- Z_mat[, k_z]
+        stats::coef(fixest::feols(fml, data = wdata,
+                                  warn = FALSE, notes = FALSE))
+      } else {
+        .fit_fe_ols(Z_mat[, k_z], X_aux, fe_list = fe_vars_aux,
+                    vcov_type = "iid")$coef
       }
-    )
-
-    coefs <- if (!is.null(model)) stats::coef(model) else NULL
+    }, error = function(e) {
+      warning(
+        "Auxiliary regression for CATT(g=",
+        g_k,
+        ", l=",
+        l_k,
+        ") failed: ",
+        e$message,
+        "; weights set to NA."
+      )
+      NULL
+    })
 
     for (j in seq_len(K_x)) {
       l_twfe <- incl_periods[j]

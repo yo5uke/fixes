@@ -238,21 +238,48 @@
                         formula_trend, formula_cov, fe_part)
 
   # ---- Run regression --------------------------------------------------------
-  model_args <- list(stats::as.formula(formula_str), data = data)
-  if (!is.null(cluster)) model_args$cluster <- cluster
+  # Assemble the regressor blocks in formula order with feols-style
+  # coefficient names, so tau_gt$col_name and the VCOV row names are
+  # unchanged; the i(time, x) terms become explicit dummy interactions.
+  X_blocks <- list(ind_mat)
+  colnames(X_blocks[[1L]]) <- .mat_coef_names(".twm_X", col_names)
+  if (isTRUE(trends)) {
+    trend_blk <- trend_mat
+    colnames(trend_blk) <- .mat_coef_names(".twm_T_X", trend_names)
+    X_blocks <- c(X_blocks, list(trend_blk))
+  }
+  if (!is.null(covariate_chrs) && length(covariate_chrs) > 0L) {
+    cov_blk <- cov_int_mat
+    colnames(cov_blk) <- .mat_coef_names(".twm_cov_X", ci_names)
+    X_blocks <- c(X_blocks, list(cov_blk))
+    excl_t <- as.integer(cohorts[1L] + baseline)
+    for (cv in covariate_chrs)
+      X_blocks <- c(X_blocks, list(.expand_i_dummies(
+        data[[time_chr]], data[[cv]], excl_t, time_chr, cv)))
+  }
+  X_reg <- do.call(cbind, X_blocks)
 
-  model <- tryCatch(
-    do.call(fixest::feols, model_args),
-    error = function(e)
-      stop("TWM regression failed: ", e$message,
-           "\nCheck for collinearity (too few control units, or window ",
-           "spanning the full sample).")
+  fe_vars <- .parse_fe_list(fe_str_eff, data)
+  cl_vals <- .resolve_cluster_vals(cluster, data)
+
+  fit <- tryCatch({
+    if (isFALSE(fe_vars) || isFALSE(cl_vals)) {
+      .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args)
+    } else {
+      .fit_fe_ols(data[[outcome_chr]], X_reg, fe_list = fe_vars,
+                  cluster_vals = cl_vals, vcov_type = vcov_type,
+                  vcov_args = vcov_args)
+    }
+  }, error = function(e)
+    stop("TWM regression failed: ", e$message,
+         "\nCheck for collinearity (too few control units, or window ",
+         "spanning the full sample).")
   )
 
   # ---- Extract coefficients and full VCOV ------------------------------------
-  V_full     <- .model_vcov_full(model, vcov_type, cluster, vcov_args)
+  V_full     <- fit$V
   coef_names <- rownames(V_full)
-  tidy_df    <- broom::tidy(model, vcov = V_full)
+  tidy_df    <- fit$tidy
 
   # ---- Extract tau_{g,s} point estimates -------------------------------------
   tau_rows <- list()
@@ -294,7 +321,7 @@
     cohorts      = cohorts,
     n_never      = n_never,
     cohort_sizes = cohort_sizes,
-    n_obs        = stats::nobs(model),
+    n_obs        = fit$nobs,
     formula_str  = formula_str
   )
 }

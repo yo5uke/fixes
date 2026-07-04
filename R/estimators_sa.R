@@ -145,31 +145,42 @@
          g        = gl_pairs$g[k],
          l        = gl_pairs$l[k]))
 
-  data$.sa_X  <- ind_mat
-
   formula_str <- if (nzchar(fe_str)) {
     paste0(outcome_chr, " ~ .sa_X | ", fe_str)
   } else {
     paste0(outcome_chr, " ~ .sa_X")
   }
 
-  model_args <- list(stats::as.formula(formula_str), data = data)
-  if (!is.null(cluster)) model_args$cluster <- cluster
+  # Regression via the internal FE-OLS engine. Coefficient names keep the
+  # feols matrix-column convention (".sa_X" prefix; bare ".sa_X" when K = 1)
+  # so catt_df$col_name and the VCOV row names are unchanged.
+  X_reg <- ind_mat
+  colnames(X_reg) <- .mat_coef_names(".sa_X", col_names)
 
-  model <- tryCatch(
-    do.call(fixest::feols, model_args),
-    error = function(e)
-      stop("SA regression failed: ", e$message,
-           "\nCheck for near-perfect collinearity (too few control units, ",
-           "or lead_range/lag_range spanning the full sample).")
+  fe_vars <- .parse_fe_list(fe_str, data)
+  cl_vals <- .resolve_cluster_vals(cluster, data)
+
+  fit <- tryCatch({
+    if (isFALSE(fe_vars) || isFALSE(cl_vals)) {
+      data$.sa_X <- ind_mat
+      .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args)
+    } else {
+      .fit_fe_ols(data[[outcome_chr]], X_reg, fe_list = fe_vars,
+                  cluster_vals = cl_vals, vcov_type = vcov_type,
+                  vcov_args = vcov_args)
+    }
+  }, error = function(e)
+    stop("SA regression failed: ", e$message,
+         "\nCheck for near-perfect collinearity (too few control units, ",
+         "or lead_range/lag_range spanning the full sample).")
   )
 
   # ---- Extract coefficients and full VCOV -----------------------------------
   # Always extract the full matrix so we can do the quadratic-form variance.
-  V_full     <- .model_vcov_full(model, vcov_type, cluster, vcov_args)
+  V_full     <- fit$V
   coef_names <- rownames(V_full)
 
-  tidy_df    <- broom::tidy(model, vcov = V_full)
+  tidy_df    <- fit$tidy
 
   # ---- Extract CATT(g,l) point estimates ------------------------------------
   # feols prepends the matrix-column name to coefficient names, so
@@ -178,7 +189,7 @@
   catt_rows <- list()
   for (m in catt_meta) {
     idx <- match(m$col, tidy_df$term)  # m$col = ".sa_X.sa__g__l"
-    if (is.na(idx)) next               # dropped as collinear by fixest — skip
+    if (is.na(idx)) next               # dropped as collinear — skip
     catt_rows[[length(catt_rows) + 1L]] <- data.frame(
       g         = m$g,
       l         = m$l,
@@ -200,7 +211,7 @@
   # ---- Degeneracy diagnostic ------------------------------------------------
   # With sparse / irregular time (e.g. monthly survey waves observed only a few
   # times a year) the saturated SA regression cannot identify many cohort x
-  # period cells: fixest drops them as collinear and the surviving CATT SEs can
+  # period cells: they are dropped as collinear and the surviving CATT SEs can
   # blow up.  Either symptom makes the IW aggregate unreliable, so warn loudly.
   frac_dropped <- (K - nrow(catt_df)) / K
   se_pos       <- catt_df$std_error[is.finite(catt_df$std_error) &
@@ -243,7 +254,7 @@
     cohorts      = cohorts,
     n_never      = n_never,
     cohort_sizes = cohort_sizes,
-    n_obs        = stats::nobs(model),
+    n_obs        = fit$nobs,
     formula_str  = formula_str
   )
 }
