@@ -10,8 +10,10 @@
 #   profile_estimator("sa")
 #
 # What to look for in the profvis flamegraph:
-#   - fixest::feols() / demean() → HDFE solver is the bottleneck; this is the
-#     Phase 3 target (custom alternating-projections solver).
+#   - demean_kway_cpp / crossprod_omp_cpp → internal engine kernels; if they
+#     dominate, the Phase 3 fused demean+crossprod kernel is the fix.
+#   - matrix()/cbind()/[ allocations inside .fit_fe_ols → R-level copies of
+#     the design matrix; the other Phase 3 lever on large panels.
 #   - aggregate_iw_cpp / build_indicator_matrix_cpp → Rcpp paths; already
 #     accelerated in Phase 2.  If they dominate, revisit the Rcpp code.
 #   - R data wrangling (merge, rbind, tapply) → addressable without HDFE work.
@@ -84,30 +86,30 @@ profile_estimator <- function(estimator = c("sa", "twm", "flex", "bjs", "cs"),
   pv <- profvis::profvis({
     if (estimator == "sa") {
       suppressWarnings(
-        run_es(data = panel, outcome = y, time = year, timing = g,
+        event_study(data = panel, outcome = y, time = year, timing = g,
                unit = id, fe = ~ id + year, staggered = TRUE,
                estimator = "sa")
       )
     } else if (estimator == "twm") {
       suppressWarnings(
-        run_es(data = panel, outcome = y, time = year, timing = g,
+        event_study(data = panel, outcome = y, time = year, timing = g,
                unit = id, fe = ~ id + year, staggered = TRUE,
                estimator = "twm")
       )
     } else if (estimator == "flex") {
       suppressWarnings(
-        run_es(data = panel, outcome = y, time = year, timing = group,
+        event_study(data = panel, outcome = y, time = year, timing = group,
                unit = id, group = group, staggered = TRUE,
                estimator = "flex")
       )
     } else if (estimator == "bjs") {
       suppressWarnings(
-        run_es(data = panel, outcome = y, time = year, timing = g,
+        event_study(data = panel, outcome = y, time = year, timing = g,
                unit = id, staggered = TRUE, estimator = "bjs")
       )
     } else if (estimator == "cs") {
       suppressWarnings(
-        run_es(data = panel, outcome = y, time = year, timing = g,
+        event_study(data = panel, outcome = y, time = year, timing = g,
                unit = id, staggered = TRUE, estimator = "cs")
       )
     }
@@ -130,7 +132,9 @@ benchmark_all <- function(n_units  = 2000L,
   panel <- make_panel(n_units = n_units, n_periods = n_periods,
                       n_cohorts = n_cohorts)
 
-  estimators <- c("sa", "twm", "bjs", "cs")
+  panel$treated <- as.integer(!is.na(panel$g))
+
+  estimators <- c("twfe", "did", "sa", "twm", "bjs", "cs")
   results    <- vector("list", length(estimators))
 
   for (i in seq_along(estimators)) {
@@ -142,15 +146,21 @@ benchmark_all <- function(n_units  = 2000L,
       t0 <- proc.time()[["elapsed"]]
       suppressWarnings(tryCatch(
         switch(est,
-          sa  = run_es(data = panel, outcome = y, time = year, timing = g,
+          twfe = event_study(data = panel, outcome = y, treatment = treated,
+                       time = year, timing = g, unit = id,
+                       fe = ~ id + year, cluster = ~ id,
+                       estimator = "twfe"),
+          did = did(data = panel, outcome = y, treatment = treat,
+                    fe = ~ id + year, cluster = ~ id),
+          sa  = event_study(data = panel, outcome = y, time = year, timing = g,
                        unit = id, fe = ~ id + year, staggered = TRUE,
                        estimator = "sa"),
-          twm = run_es(data = panel, outcome = y, time = year, timing = g,
+          twm = event_study(data = panel, outcome = y, time = year, timing = g,
                        unit = id, fe = ~ id + year, staggered = TRUE,
                        estimator = "twm"),
-          bjs = run_es(data = panel, outcome = y, time = year, timing = g,
+          bjs = event_study(data = panel, outcome = y, time = year, timing = g,
                        unit = id, staggered = TRUE, estimator = "bjs"),
-          cs  = run_es(data = panel, outcome = y, time = year, timing = g,
+          cs  = event_study(data = panel, outcome = y, time = year, timing = g,
                        unit = id, staggered = TRUE, estimator = "cs")
         ),
         error = function(e) NULL

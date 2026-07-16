@@ -21,31 +21,34 @@
 #  Main function                                                               #
 # --------------------------------------------------------------------------- #
 
-#' Run a basic two-way fixed-effects DiD model
+#' Basic two-way fixed-effects DiD estimation
 #'
 #' @description
 #' Estimates a classic difference-in-differences model of the form
-#' `outcome ~ D_it | fe` using [fixest::feols()].
+#' `outcome ~ D_it | fe` on the package's internal fixed-effects OLS engine
+#' (numerically equivalent to `fixest::feols()`).
+#'
+#' `did()` supersedes [run_did()] as of fixes 1.0.0.
 #'
 #' There are two ways to supply the treatment indicator:
 #'
 #' **Option A — pre-built `D_it`** (maximum flexibility):
 #' ```r
 #' df$D <- as.integer(df$treated & df$year >= 2006)
-#' run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+#' did(df, outcome = y, treatment = D, fe = ~ id + year)
 #' ```
 #'
 #' **Option B — timing-based construction** (convenience; consistent with
-#' `run_es()` and `calc_att()`):
+#' `event_study()` and `att()`):
 #' ```r
-#' run_did(df, outcome = y, treatment = treated, time = year, timing = 2006,
-#'         fe = ~ id + year)
+#' did(df, outcome = y, treatment = treated, time = year, timing = 2006,
+#'     fe = ~ id + year)
 #' ```
 #' Here `treatment` is a binary group indicator (1 = treated unit, 0 = control),
 #' `time` is the calendar-time variable, and `timing` is the scalar treatment
 #' onset period.  Internally `D_it = treatment * (time >= timing)` is constructed
-#' automatically.  For staggered-adoption settings use [calc_att()]; for dynamic
-#' event-study estimates use [run_es()].
+#' automatically.  For staggered-adoption settings use [att()]; for dynamic
+#' event-study estimates use [event_study()].
 #'
 #' @param data A data.frame (panel format).
 #' @param outcome Unquoted outcome variable or expression (e.g., `log(y)`).
@@ -70,7 +73,7 @@
 #'   When `cluster` is specified and `vcov` is the default `"HC1"`, cluster-robust
 #'   standard errors are used automatically.
 #' @param weights Observation weights (formula or numeric vector).
-#' @param conf.level Confidence level(s) for CIs.  Scalar or vector
+#' @param conf_level Confidence level(s) for CIs.  Scalar or vector
 #'   (e.g., `c(0.90, 0.95)`).  Default `0.95`.
 #' @param vcov VCOV type string passed to `fixest::vcov()`.  Default `"HC1"`.
 #'   Ignored in favour of cluster-robust SE when `cluster` is supplied and
@@ -83,27 +86,33 @@
 #'     \item{`estimates`}{Data frame with the treatment coefficient:
 #'       `term`, `estimate`, `std.error`, `statistic`, `p.value`, and
 #'       `conf_low_XX`/`conf_high_XX` for each `conf.level` entry.}
-#'     \item{`model`}{The underlying `fixest` model object.}
+#'     \item{`coeftable`}{Data frame with all kept coefficients (treatment
+#'       and covariates): `term`, `estimate`, `std.error`, `statistic`,
+#'       `p.value`.}
+#'     \item{`vcov`}{Full coefficient covariance matrix.}
+#'     \item{`fit_stats`}{Model-level statistics (nobs, R-squareds, sigma,
+#'       logLik, AIC, BIC) used by [broom::glance()].}
+#'     \item{`df.t`}{Degrees of freedom of the t inference.}
 #'   }
 #'   Attributes: `call`, `formula_str`, `outcome`, `treatment`, `timing`,
 #'   `fe`, `vcov_type`, `cluster_vars`, `conf.level`, `N`, `N_units`,
 #'   `N_treated`, `unit`, `time`.  `N`, `N_units`, and `N_treated` describe the
-#'   *estimation* sample (after `fixest::feols()` drops rows with missing
-#'   values), matching `nobs(model)` and `broom::glance()`, not `nrow(data)`.
+#'   *estimation* sample (after rows with missing values are dropped),
+#'   matching `broom::glance()`, not `nrow(data)`.
 #'
 #' @examples
 #' \dontrun{
 #' # Option A: pre-built D_it
 #' df$D <- as.integer(df$treated & df$year >= 2006)
-#' res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+#' res <- did(df, outcome = y, treatment = D, fe = ~ id + year)
 #'
 #' # Option B: timing-based construction
-#' res <- run_did(df, outcome = y, treatment = treated, time = year,
-#'                timing = 2006, fe = ~ id + year)
+#' res <- did(df, outcome = y, treatment = treated, time = year,
+#'            timing = 2006, fe = ~ id + year)
 #'
 #' # Cluster-robust SE
-#' res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year,
-#'                cluster = ~ id)
+#' res <- did(df, outcome = y, treatment = D, fe = ~ id + year,
+#'            cluster = ~ id)
 #'
 #' print(res)
 #' broom::tidy(res)
@@ -111,12 +120,14 @@
 #' # modelsummary::modelsummary(res)
 #' }
 #'
+#' @seealso [event_study()] for dynamic effects, [att()] for staggered
+#'   aggregation, and [run_did()] for the deprecated verb-style predecessor.
+#'
 #' @importFrom rlang enexpr is_symbol as_string is_call expr_text f_rhs f_lhs
-#' @importFrom fixest feols
 #' @importFrom broom tidy
 #' @importFrom stats qnorm nobs as.formula vcov
 #' @export
-run_did <- function(
+did <- function(
   data,
   outcome,
   treatment,
@@ -127,16 +138,16 @@ run_did <- function(
   covariates  = NULL,
   cluster     = NULL,
   weights     = NULL,
-  conf.level  = 0.95,
+  conf_level  = 0.95,
   vcov        = "HC1",
   vcov_args   = list()
 ) {
   # ---- input validation -------------------------------------------------------
   if (!is.data.frame(data)) stop("`data` must be a data.frame.")
-  if (!is.numeric(conf.level) || any(conf.level <= 0) || any(conf.level >= 1)) {
-    stop("`conf.level` must be numeric in (0, 1).")
+  if (!is.numeric(conf_level) || any(conf_level <= 0) || any(conf_level >= 1)) {
+    stop("`conf_level` must be numeric in (0, 1).")
   }
-  conf.level <- sort(unique(conf.level))
+  conf.level <- sort(unique(conf_level))
 
   # ---- resolve column names (NSE) --------------------------------------------
   outcome_chr   <- .resolve_col(rlang::enexpr(outcome),   data, allow_call = TRUE)
@@ -245,7 +256,7 @@ run_did <- function(
     }
   }
 
-  # ---- construct feols formula -----------------------------------------------
+  # ---- construct model formula (metadata + fixest formula fallback) ----------
   rhs <- treatment_chr
   if (nzchar(cov_text)) rhs <- paste(rhs, cov_text, sep = " + ")
   if (nzchar(fe_rhs_text)) {
@@ -253,41 +264,49 @@ run_did <- function(
   } else {
     formula_str <- paste0(outcome_chr, " ~ ", rhs)
   }
-  model_formula <- stats::as.formula(formula_str)
 
-  # ---- call feols -------------------------------------------------------------
-  model_args <- list(model_formula, data = data)
-  if (!is.null(cluster)) model_args$cluster <- cluster
-  if (!is.null(weights)) model_args$weights <- weights
+  # ---- estimate on the internal FE-OLS engine ---------------------------------
+  # The engine reproduces feols estimation-sample handling and its default
+  # VCOV precedence: cluster with the default "HC1" gives cluster-robust SEs;
+  # an explicit vcov type applies regardless of cluster. FE or cluster
+  # specifications that are not plain columns keep the fixest formula path.
+  X <- matrix(as.numeric(data[[treatment_chr]]), ncol = 1L,
+              dimnames = list(NULL, treatment_chr))
+  if (nzchar(cov_text)) X <- cbind(X, .build_cov_matrix(cov_text, data))
 
-  model <- tryCatch(
-    do.call(fixest::feols, model_args),
-    error = function(e) {
-      msg <- conditionMessage(e)
-      if (grepl("collinear", msg, ignore.case = TRUE)) {
-        stop(
-          "Treatment variable was absorbed by fixed effects or is perfectly ",
-          "collinear.\n", msg
-        )
+  y_vals  <- rlang::eval_tidy(rlang::parse_expr(outcome_chr), data)
+  fe_vars <- .parse_fe_list(fe_rhs_text, data)
+  cl_vals <- .resolve_cluster_vals(cluster, data)
+
+  fit <- tryCatch({
+    if (isFALSE(fe_vars) || isFALSE(cl_vals)) {
+      data$.did_X <- X
+      fml <- if (nzchar(fe_rhs_text)) {
+        paste0(outcome_chr, " ~ .did_X | ", fe_rhs_text)
+      } else {
+        paste0(outcome_chr, " ~ .did_X")
       }
-      stop("DiD model failed: ", msg)
+      f <- .fit_fe_ols_formula(data, fml, cluster, vcov, vcov_args,
+                               weights = weights, keep_stats = TRUE)
+      .strip_mat_prefix(f, ".did_X", colnames(X))
+    } else {
+      .fit_fe_ols(y_vals, X, fe_list = fe_vars, cluster_vals = cl_vals,
+                  vcov_type = vcov, vcov_args = vcov_args,
+                  weights = .resolve_weights_vec(weights, data),
+                  keep_stats = TRUE)
     }
-  )
+  }, error = function(e) {
+    msg <- conditionMessage(e)
+    if (grepl("collinear", msg, ignore.case = TRUE)) {
+      stop(
+        "Treatment variable was absorbed by fixed effects or is perfectly ",
+        "collinear.\n", msg
+      )
+    }
+    stop("DiD model failed: ", msg)
+  })
 
-  # ---- extract VCOV-adjusted tidy coefficients --------------------------------
-  # When cluster is supplied and the user left vcov at its default "HC1", feols
-  # already computed cluster-robust SEs.  Use them directly rather than
-  # overriding with HC1.  When vcov was explicitly changed (e.g., "iid"),
-  # apply it regardless of cluster.
-  if (!is.null(cluster) && identical(vcov, "HC1")) {
-    tidy_coef <- broom::tidy(model)
-  } else {
-    V <- tryCatch(
-      stats::vcov(model, vcov = vcov, .vcov_args = vcov_args),
-      error = function(e) NULL
-    )
-    tidy_coef <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
-  }
+  tidy_coef <- fit$tidy
 
   # ---- isolate treatment row --------------------------------------------------
   treat_idx <- which(tidy_coef$term == treatment_chr)
@@ -317,15 +336,12 @@ run_did <- function(
   rownames(treat_rows) <- NULL
 
   # ---- metadata --------------------------------------------------------------
-  # Report the *estimation* sample, not nrow(data): feols silently drops rows
-  # with NA in any model variable.  This mirrors run_es(), which reports
-  # nobs(model).  The fitted-sample row indices are recovered from the model's
-  # obs_selection (each element drops rows relative to the prior step).
-  used_idx <- seq_len(nrow(data))
-  os <- model$obs_selection
-  if (!is.null(os)) for (s in os) used_idx <- used_idx[s]
+  # Report the *estimation* sample, not nrow(data): rows with NA in any model
+  # variable (and singleton FE levels) are dropped, mirroring feols. The
+  # engine returns the fitted-sample row indices directly.
+  used_idx <- fit$used
 
-  N         <- stats::nobs(model)
+  N         <- fit$nobs
   N_units   <- if (!is.null(unit_chr)) {
     length(unique(data[[unit_chr]][used_idx]))
   } else NA_integer_
@@ -336,7 +352,13 @@ run_did <- function(
   vcov_type_display <- if (!is.null(cluster) && identical(vcov, "HC1")) "cluster" else vcov
 
   # ---- build result ----------------------------------------------------------
-  result <- list(estimates = treat_rows, model = model)
+  result <- list(
+    estimates = treat_rows,
+    coeftable = fit$tidy,
+    vcov      = fit$V,
+    fit_stats = fit$stats,
+    df.t      = fit$df.t
+  )
   attr(result, "call")         <- match.call()
   attr(result, "formula_str")  <- formula_str
   attr(result, "outcome")      <- outcome_chr

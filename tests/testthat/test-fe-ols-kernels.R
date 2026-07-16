@@ -45,12 +45,19 @@ test_that("demean_kway_cpp is invariant to the thread count", {
   ids <- cbind(df$u - 1L, df$t - 1L)
   nl  <- c(n_u, n_t)
 
-  d1 <- fixes:::demean_kway_cpp(M, ids, nl, tol = 1e-12, max_iter = 10000L,
-                                nthreads = 1L)
-  d4 <- fixes:::demean_kway_cpp(M, ids, nl, tol = 1e-12, max_iter = 10000L,
-                                nthreads = 4L)
+  d1 <- fixes:::demean_kway_cpp(M, ids, nl, w = numeric(0), tol = 1e-12,
+                                max_iter = 10000L, nthreads = 1L)
+  d4 <- fixes:::demean_kway_cpp(M, ids, nl, w = numeric(0), tol = 1e-12,
+                                max_iter = 10000L, nthreads = 4L)
   expect_identical(d4$M, d1$M)
   expect_identical(d4$converged, d1$converged)
+
+  w <- runif(nrow(df), 0.5, 2)
+  dw1 <- fixes:::demean_kway_cpp(M, ids, nl, w = w, tol = 1e-12,
+                                 max_iter = 10000L, nthreads = 1L)
+  dw4 <- fixes:::demean_kway_cpp(M, ids, nl, w = w, tol = 1e-12,
+                                 max_iter = 10000L, nthreads = 4L)
+  expect_identical(dw4$M, dw1$M)
 })
 
 # ---------------------------------------------------------------------------
@@ -92,6 +99,7 @@ test_that(".chol_seq_drop honors d_pre for FE-absorbed columns", {
 # ---------------------------------------------------------------------------
 
 test_that(".fit_fe_ols equals feols regardless of fixes.nthreads", {
+  skip_if_not_installed("fixest")
   set.seed(46)
   df <- expand.grid(unit = 1:25, time = 1:8)
   df$x1 <- rnorm(nrow(df))

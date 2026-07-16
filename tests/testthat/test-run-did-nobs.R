@@ -17,23 +17,27 @@ make_na_data <- function(seed = 1L, n_na = 100L) {
   df
 }
 
-test_that("run_did N equals nobs(model), not nrow(data), under missingness", {
+test_that("run_did N equals the feols estimation sample, not nrow(data)", {
+  skip_if_not_installed("fixest")
   df  <- make_na_data()
   res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year,
                  unit = id, time = year)
 
+  ref <- fixest::feols(y ~ D | id + year, data = df)
   expect_lt(attr(res, "N"), nrow(df))                 # NA rows were dropped
-  expect_equal(attr(res, "N"), stats::nobs(res$model))
+  expect_equal(attr(res, "N"), stats::nobs(ref))
   expect_equal(attr(res, "N"), broom::glance(res)$nobs)
 })
 
 test_that("run_did N_treated counts treated obs in the estimation sample only", {
+  skip_if_not_installed("fixest")
   df  <- make_na_data()
   res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
 
-  # Reconstruct the fitted sample the same way run_did does.
+  # Reconstruct the fitted sample from a reference feols fit.
+  ref  <- fixest::feols(y ~ D | id + year, data = df)
   used <- seq_len(nrow(df))
-  for (s in res$model$obs_selection) used <- used[s]
+  for (s in ref$obs_selection) used <- used[s]
   expect_equal(attr(res, "N_treated"), sum(df$D[used] == 1L, na.rm = TRUE))
   expect_lt(attr(res, "N_treated"), sum(df$D, na.rm = TRUE))  # < full treated
 })

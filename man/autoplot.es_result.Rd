@@ -4,26 +4,26 @@
 \alias{autoplot.es_result}
 \title{Autoplot for event-study results}
 \usage{
-\method{autoplot}{es_result}(object, ci_level = 0.95, type = "ribbon", ...)
+\method{autoplot}{es_result}(object, ci_level = 0.95, type = c("ribbon", "errorbar"), ...)
 }
 \arguments{
-\item{object}{An \code{es_result} returned by \code{\link[=run_es]{run_es()}}.}
+\item{object}{An \code{es_result} returned by \code{\link[=event_study]{event_study()}}.}
 
-\item{ci_level}{Confidence level (numeric, e.g., 0.95). Passed to \code{\link[=plot_es]{plot_es()}}.}
+\item{ci_level}{Confidence level (numeric, e.g., 0.95).}
 
-\item{type}{Plot type: \code{"ribbon"} (default) or \code{"errorbar"}. Passed to \code{\link[=plot_es]{plot_es()}}.}
+\item{type}{Plot type: \code{"ribbon"} (default) or \code{"errorbar"}.}
 
-\item{...}{Additional arguments forwarded to \code{\link[=plot_es]{plot_es()}}.}
+\item{...}{Additional styling arguments; see \code{\link[=plot.es_result]{plot.es_result()}}.}
 }
 \value{
 A \code{ggplot} object.
 }
 \description{
-S3 method that plots an \code{es_result} (from \code{\link[=run_es]{run_es()}}).
-It forwards arguments to \code{\link[=plot_es]{plot_es()}}.
+S3 method that plots an \code{es_result} (from \code{\link[=event_study]{event_study()}}).
+It forwards arguments to \code{\link[=plot.es_result]{plot.es_result()}}.
 }
 \examples{
-# res <- run_es(...)
+# res <- event_study(...)
 # ggplot2::autoplot(res, ci_level = 0.95, type = "ribbon")
 
 }

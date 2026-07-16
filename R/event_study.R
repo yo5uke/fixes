@@ -112,15 +112,23 @@
 
 # --------------------------------------------------------------------------- #
 
-#' Event Study Estimation for Panel Data
+#' Event study estimation for panel data
 #'
-#' Runs an event study regression on panel data, supporting both classic (universal timing) and staggered (unit-varying timing via `sunab`).
-#' The function builds the design (lead/lag factor or `sunab`), estimates with [fixest::feols()], and returns a tidy table with metadata.
+#' Estimates dynamic treatment effects by relative time (an event-study
+#' curve) on panel data. Supports the classic TWFE design (universal or
+#' staggered timing) plus modern staggered-robust estimators —
+#' Callaway-Sant'Anna, Sun-Abraham, Borusyak-Jaravel-Spiess, Wooldridge
+#' two-way Mundlak, and Deb et al. FLEX — selected via `estimator=`.
+#' Estimation runs on the package's internal fixed-effects OLS engine;
+#' results are returned as a tidy table with rich metadata.
+#'
+#' `event_study()` supersedes [run_es()] as of fixes 1.0.0.
 #'
 #' @details
-#' **How relative (event) time is defined.** `run_es()` can build the event-time
-#' axis in three different ways, and in sparse or unbalanced panels (e.g. monthly
-#' surveys observed only a few times a year) they do **not** coincide:
+#' **How relative (event) time is defined.** `event_study()` can build the
+#' event-time axis in three different ways, and in sparse or unbalanced panels
+#' (e.g. monthly surveys observed only a few times a year) they do **not**
+#' coincide:
 #'
 #' \tabular{lll}{
 #'   \strong{Method} \tab \strong{Definition} \tab \strong{How to invoke} \cr
@@ -136,68 +144,77 @@
 #' it two observed waves before treatment (`-2`).  To reproduce an analysis built
 #' on such a grid, pass that grid's event-time column via `rel_time` so the
 #' design matches `fixest::feols(y ~ i(rel_time, treatment, ref) | fe)` exactly.
-#' `calc_att()` uses the same calendar-difference convention as the default here.
+#' `att()` uses the same calendar-difference convention as the default here.
 #'
 #' @section Key Features:
 #' - One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
-#' - Switch between Classic (factor expansion) and Staggered-SAFE (`method = "sunab"`).
-#' - Flexible clustering, weights, and VCOV choices (e.g., `vcov = "HC1" | "HC3" | "CR2" | "iid" ...`).
+#' - Six estimators behind one interface: `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`.
+#' - Flexible clustering, weights, and VCOV choices (e.g., `vcov = "HC1" | "iid" | "hetero" ...`).
 #' - Automatic lead/lag window detection and customizable baseline period.
-#' - Returns an `"es_result"` object compatible with `print()` and `autoplot()`.
+#' - Returns an `"es_result"` object compatible with `plot()`, `print()`, and `autoplot()`.
 #'
 #' @param data A data.frame containing panel data.
 #' @param outcome Unquoted outcome (name or expression, e.g., `log(y)`).
-#' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when `method = "classic"`.
+#' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when `estimator = "twfe"`.
 #' @param time Unquoted time variable (numeric or Date).
-#' @param timing For `classic`: a numeric/Date (universal) or a variable (unquoted) if `staggered = TRUE`. For `sunab`: an unquoted variable with adoption time. For `estimator = "cs"`: unquoted column giving each unit's first treatment period (`NA` = never treated).
-#'   **Convention for staggered estimators (cs, sa, bjs, twm, flex, classic with `staggered = TRUE`):**
+#' @param timing For `estimator = "twfe"`: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see `staggered`). For the staggered estimators (`"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`): unquoted column giving each unit's first treatment period (`NA` = never treated).
+#'   **Convention for staggered designs (cs, sa, bjs, twm, flex, twfe with staggered timing):**
 #'   `NA` in the `timing` column means the unit is *never treated* and will be used as a
 #'   control. This follows the same convention as `did::att_gt()`, `fixest::sunab()`, and
 #'   `didimputation`. If `NA` instead represents *missing* treatment timing for an otherwise
 #'   treated unit, those observations will be silently absorbed into the control group, which
-#'   is almost certainly wrong. For `estimator = "twfe"` with `staggered = TRUE`, a warning
+#'   is almost certainly wrong. For `estimator = "twfe"` with staggered timing, a warning
 #'   is emitted when units with `treatment = 1` also have `timing = NA`.
 #' @param fe One-sided fixed-effects formula, e.g., `~ id + year`. Can be `NULL` for no fixed effects. Ignored when `estimator = "cs"`.
 #' @param lead_range,lag_range Integers for pre/post windows. If `NULL`, determined automatically.
 #' @param covariates One-sided formula of additional controls, e.g., `~ x1 + log(x2)`.
 #' @param cluster Cluster specification (one-sided formula like `~ id + year`, a single character column name, or a vector of length `nrow(data)`).
 #' @param weights Observation weights (a name/one-sided formula or a numeric vector of length `nrow(data)`).
-#' @param baseline Integer baseline period (default `-1`); reference period excluded from results for both `"classic"` and `"sunab"` methods.
+#' @param baseline Integer baseline period (default `-1`); the reference period excluded from the estimation results.
 #' @param interval Numeric spacing of the time variable (default `1`; ignored internally for Dates).
 #' @param time_transform Logical; if `TRUE`, creates consecutive integer time within unit.
 #' @param rel_time Optional unquoted column holding a **pre-built event time**
 #'   (time relative to treatment), e.g. the `Time_to_Treatment` produced by
-#'   `paneltools`/`fect`'s `get.cohort()`.  When supplied, `run_es()` uses this
-#'   column verbatim as the event-study factor — `i(rel_time, treatment, ref =
-#'   baseline)` — instead of computing relative time internally from `time` and
-#'   `timing`.  Never-treated / control rows should be `NA`.  Requires
-#'   `estimator = "twfe"` and `method = "classic"`; cannot be combined with
+#'   `paneltools`/`fect`'s `get.cohort()`.  When supplied, `event_study()` uses
+#'   this column verbatim as the event-study factor — `i(rel_time, treatment,
+#'   ref = baseline)` — instead of computing relative time internally from
+#'   `time` and `timing`.  Never-treated / control rows should be `NA`.
+#'   Requires `estimator = "twfe"`; cannot be combined with
 #'   `staggered = TRUE` or `time_transform = TRUE`.  This normalises the older
 #'   `time = event_time, timing = 0` idiom.  See **Details** for how this
 #'   differs from the calendar-difference and `time_transform` conventions.
 #' @param unit Unit identifier variable (required when `estimator = "cs"` or `time_transform = TRUE`); also used for metadata when supplied.
-#' @param staggered Logical; if `TRUE`, `timing` is a variable (classic) or is used by `sunab`.
-#' @param method Either `"classic"` or `"sunab"` (default: `"classic"`).
-#' @param estimator Estimation strategy: `"twfe"` (default, existing fixest-based paths),
-#'   `"cs"` for the Callaway-Sant'Anna (2021) group-time ATT estimator, or
-#'   `"sa"` for the Sun-Abraham (2021) interaction-weighted estimator.
+#' @param staggered Logical or `NULL` (default). Only consulted by
+#'   `estimator = "twfe"`: `TRUE` means `timing` is a column of unit-specific
+#'   adoption times; `FALSE` means `timing` is a single universal value. With
+#'   the default `NULL` the design is inferred — when `timing` names a column
+#'   of `data` the design is staggered, otherwise it is universal. Pass an
+#'   explicit value to override the inference.
+#' @param estimator Estimation strategy: `"twfe"` (default) for the classic
+#'   TWFE event study, `"cs"` (Callaway-Sant'Anna 2021), `"sa"` (Sun-Abraham
+#'   2021 interaction-weighted), `"bjs"` (Borusyak-Jaravel-Spiess 2024
+#'   imputation), `"twm"` (Wooldridge two-way Mundlak), or `"flex"`
+#'   (Deb et al. 2024, repeated cross-sections).
 #' @param control_group For `estimator = "cs"`: comparison group, either
 #'   `"nevertreated"` (default) or `"notyettreated"`.
 #' @param anticipation For `estimator = "cs"`: number of anticipation periods
 #'   before treatment (non-negative integer, default `0L`).
-#' @param conf.level Numeric vector of confidence levels (default `0.95`).
-#' @param vcov VCOV type passed to `fixest::vcov()` or used via `broom::tidy(vcov = ...)`. Default `"HC1"`.
-#' @param vcov_args List of additional arguments forwarded to `fixest::vcov()`.
+#' @param conf_level Numeric vector of confidence levels (default `0.95`).
+#' @param vcov VCOV type: `"HC1"` (default), `"iid"`, or `"hetero"` on the
+#'   internal engine; other types are delegated to `fixest::vcov()` when the
+#'   optional \{fixest\} package is installed.
+#' @param vcov_args List of additional arguments forwarded to `fixest::vcov()`
+#'   (requires \{fixest\}).
 #' @param bootstrap Logical; if `TRUE` and `estimator = "cs"`, compute
 #'   simultaneous confidence bands via the multiplier bootstrap (Algorithm 1,
 #'   Callaway and Sant'Anna 2021).  Adds `conf_low_sim` and
 #'   `conf_high_sim` columns to the result and stores the full (g,t)-level
 #'   bootstrap object as `attr(result, "bootstrap")`.  Default `FALSE`.
-#' @param B Integer number of bootstrap draws (default `999`).  Used only
-#'   when `bootstrap = TRUE` and `estimator = "cs"`.
-#' @param alpha Significance level for the simultaneous band (default `0.05`).
-#'   Note: this is independent of `conf.level`, which governs the pointwise
-#'   delta-method CIs.
+#' @param boot_reps Integer number of bootstrap draws (default `999`).  Used
+#'   only when `bootstrap = TRUE` and `estimator = "cs"`.
+#' @param boot_alpha Significance level for the simultaneous band (default
+#'   `0.05`).  Note: this is independent of `conf_level`, which governs the
+#'   pointwise delta-method CIs.
 #' @param boot_seed Integer seed for the bootstrap RNG; `NULL` (default)
 #'   does not set a seed.  Pass an integer for reproducible results.
 #' @param group Unquoted group identifier for `estimator = "flex"` only.
@@ -220,12 +237,27 @@
 #' Attributes include: `lead_range`, `lag_range`, `baseline`, `interval`, `call`, `model_formula`, `conf.level`,
 #' `N`, `N_units`, `N_treated`, `N_nevertreated`, `fe`, `vcov_type`, `cluster_vars`, `staggered`, `sunab_used`.
 #'
+#' @seealso [plot.es_result()] for visualization, [att()] for aggregated ATT
+#'   estimation, and [run_es()] for the deprecated verb-style predecessor.
+#'
+#' @examples
+#' \dontrun{
+#' # Staggered adoption, Callaway-Sant'Anna
+#' res <- event_study(df, outcome = y, time = year, timing = g, unit = id,
+#'                    estimator = "cs")
+#' plot(res)
+#'
+#' # Classic TWFE with universal timing (timing inferred as universal)
+#' res <- event_study(df, outcome = y, treatment = treated, time = year,
+#'                    timing = 2005, fe = ~ id + year, cluster = ~ id)
+#' }
+#'
 #' @importFrom stats as.formula qnorm setNames vcov
 #' @importFrom dplyr bind_rows mutate arrange filter left_join group_by ungroup n_distinct
 #' @importFrom rlang .data
 #' @importFrom utils getFromNamespace
 #' @export
-run_es <- function(
+event_study <- function(
   data,
   outcome,
   treatment = NULL,
@@ -242,27 +274,45 @@ run_es <- function(
   time_transform = FALSE,
   rel_time = NULL,
   unit = NULL,
-  staggered = FALSE,
-  method = c("classic", "sunab"),
+  staggered = NULL,
   estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
-  conf.level = 0.95,
+  conf_level = 0.95,
   vcov = "HC1",
   vcov_args = list(),
   bootstrap = FALSE,
-  B = 999L,
-  alpha = 0.05,
+  boot_reps = 999L,
+  boot_alpha = 0.05,
   boot_seed = NULL,
   group = NULL,
   trends = FALSE
 ) {
-  method <- match.arg(method)
   estimator <- match.arg(estimator)
   stopifnot(is.data.frame(data))
   if (!is.numeric(interval) || interval <= 0) {
     stop("`interval` must be positive.")
   }
+
+  # Internal names kept from the verb-style API so the estimator branches
+  # below stay unchanged.
+  conf.level <- conf_level
+  B <- boot_reps
+  alpha <- boot_alpha
+
+  # ---- staggered inference ---------------------------------------------------
+  # Only the twfe estimator distinguishes universal from staggered timing.
+  # Default NULL: `timing` naming a column of `data` means staggered;
+  # anything else (scalar value, expression) means universal timing.
+  if (is.null(staggered)) {
+    timing_expr <- rlang::enexpr(timing)
+    staggered <- !rlang::is_missing(timing_expr) &&
+      ((rlang::is_symbol(timing_expr) &&
+          rlang::as_string(timing_expr) %in% names(data)) ||
+         (is.character(timing_expr) && length(timing_expr) == 1L &&
+            timing_expr %in% names(data)))
+  }
+  staggered <- isTRUE(staggered)
 
   # ---- helpers -------------------------------------------------------------
   # NSE column resolution is provided by the shared `.resolve_col()` helper in
@@ -297,9 +347,6 @@ run_es <- function(
     if (estimator != "twfe")
       stop("`rel_time` is only supported for `estimator = \"twfe\"` ",
            "(the classic event-study path).")
-    if (method == "sunab")
-      stop("`rel_time` is not supported with `method = \"sunab\"`; ",
-           "pass the pre-built event time with the default classic method.")
     if (isTRUE(staggered))
       stop("`rel_time` cannot be combined with `staggered = TRUE`: ",
            "it already encodes event time relative to treatment.")
@@ -493,6 +540,7 @@ run_es <- function(
     }
 
     class(tidy) <- c("es_result", "data.frame")
+    attr(tidy, "estimator") <- estimator
     return(tidy)
   }
 
@@ -557,6 +605,7 @@ run_es <- function(
       )
     )
 
+    attr(tidy, "estimator") <- estimator
     return(tidy)
   }
 
@@ -619,6 +668,7 @@ run_es <- function(
       bjs_lead = TRUE
     )
 
+    attr(tidy, "estimator") <- estimator
     return(tidy)
   }
 
@@ -686,6 +736,7 @@ run_es <- function(
       )
     )
 
+    attr(tidy, "estimator") <- estimator
     return(tidy)
   }
 
@@ -756,200 +807,11 @@ run_es <- function(
       )
     )
 
+    attr(tidy, "estimator") <- estimator
     return(tidy)
   }
 
-  # ---- method = sunab ------------------------------------------------------
-  if (method == "sunab") {
-    if (!staggered) {
-      warning("`method='sunab'` is typically used with `staggered=TRUE`.")
-    }
-    timing_chr <- resolve_column(rlang::enexpr(timing), data)
-
-    # fixest::sunab() has no NA-cohort convention: rows with an NA cohort are
-    # dropped from the estimation sample, silently discarding the entire
-    # never-treated control group.  Recode never-treated units to a cohort far
-    # beyond the sample (the convention used by fixest::base_stagg), which
-    # sunab treats as never-treated controls.
-    n_na_timing_rows <- sum(is.na(data[[timing_chr]]))
-    if (n_na_timing_rows > 0L) {
-      never_code <- max(data[[time_chr]], na.rm = TRUE) + 10000
-      data[[timing_chr]][is.na(data[[timing_chr]])] <- never_code
-    }
-
-    # Get sunab function from fixest namespace and make it available in the formula environment
-    # This ensures sunab is accessible when feols evaluates the formula
-    sunab_fn <- getFromNamespace("sunab", "fixest")
-
-    # Build formula as string (simpler approach that works with the injected function)
-    rhs <- paste0("sunab(", timing_chr, ", ", time_chr, ")")
-    if (nzchar(cov_text)) {
-      rhs <- paste(rhs, cov_text, sep = " + ")
-    }
-    if (nzchar(fe_rhs_text)) {
-      formula_string <- paste0(outcome_chr, " ~ ", rhs, " | ", fe_rhs_text)
-    } else {
-      formula_string <- paste0(outcome_chr, " ~ ", rhs)
-    }
-    model_formula <- stats::as.formula(formula_string)
-
-    # Set the formula environment to include sunab
-    formula_env <- new.env(parent = environment(model_formula))
-    formula_env$sunab <- sunab_fn
-    environment(model_formula) <- formula_env
-
-    model_args <- list(model_formula, data = data)
-    if (!is.null(cluster)) {
-      model_args$cluster <- cluster
-    }
-    if (!is.null(weights)) {
-      model_args$weights <- weights
-    }
-
-    model <- tryCatch(do.call(fixest::feols, model_args), error = function(e) {
-      stop("Model estimation failed: ", e$message)
-    })
-    # vcov: when cluster is specified and vcov is the default "HC1", use the
-    # model's clustered SE rather than silently overriding it with HC1.
-    if (!is.null(cluster) && identical(vcov, "HC1")) {
-      tidy <- broom::tidy(model)
-    } else {
-      V <- tryCatch(
-        vcov(model, vcov = vcov, .vcov_args = vcov_args),
-        error = function(e) NULL
-      )
-      tidy <- if (is.null(V)) {
-        broom::tidy(model)
-      } else {
-        broom::tidy(model, vcov = V)
-      }
-    }
-
-    # Full coefficient VCOV, retained for honest_sensitivity() downstream.
-    V_full_es <- .model_vcov_full(model, vcov, cluster, vcov_args)
-
-    # extract relative time from terms like "sunab::timing_var:: -2"
-    rel <- suppressWarnings(as.integer(gsub(".*::(-?\\d+)$", "\\1", tidy$term)))
-    tidy$relative_time <- rel
-    tidy$is_baseline <- FALSE
-
-    # Warn about any NA values in sunab event time terms only (not covariates)
-    # Sunab terms should contain "::" (from sunab decomposition)
-    terms_char <- as.character(tidy$term)
-    is_sunab_term <- grepl("::", terms_char, fixed = TRUE)
-
-    if (any(is.na(tidy$relative_time) & is_sunab_term)) {
-      na_sunab_terms <- terms_char[is_sunab_term & is.na(tidy$relative_time)]
-      if (length(na_sunab_terms) > 0) {
-        warning(
-          "Could not extract relative_time from sunab event time terms: ",
-          paste(na_sunab_terms, collapse = ", ")
-        )
-      }
-    }
-
-    # Determine lead_range and lag_range
-    if (is.null(lead_range)) {
-      lead_range <- max(0L, abs(min(tidy$relative_time, na.rm = TRUE)))
-    }
-    if (is.null(lag_range)) {
-      lag_range <- max(0L, max(tidy$relative_time, na.rm = TRUE))
-    }
-
-    # Filter results to specified ranges (before adding baseline)
-    tidy <- tidy |>
-      dplyr::filter(
-        !is.na(.data$relative_time) &
-          .data$relative_time >= -lead_range &
-          .data$relative_time <= lag_range
-      )
-
-    # Add baseline row (0 estimate, 0 SE) for the dropped reference
-    # Check if baseline is within the filtered range
-    if (baseline >= -lead_range && baseline <= lag_range) {
-      baseline_row <- tibble::tibble(
-        term = as.character(baseline),
-        estimate = 0,
-        std.error = 0,
-        statistic = NA_real_,
-        p.value = NA_real_,
-        relative_time = baseline
-      )
-      # Add baseline row if it doesn't already exist
-      if (!baseline %in% tidy$relative_time) {
-        tidy <- dplyr::bind_rows(tidy, baseline_row)
-      }
-    }
-
-    # Mark baseline rows and arrange
-    tidy$is_baseline <- tidy$relative_time == baseline
-    tidy <- tidy |> dplyr::arrange(.data$relative_time)
-
-    # Event-study coefficient VCOV (ordered by relative time) — built from the
-    # original coefficient term names before they are relabelled below.
-    es_vcov <- .build_es_vcov(
-      V_full_es,
-      tidy$term[!tidy$is_baseline],
-      tidy$relative_time[!tidy$is_baseline]
-    )
-
-    # Update term column to show relative_time as numeric string
-    tidy$term <- as.character(tidy$relative_time)
-
-    # add CIs for requested levels
-    conf.level <- sort(unique(conf.level))
-    for (cl in conf.level) {
-      z <- stats::qnorm(1 - (1 - cl) / 2)
-      suf <- sprintf("%.0f", cl * 100)
-      tidy[[paste0("conf_low_", suf)]] <- tidy$estimate - z * tidy$std.error
-      tidy[[paste0("conf_high_", suf)]] <- tidy$estimate + z * tidy$std.error
-    }
-
-    # metadata
-    N_units <- if (!is.null(unit_chr)) {
-      dplyr::n_distinct(data[[unit_chr]])
-    } else {
-      NA_integer_
-    }
-    N_treat <- if (timing_chr %in% names(data)) {
-      # never-treated rows were recoded to `never_code` above, so count
-      # them via the pre-recode NA tally.
-      nrow(data) - n_na_timing_rows
-    } else {
-      NA_integer_
-    }
-
-    attr(tidy, "lead_range") <- lead_range
-    attr(tidy, "lag_range") <- lag_range
-    attr(tidy, "baseline") <- baseline
-    attr(tidy, "interval") <- interval
-    attr(tidy, "call") <- match.call()
-    attr(tidy, "model_formula") <- formula_string
-    attr(tidy, "conf.level") <- conf.level
-    attr(tidy, "N") <- stats::nobs(model)
-    attr(tidy, "N_units") <- N_units
-    attr(tidy, "N_treated") <- N_treat
-    attr(tidy, "N_nevertreated") <- if (!is.na(N_units)) {
-      N_units - N_treat
-    } else {
-      NA_integer_
-    }
-    attr(tidy, "fe") <- fe_rhs_text
-    attr(tidy, "vcov_type") <- if (!is.null(cluster) && identical(vcov, "HC1")) "cluster" else vcov
-    attr(tidy, "cluster_vars") <- if (inherits(cluster, "formula")) {
-      rlang::expr_text(rlang::f_rhs(cluster))
-    } else {
-      cluster
-    }
-    attr(tidy, "staggered") <- staggered
-    attr(tidy, "sunab_used") <- TRUE
-    attr(tidy, "es_vcov") <- es_vcov
-
-    class(tidy) <- c("es_result", "data.frame")
-    return(tidy)
-  }
-
-  # ---- method = classic ----------------------------------------------------
+  # ---- estimator = twfe (classic event-study design) ------------------------
   # resolve treatment and timing
   treatment_chr <- resolve_column(rlang::enexpr(treatment), data)
   tx <- data[[treatment_chr]]
@@ -1091,35 +953,19 @@ run_es <- function(
     data$..k[is.na(data$..k)] <- as.integer(baseline)
   }
 
-  # Build formula using i()
-  # For staggered / rel_time: use relative time (..k)
-  # For non-staggered: use absolute time for i(), but will convert terms to relative time later
+  # The fixest-style formula string is kept as metadata for reproducibility
+  # (attr "model_formula"), although estimation now runs on the internal
+  # FE-OLS engine.
   if (staggered_design) {
-    # Use i(..k, treatment, ref = baseline)
     i_formula <- paste0(
-      "fixest::i(..k, ",
-      treatment_chr,
-      ", ref = ",
-      baseline,
-      ")"
+      "fixest::i(..k, ", treatment_chr, ", ref = ", baseline, ")"
     )
   } else {
-    # Calculate the reference period based on baseline
-    # E.g., if timing = 5 and baseline = -1, ref should be period 4
-    if (inherits(timing_val, "Date")) {
-      ref_period <- timing_val + baseline * interval
-    } else {
-      ref_period <- timing_val + baseline * interval
-    }
-    # Use i(time, treatment, ref = ref_period)
+    # Reference period from the baseline, e.g. timing = 5, baseline = -1
+    # puts the reference at period 4.
+    ref_period <- timing_val + baseline * interval
     i_formula <- paste0(
-      "fixest::i(",
-      time_chr,
-      ", ",
-      treatment_chr,
-      ", ref = ",
-      ref_period,
-      ")"
+      "fixest::i(", time_chr, ", ", treatment_chr, ", ref = ", ref_period, ")"
     )
   }
 
@@ -1132,85 +978,18 @@ run_es <- function(
   } else {
     formula_string <- paste0(outcome_chr, " ~ ", rhs)
   }
-  model_formula <- stats::as.formula(formula_string)
 
-  model_args <- list(model_formula, data = data)
-  if (!is.null(cluster)) {
-    model_args$cluster <- cluster
-  }
-  if (!is.null(weights)) {
-    model_args$weights <- weights
-  }
-
-  model <- tryCatch(do.call(fixest::feols, model_args), error = function(e) {
-    msg <- e$message
-    stop(
-      "Model estimation failed: ",
-      msg,
-      "\nHint: Check for collinearity between FE and event dummies; reconsider `lead_range`/`lag_range` or the granularity of your FE."
-    )
-  })
-
-  # vcov: when cluster is specified and vcov is the default "HC1", use the
-  # model's clustered SE rather than silently overriding it with HC1.
-  if (!is.null(cluster) && identical(vcov, "HC1")) {
-    tidy <- broom::tidy(model)
-  } else {
-    V <- tryCatch(
-      vcov(model, vcov = vcov, .vcov_args = vcov_args),
-      error = function(e) NULL
-    )
-    tidy <- if (is.null(V)) broom::tidy(model) else broom::tidy(model, vcov = V)
-  }
+  fit_c <- .run_twfe_classic(
+    data, outcome_chr, treatment_chr, time_chr,
+    fe_rhs_text, cov_text, cluster, weights,
+    staggered_design, timing_val, interval,
+    baseline, vcov, vcov_args
+  )
+  tidy <- fit_c$tidy
 
   # Full coefficient VCOV (same cluster/vcov precedence used to build `tidy`),
   # retained for honest_sensitivity() downstream.
-  V_full_es <- .model_vcov_full(model, vcov, cluster, vcov_args)
-
-  # Extract relative_time from i() terms - vectorized for performance
-  # Format: "fixest::var::value:treatment" (3 parts) or "var::value" (2 parts)
-  terms_char <- as.character(tidy$term)
-
-  # Extract numeric values from term strings
-  # Split by "::" and extract the LAST part (which contains "value:treatment" or just "value")
-  parts_list <- strsplit(terms_char, "::", fixed = TRUE)
-  value_parts <- sapply(parts_list, function(x) x[length(x)])
-
-  # Extract numeric part (before any additional ":")
-  numeric_parts <- sapply(
-    strsplit(value_parts, ":", fixed = TRUE),
-    function(x) x[1]
-  )
-  time_values <- suppressWarnings(as.numeric(numeric_parts))
-
-  # Convert to relative time
-  if (staggered_design) {
-    # For staggered / rel_time, ..k is already relative time
-    tidy$relative_time <- as.integer(time_values)
-  } else {
-    # For non-staggered, convert absolute time to relative time
-    tv <- if (inherits(timing_val, "Date")) {
-      as.numeric(timing_val)
-    } else {
-      timing_val
-    }
-    tidy$relative_time <- as.integer(round((time_values - tv) / interval))
-  }
-
-  # Warn about any NA values in event time terms only (not covariates)
-  # Event time terms should contain "::" (from fixest::i()) or be standalone numeric-like
-  is_event_term <- grepl("::", terms_char, fixed = TRUE) |
-    grepl("^[+-]?\\d+$", terms_char)
-
-  if (any(is.na(tidy$relative_time) & is_event_term)) {
-    na_event_terms <- terms_char[is_event_term & is.na(tidy$relative_time)]
-    if (length(na_event_terms) > 0) {
-      warning(
-        "Could not extract relative_time from event time terms: ",
-        paste(na_event_terms, collapse = ", ")
-      )
-    }
-  }
+  V_full_es <- fit_c$V_full
 
   # Add baseline row (0 estimate, 0 SE) for the dropped reference
   baseline_row <- tibble::tibble(
@@ -1278,7 +1057,7 @@ run_es <- function(
   attr(tidy, "call") <- match.call()
   attr(tidy, "model_formula") <- formula_string
   attr(tidy, "conf.level") <- conf.level
-  attr(tidy, "N") <- stats::nobs(model)
+  attr(tidy, "N") <- fit_c$nobs
   attr(tidy, "N_units") <- N_units
   attr(tidy, "N_treated") <- N_treat
   attr(tidy, "N_nevertreated") <- N_never
@@ -1292,6 +1071,7 @@ run_es <- function(
   attr(tidy, "staggered") <- staggered
   attr(tidy, "sunab_used") <- FALSE
   attr(tidy, "es_vcov") <- es_vcov
+  attr(tidy, "estimator") <- estimator
 
   class(tidy) <- c("es_result", "data.frame")
   tidy

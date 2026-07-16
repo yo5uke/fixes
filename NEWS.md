@@ -1,3 +1,80 @@
+# fixes 1.0.0 (2026-07-16)
+
+Major release: the package API is reborn with modern noun-style function
+names, base `plot()` methods for every result class, and a fixest-optional
+estimation core. All pre-1.0.0 functions keep working (with a deprecation
+warning) and return numerically identical results.
+
+## New API
+
+- `event_study()` replaces `run_es()`. Argument modernization:
+  `conf.level` -> `conf_level`, `B` -> `boot_reps`, `alpha` -> `boot_alpha`;
+  `method = "sunab"` is retired in favour of `estimator = "sa"` (the
+  built-in Sun-Abraham implementation); `staggered` now defaults to `NULL`
+  and is inferred -- `timing` naming a column of `data` means staggered,
+  a scalar means universal timing.
+- `att()` replaces `calc_att()`. The reserved-but-ignored arguments
+  (`treatment`, `fe`, `covariates`, `cluster`, `weights`, `vcov`,
+  `vcov_args`) are dropped; `unit` is required; `conf.level` -> `conf_level`.
+- `did()` replaces `run_did()` (`conf.level` -> `conf_level`).
+- `att_gt()` extracts the Callaway-Sant'Anna ATT(g,t) table as a real
+  `att_gt_result` object with its own `plot()`/`autoplot()` methods.
+- `contamination_weights()` replaces `compute_contamination_weights()`.
+- `honest_sensitivity()` keeps its name; `Mvec`, `gridPoints`,
+  `numPrePeriods`, `numPostPeriods` are renamed to `m_grid`, `grid_points`,
+  `n_pre_periods`, `n_post_periods` (old names still accepted with a
+  deprecation warning).
+- `es_result` objects gain `broom::tidy()` / `broom::glance()` methods and
+  an `estimator` attribute (shown by `print()`).
+
+## Plotting via plot()
+
+- Every result class now has a base `plot()` method returning a ggplot:
+  `plot(<es_result>)`, `plot(<att_result>)` (new point-range chart),
+  `plot(att_gt(x))`, `plot(<honest_result>)`, and
+  `plot(<sa_contamination_weights>)`.
+- `plot(x, interactive = TRUE)` returns the plotly chart formerly provided
+  by `plot_es_interactive()` (requires the suggested plotly package).
+- `plot_es()`, `plot_es_interactive()`, `plot_att_gt()`, `plot_honest()`,
+  and `plot_contamination_weights()` are deprecated wrappers over the same
+  engines. The duplicate `autoplot.es_result` registration was removed.
+- The contamination-weights heatmap labels now use plain ASCII notation;
+  the previous Unicode superscripts rendered as garbled glyphs on the
+  Windows graphics devices.
+
+## fixest is now optional (Suggests)
+
+- The classic TWFE event-study path and `did()` now run on the package's
+  internal C++ fixed-effects OLS engine (weighted least squares, Student-t
+  inference, and fit statistics added), reproducing the previous
+  fixest-based results to numerical agreement (oracle tests at 1e-8).
+- fixest moved from Imports to Suggests. It is only needed for:
+  `run_es(method = "sunab")` (legacy path), multiway clustering, non-empty
+  `vcov_args`, vcov types beyond iid/hetero/HC1, and fixed-effects or
+  cluster specifications beyond plain columns (e.g. `~ id^year`). These
+  paths raise an informative error when fixest is not installed.
+- CI gained a no-fixest job proving the package installs and passes its
+  test suite without fixest.
+- Performance: at typical panel sizes (tens of thousands of rows) the
+  internal engine matches the previous fixest pipeline; `did()` is on par
+  or faster. On very large panels (~1M rows) the classic event-study path
+  currently runs within ~2.5x of fixest; closing this gap with a fused
+  demeaning/cross-product kernel is planned.
+
+## Breaking changes
+
+- `did_result` (from `did()`/`run_did()`) no longer stores the raw fixest
+  model in `$model`. It now carries `coeftable`, `vcov`, `fit_stats`, and
+  `df.t`; `broom::tidy()`/`broom::glance()`/`print()` output is unchanged.
+
+## Deprecations
+
+- `run_es()`, `calc_att()`, `run_did()`, `plot_es()`,
+  `plot_es_interactive()`, `plot_att_gt()`, `plot_honest()`,
+  `compute_contamination_weights()`, and `plot_contamination_weights()`
+  are deprecated (lifecycle warning once per session) but fully functional,
+  returning results identical to their successors.
+
 # fixes 0.12.0 (2026-07-05)
 
 ## Bug fixes

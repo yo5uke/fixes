@@ -35,7 +35,7 @@ make_universal_panel <- function(n_units = 50, T = 8, start = 1L) {
   times <- seq.int(start, start + T - 1L)
   treated_flag <- sample(c(0L, 1L), n_units, replace = TRUE)
 
-  df <- tidyr::expand_grid(id = ids, time = times) |>
+  df <- expand.grid(id = ids, time = times) |>
     dplyr::arrange(id, time) |>
     dplyr::mutate(
       treated_univ = rep(treated_flag, each = T),
@@ -58,7 +58,7 @@ make_staggered_panel <- function(n_units = 40, T = 10, start = 1L,
   probs <- c(p_never, rep((1 - p_never) / adopt_years, adopt_years))
   treat_year <- sample(adopt_pool, n_units, replace = TRUE, prob = probs)
 
-  df <- tidyr::expand_grid(id = ids, time = times) |>
+  df <- expand.grid(id = ids, time = times) |>
     dplyr::arrange(id, time) |>
     dplyr::mutate(
       timing      = rep(treat_year, each = T),

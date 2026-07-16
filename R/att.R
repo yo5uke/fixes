@@ -122,21 +122,24 @@
 
 # --------------------------------------------------------------------------- #
 
-#' Compute ATT Aggregations for Staggered Adoption Designs
+#' ATT aggregation for staggered adoption designs
 #'
 #' Estimates average treatment effects on the treated (ATT) using either the
 #' Callaway-Sant'Anna (2021) or Borusyak-Jaravel-Spiess (2024) estimator,
 #' aggregated to a single summary effect (`"simple"`), per-cohort effects
 #' (`"by_cohort"`), or per calendar-time effects (`"by_time"`).
 #'
-#' This function complements [run_es()]: use `run_es()` when you want a full
-#' event-study curve (dynamic effects by relative time), and `calc_att()` when
-#' you want aggregated ATT estimates that collapse the time dimension.
+#' This function complements [event_study()]: use `event_study()` when you
+#' want a full event-study curve (dynamic effects by relative time), and
+#' `att()` when you want aggregated ATT estimates that collapse the time
+#' dimension.
 #'
 #' The result has `broom::tidy()` and `broom::glance()` methods, so it can be
 #' passed to `modelsummary::modelsummary()` (rendered with `tinytable`) to build
-#' a publication table — including stacking several estimators (e.g. [run_did()]
+#' a publication table — including stacking several estimators (e.g. [did()]
 #' TWFE, CS, and BJS) side by side in one table.
+#'
+#' `att()` supersedes [calc_att()] as of fixes 1.0.0.
 #'
 #' @section Aggregation formulas (CS estimator):
 #' - **simple**: \eqn{\theta = \sum_g (n_g/n_{treated}) \cdot \overline{ATT(g,\cdot)}}
@@ -151,17 +154,9 @@
 #'
 #' @param data A data.frame containing panel data.
 #' @param outcome Unquoted outcome variable (name or expression, e.g., `log(y)`).
-#' @param treatment Unused; reserved for future use.
 #' @param time Unquoted calendar time variable (numeric).
 #' @param timing Unquoted column giving each unit's first treatment period
 #'   (`NA` = never treated).
-#' @param fe Ignored (CS and BJS absorb fixed effects internally).
-#' @param covariates Ignored; reserved for future use.
-#' @param cluster Ignored; reserved for future use.
-#' @param weights Ignored; reserved for future use.
-#' @param interval Numeric time spacing (default `1`; informational only).
-#' @param time_transform Logical; if `TRUE`, creates consecutive integer time
-#'   within unit via `dplyr::dense_rank()`. Requires `unit`.
 #' @param unit Unquoted unit identifier (required).
 #' @param estimator Estimation strategy: `"cs"` (Callaway-Sant'Anna 2021,
 #'   default) or `"bjs"` (Borusyak-Jaravel-Spiess 2024).
@@ -172,10 +167,11 @@
 #'   `"nevertreated"` (default) or `"notyettreated"`.
 #' @param anticipation For `estimator = "cs"`: number of anticipation periods
 #'   before treatment (non-negative integer, default `0L`).
-#' @param conf.level Numeric confidence level(s) (default `0.95`). Multiple
+#' @param conf_level Numeric confidence level(s) (default `0.95`). Multiple
 #'   levels are supported, e.g., `c(0.90, 0.95)`.
-#' @param vcov Ignored (SE is analytical for CS; approximate for BJS).
-#' @param vcov_args Ignored.
+#' @param interval Numeric time spacing (default `1`; informational only).
+#' @param time_transform Logical; if `TRUE`, creates consecutive integer time
+#'   within unit via `dplyr::dense_rank()`. Requires `unit`.
 #'
 #' @return A `data.frame` of class `"att_result"` with columns:
 #' \describe{
@@ -191,36 +187,38 @@
 #' `N_treated`, `N_nevertreated`, `control_group` (CS only), `att_gt` (CS
 #' raw ATT(g,t) table), `tau_it` (BJS unit-time effects table).
 #'
-#' @seealso [run_es()] for event-study (dynamic) estimates.
+#' @seealso [event_study()] for event-study (dynamic) estimates, and
+#'   [calc_att()] for the deprecated verb-style predecessor.
+#'
+#' @examples
+#' \dontrun{
+#' att(df, outcome = y, time = year, timing = g, unit = id)
+#' att(df, outcome = y, time = year, timing = g, unit = id,
+#'     estimator = "bjs", aggregation = "by_cohort")
+#' }
+#'
 #' @importFrom stats qnorm pnorm sd
 #' @importFrom dplyr group_by mutate arrange dense_rank ungroup n_distinct
 #' @importFrom rlang .data
 #' @export
-calc_att <- function(
+att <- function(
   data,
   outcome,
-  treatment  = NULL,
   time,
   timing,
-  fe         = NULL,
-  covariates = NULL,
-  cluster    = NULL,
-  weights    = NULL,
-  interval   = 1,
-  time_transform = FALSE,
-  unit       = NULL,
+  unit,
   estimator  = c("cs", "bjs"),
   aggregation = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation  = 0L,
-  conf.level    = 0.95,
-  vcov          = "HC1",
-  vcov_args     = list()
+  conf_level    = 0.95,
+  interval   = 1,
+  time_transform = FALSE
 ) {
   estimator     <- match.arg(estimator)
   aggregation   <- match.arg(aggregation)
   control_group <- match.arg(control_group)
-  conf.level    <- sort(unique(conf.level))
+  conf.level    <- sort(unique(conf_level))
 
   stopifnot(is.data.frame(data))
   if (!is.numeric(interval) || interval <= 0) {
@@ -237,7 +235,9 @@ calc_att <- function(
   timing_chr  <- resolve_column(rlang::enexpr(timing),  data)
 
   unit_expr <- rlang::enexpr(unit)
-  if (is.null(unit_expr)) stop("`unit` is required for `calc_att()`.")
+  if (rlang::is_missing(unit_expr) || is.null(unit_expr)) {
+    stop("`unit` is required for `att()`.")
+  }
   unit_chr <- resolve_column(unit_expr, data)
 
   if (isTRUE(time_transform)) {
@@ -312,4 +312,98 @@ print.att_result <- function(x, digits = 3L, ...) {
   display <- as.data.frame(x)
   print(display, digits = digits, ...)
   invisible(x)
+}
+
+#' Plot an ATT aggregation result
+#'
+#' @description
+#' Base `plot()` method for `att_result` objects returned by [att()] (or the
+#' deprecated [calc_att()]). Draws point estimates with confidence-interval
+#' bars: a single point for `aggregation = "simple"`, one point per cohort
+#' for `"by_cohort"`, and one per calendar period for `"by_time"`.
+#'
+#' @param x An `att_result` object.
+#' @param ci_level Confidence level to display (default `0.95`; must be one
+#'   of the levels requested in the originating call).
+#' @param color Point and interval colour (default `"#B25D91FF"`).
+#' @param zero_line Logical; draw a dashed reference line at zero
+#'   (default `TRUE`).
+#' @param theme_style One of `"bw"` (default), `"minimal"`, or `"classic"`.
+#' @param ... Unused.
+#'
+#' @return A `ggplot` object.
+#'
+#' @examples
+#' \dontrun{
+#' res <- att(df, outcome = y, time = year, timing = g, unit = id,
+#'            aggregation = "by_cohort")
+#' plot(res)
+#' }
+#'
+#' @seealso [att()]
+#' @export
+plot.att_result <- function(
+  x,
+  ci_level = 0.95,
+  color = "#B25D91FF",
+  zero_line = TRUE,
+  theme_style = c("bw", "minimal", "classic"),
+  ...
+) {
+  theme_style <- match.arg(theme_style)
+
+  suf <- sprintf("%.0f", ci_level * 100)
+  lo <- paste0("conf_low_", suf)
+  hi <- paste0("conf_high_", suf)
+  if (!all(c(lo, hi) %in% names(x))) {
+    stop("CI columns for ci_level = ", ci_level, " not found; ",
+         "request this level via `conf_level` when calling att().")
+  }
+
+  aggregation <- attr(x, "aggregation")
+  df <- as.data.frame(x)
+  df$.group <- if (identical(aggregation, "simple")) "ATT" else
+    factor(df$group, levels = sort(unique(df$group)))
+
+  xlab <- switch(aggregation,
+    simple    = NULL,
+    by_cohort = "Cohort (first treatment period)",
+    by_time   = "Calendar time",
+    NULL
+  )
+
+  p <- ggplot2::ggplot(
+    df,
+    ggplot2::aes(x = .data$.group, y = .data$estimate)
+  ) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data[[lo]], ymax = .data[[hi]]),
+      width = 0.15, linewidth = 0.7, color = color
+    ) +
+    ggplot2::geom_point(size = 2.4, color = color) +
+    ggplot2::labs(
+      x = xlab,
+      y = sprintf("ATT and %s%% CI", suf)
+    )
+
+  if (isTRUE(zero_line)) {
+    p <- p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                                 color = "grey40")
+  }
+
+  p <- switch(theme_style,
+    bw      = p + ggplot2::theme_bw() +
+      ggplot2::theme(panel.grid.minor = ggplot2::element_blank()),
+    minimal = p + ggplot2::theme_minimal() +
+      ggplot2::theme(panel.grid.minor = ggplot2::element_blank()),
+    classic = p + ggplot2::theme_classic()
+  )
+  p
+}
+
+#' @rdname plot.att_result
+#' @param object An `att_result` object.
+#' @exportS3Method ggplot2::autoplot att_result
+autoplot.att_result <- function(object, ...) {
+  plot.att_result(object, ...)
 }

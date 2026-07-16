@@ -80,7 +80,7 @@
 #'   with a warning.
 #' @param baseline Integer reference (baseline) period excluded from the TWFE
 #'   specification (default `-1L`).  Must match the `baseline`
-#'   argument used in [run_es()].
+#'   argument used in [event_study()].
 #'
 #' @return An object of class `c("sa_contamination_weights", "data.frame")`
 #'   with one row per `(catt_cohort, catt_period, twfe_period)` triple,
@@ -95,7 +95,8 @@
 #' }
 #' Attributes: `baseline`, `cohorts`, `cohort_sizes`, `incl_periods`.
 #'
-#' @seealso [plot_contamination_weights()], [run_es()]
+#' @seealso [plot.sa_contamination_weights()], [event_study()], and
+#'   [compute_contamination_weights()] for the deprecated predecessor.
 #'
 #' @references
 #' Sun, L. and Abraham, S. (2021). Estimating dynamic treatment effects in
@@ -105,7 +106,7 @@
 #' @examples
 #' \dontrun{
 #' # Estimate contamination weights
-#' cw <- compute_contamination_weights(
+#' cw <- contamination_weights(
 #'   data     = panel_data,
 #'   time     = year,
 #'   timing   = first_treat,
@@ -114,11 +115,11 @@
 #'   baseline = -1L
 #' )
 #' print(cw)
-#' plot_contamination_weights(cw)
+#' plot(cw)
 #' }
 #'
 #' @export
-compute_contamination_weights <- function(
+contamination_weights <- function(
   data,
   time,
   timing,
@@ -296,6 +297,13 @@ compute_contamination_weights <- function(
   X_aux <- X_mat
   colnames(X_aux) <- .mat_coef_names(".aux_X", X_colnames)
   fe_vars_aux <- .parse_fe_list(fe_rhs_text, data)
+  if (isFALSE(fe_vars_aux)) {
+    .require_fixest(
+      paste0("This fixed-effects specification (beyond plain columns, ",
+             "e.g. `~ id^year`)"),
+      "use plain column fixed effects"
+    )
+  }
 
   for (k_z in seq_len(K_z)) {
     g_k <- gl_all$g[k_z]
@@ -414,11 +422,11 @@ print.sa_contamination_weights <- function(x, digits = 3L, ...) {
 # plot_contamination_weights
 # ---------------------------------------------------------------------------
 
-#' Plot Contamination Weights as a Tile Heatmap
+#' Plot contamination weights as a tile heatmap
 #'
 #' @description
-#' Creates a ggplot2 tile heatmap of the contamination weights returned by
-#' [compute_contamination_weights()].
+#' Base `plot()` method for the contamination weights returned by
+#' [contamination_weights()]: a ggplot2 tile heatmap.
 #'
 #' Each cell at position (`twfe_period`, `catt_label`) shows the
 #' weight \eqn{\omega^{\ell''}_{e,\ell}}: how much of \eqn{CATT_{e,\ell}}
@@ -430,7 +438,7 @@ print.sa_contamination_weights <- function(x, digits = 3L, ...) {
 #'   close to zero under treatment effect homogeneity).
 #'
 #' @param x An `sa_contamination_weights` object from
-#'   [compute_contamination_weights()].
+#'   [contamination_weights()].
 #' @param limit_abs Numeric; symmetric colour scale limit `[-limit, limit]`.
 #'   Defaults to the maximum absolute weight (rounded up to one decimal).
 #' @param midpoint Numeric; midpoint of the diverging colour scale (default 0).
@@ -442,14 +450,15 @@ print.sa_contamination_weights <- function(x, digits = 3L, ...) {
 #'   `FALSE`).
 #' @param value_digits Integer; decimal digits when `show_values = TRUE`
 #'   (default `2L`).
+#' @param ... Unused.
 #'
 #' @return A [ggplot2::ggplot()] object.
 #'
-#' @seealso [compute_contamination_weights()]
+#' @seealso [contamination_weights()]
 #'
 #' @importFrom rlang .data
 #' @export
-plot_contamination_weights <- function(
+plot.sa_contamination_weights <- function(
   x,
   limit_abs = NULL,
   midpoint = 0,
@@ -458,12 +467,13 @@ plot_contamination_weights <- function(
   high = "#B2182B",
   theme = c("bw", "minimal", "classic"),
   show_values = FALSE,
-  value_digits = 2L
+  value_digits = 2L,
+  ...
 ) {
   if (!inherits(x, "sa_contamination_weights")) {
     stop(
       "`x` must be an `sa_contamination_weights` object from ",
-      "`compute_contamination_weights()`."
+      "`contamination_weights()`."
     )
   }
 
@@ -529,12 +539,12 @@ plot_contamination_weights <- function(
       expand = ggplot2::expansion(add = 0.5)
     ) +
     ggplot2::labs(
-      x = "TWFE relative event time (\u2113'')",
-      y = "CATT cell (g, \u2113)",
+      x = "TWFE relative event time (l'')",
+      y = "CATT cell (g, l)",
       title = "Contamination weights for TWFE event-study coefficients",
       subtitle = paste0(
-        "Each cell shows \u03c9\u1d35\u1d31\u1d1e\u2099\u1d40\u1d32\u1d31 ",
-        "[= weight on CATT(g,\u2113) in TWFE estimate \u03bc\u1d35\u1d31\u1d1e\u2099\u2099]"
+        "Each cell shows the weight of CATT(g, l) ",
+        "in the TWFE estimate for event time l''"
       )
     )
 

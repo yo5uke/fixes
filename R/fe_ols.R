@@ -24,11 +24,25 @@
 #   - hetero:  V = sandwich * N / (N - K)
 #   - cluster: V = sandwich_G * G/(G-1) * (N-1)/(N-K)
 #
-# Returns list(coef, V, tidy(term/estimate/std.error), nobs, dropped, engine).
+# Observation weights (WLS) follow feols: rows with NA or zero weight are
+# dropped, negative weights error, group means in the demeaning become
+# weighted means, and [y | X] rows are scaled by sqrt(w) afterwards so the
+# same crossprod/score code yields X'WX and w-weighted scores.
+#
+# Inference matches feols/broom: Student-t with df = G - 1 under one-way
+# clustering, df = N - K (coefficients + all FE dof) otherwise.
+#
+# Returns list(coef, V, tidy(term/estimate/std.error/statistic/p.value),
+# nobs, df.t, dropped, used, engine) and, with keep_stats = TRUE, a $stats
+# list (nobs, r.squared, adj.r.squared, within.r.squared, sigma, logLik,
+# AIC, BIC) matching fixest's fitstat conventions (weighted RSS/TSS for the
+# R-squareds and sigma; plain Gaussian log-likelihood on unweighted
+# residuals; AIC/BIC parameter count = coefficients + FE dof).
 
 .fit_fe_ols <- function(y, X, fe_list = list(), cluster_vals = NULL,
                         vcov_type = "HC1", vcov_args = list(),
-                        collin_tol = 1e-10) {
+                        collin_tol = 1e-10, weights = NULL,
+                        keep_stats = FALSE) {
   if (is.null(colnames(X)))
     stop("FE-OLS: X must have column names.")
 
@@ -37,28 +51,44 @@
   if (length(vcov_args) > 0L || !vt_ok ||
       (!is.null(cluster_vals) && length(cluster_vals) > 1L))
     return(.fit_fe_ols_fixest(y, X, fe_list, cluster_vals,
-                              vcov_type, vcov_args))
+                              vcov_type, vcov_args,
+                              weights = weights, keep_stats = keep_stats))
 
   Q <- length(fe_list)
   n <- length(y)
   cl <- if (is.null(cluster_vals)) NULL else cluster_vals[[1L]]
+
+  w <- weights
+  if (!is.null(w)) {
+    w <- as.numeric(w)
+    if (length(w) != n)
+      stop("FE-OLS: `weights` must have length ", n, ".")
+    if (any(w < 0, na.rm = TRUE))
+      stop("FE-OLS: negative weights are not allowed.")
+  }
 
   # ---- Estimation sample: NA rows, then iterative singleton removal ---------
   ok <- !is.na(y)
   if (ncol(X) > 0L) ok <- ok & (rowSums(is.na(X)) == 0L)
   for (f in fe_list) ok <- ok & !is.na(f)
   if (!is.null(cl)) ok <- ok & !is.na(cl)
+  if (!is.null(w)) ok <- ok & !is.na(w) & w > 0
 
+  # Grouping is done on dense integer codes (hash-based match) rather than
+  # character conversion: only group identity matters downstream, never the
+  # level ordering, and integer tabulation is far cheaper at panel scale.
   if (Q > 0L) {
-    fe_chr <- lapply(fe_list, as.character)
+    fe_code <- lapply(fe_list, .dense_codes)
     repeat {
-      drop <- rep(FALSE, n)
+      idx <- which(ok)
+      keep <- rep(TRUE, length(idx))
       for (q in seq_len(Q)) {
-        cq   <- table(fe_chr[[q]][ok])
-        drop <- drop | (ok & fe_chr[[q]] %in% names(cq)[cq == 1L])
+        cq  <- fe_code[[q]][idx]
+        cnt <- tabulate(cq)
+        keep <- keep & cnt[cq] != 1L
       }
-      if (!any(drop)) break
-      ok <- ok & !drop
+      if (all(keep)) break
+      ok[idx[!keep]] <- FALSE
     }
   }
 
@@ -67,32 +97,48 @@
     stop("FE-OLS: no observations remain after removing NA rows and ",
          "singleton fixed-effect levels.")
 
-  yk <- as.numeric(y[ok])
-  Xk <- X[ok, , drop = FALSE]
+  all_ok <- all(ok)
+  yk <- if (all_ok) as.numeric(y) else as.numeric(y[ok])
+  Xk <- if (all_ok) X else X[ok, , drop = FALSE]
   storage.mode(Xk) <- "double"
+  wk <- if (is.null(w)) NULL else if (all_ok) w else w[ok]
+  sw <- if (is.null(wk)) NULL else sqrt(wk)
 
   nt <- .fes_nthreads()
 
   # ---- Demeaning (k-way alternating projections) -----------------------------
+  # With weights, demeaning subtracts weighted group means and the demeaned
+  # [y | X] rows are then scaled by sqrt(w), so the crossprod/score code
+  # below computes the WLS quantities unchanged. `Md` holds [y | X]; the X
+  # block is only ever indexed by column, never materialized separately.
   if (Q > 0L) {
-    fe_f  <- lapply(fe_list, function(f) factor(as.character(f[ok])))
-    n_lev <- vapply(fe_f, nlevels, integer(1L))
+    fe_f  <- lapply(fe_code, function(code) {
+      .dense_codes(if (all_ok) code else code[ok])
+    })
+    n_lev <- vapply(fe_f, max, integer(1L))
     fe_ids <- matrix(0L, nrow = N, ncol = Q)
-    for (q in seq_len(Q)) fe_ids[, q] <- as.integer(fe_f[[q]]) - 1L
+    for (q in seq_len(Q)) fe_ids[, q] <- fe_f[[q]] - 1L
 
     dm <- demean_kway_cpp(cbind(yk, Xk), fe_ids, n_lev,
+                          w = if (is.null(wk)) numeric(0) else wk,
                           tol = 1e-12, max_iter = 10000L, nthreads = nt)
     if (!dm$converged)
       warning("FE-OLS: demeaning did not fully converge; ",
               "results may be imprecise.")
     Md <- dm$M
+    if (!is.null(sw)) Md <- Md * sw
     yd <- Md[, 1L]
-    Xd <- Md[, -1L, drop = FALSE]
-    colnames(Xd) <- colnames(Xk)
+    x_names <- colnames(Xk)
   } else {
-    yd <- yk
-    Xd <- cbind(`(Intercept)` = 1, Xk)
-    Md <- cbind(yd, Xd)
+    Xd0 <- cbind(`(Intercept)` = 1, Xk)
+    if (is.null(sw)) {
+      yd <- yk
+    } else {
+      yd <- yk * sw
+      Xd0 <- Xd0 * sw
+    }
+    Md <- cbind(yd, Xd0)
+    x_names <- colnames(Xd0)
     n_lev <- integer(0L)
     fe_f  <- list()
   }
@@ -105,7 +151,11 @@
 
   # Columns absorbed by the FEs are detected against their pre-demeaning
   # scale (their demeaned diagonal is numerically zero relative to it).
-  d_pre <- if (Q > 0L) colSums(Xk^2) else diag(XtX)
+  d_pre <- if (Q > 0L) {
+    if (is.null(wk)) colSums(Xk^2) else colSums(wk * Xk^2)
+  } else {
+    diag(XtX)
+  }
 
   cd   <- .chol_seq_drop(XtX, d_pre = d_pre, tol = collin_tol)
   kept <- cd$kept
@@ -116,10 +166,10 @@
   Rk    <- cd$R
   b     <- drop(backsolve(Rk, forwardsolve(t(Rk), Xty[kept])))
   bread <- chol2inv(Rk)
-  Xd_k  <- Xd[, kept, drop = FALSE]
+  Xd_k  <- Md[, kept + 1L, drop = FALSE]
   e     <- yd - drop(Xd_k %*% b)
 
-  cn <- colnames(Xd)[kept]
+  cn <- x_names[kept]
   names(b) <- cn
   K_kept <- length(kept)
 
@@ -128,40 +178,81 @@
     1L + sum((n_lev - 1L)[counted])
   }
 
+  K_full <- K_kept + fe_df_term(rep(TRUE, Q))
+
   use_cluster <- !is.null(cl) && identical(vcov_type, "HC1")
   if (use_cluster) {
-    cl_f <- factor(as.character(cl[ok]))
-    G    <- nlevels(cl_f)
-    cl_i <- as.integer(cl_f)
+    cl_i <- .dense_codes(cl[ok])
+    G    <- max(cl_i)
+    # An FE dimension is nested in the cluster variable when every level
+    # maps to a single cluster.
     nested <- vapply(seq_len(Q), function(q) {
-      pairs <- unique(paste0(as.integer(fe_f[[q]]), "\r", cl_i))
-      length(pairs) == n_lev[q]
+      fq <- fe_f[[q]]
+      m  <- integer(n_lev[q])
+      m[fq] <- cl_i
+      all(m[fq] == cl_i)
     }, logical(1L))
     K_eff <- K_kept + fe_df_term(!nested)
     S     <- rowsum(Xd_k * e, cl_i)
     V <- bread %*% crossprod(S) %*% bread *
       (G / (G - 1)) * ((N - 1) / (N - K_eff))
+    df_t <- G - 1
   } else {
-    K_eff <- K_kept + fe_df_term(rep(TRUE, Q))
+    K_eff <- K_full
     if (tolower(vcov_type) == "iid") {
       V <- bread * sum(e^2) / (N - K_eff)
     } else {
       V <- bread %*% crossprod_omp_cpp(Xd_k * e, nt) %*% bread * N / (N - K_eff)
     }
+    df_t <- N - K_full
   }
   dimnames(V) <- list(cn, cn)
 
+  se_v   <- unname(sqrt(diag(V)))
+  stat_v <- unname(b) / se_v
   tidy <- data.frame(term = cn, estimate = unname(b),
-                     std.error = sqrt(diag(V)), stringsAsFactors = FALSE)
+                     std.error = sqrt(diag(V)),
+                     statistic = stat_v,
+                     p.value   = 2 * stats::pt(-abs(stat_v), df_t),
+                     stringsAsFactors = FALSE)
 
-  list(coef = b, V = V, tidy = tidy, nobs = N,
-       dropped = setdiff(colnames(Xd), cn), engine = "internal")
+  fit <- list(coef = b, V = V, tidy = tidy, nobs = N, df.t = df_t,
+              dropped = setdiff(x_names, cn),
+              used = unname(which(ok)), engine = "internal")
+  if (keep_stats) {
+    rss_w  <- sum(e^2)
+    rss_un <- if (is.null(wk)) rss_w else sum(e^2 / wk)
+    wv     <- if (is.null(wk)) rep(1, N) else wk
+    ybar   <- sum(wv * yk) / sum(wv)
+    tss_w  <- sum(wv * (yk - ybar)^2)
+    ll     <- -N / 2 * (log(2 * pi * rss_un / N) + 1)
+    fit$stats <- list(
+      nobs             = N,
+      r.squared        = 1 - rss_w / tss_w,
+      adj.r.squared    = 1 - (rss_w / (N - K_full)) / (tss_w / (N - 1)),
+      within.r.squared = if (Q > 0L) 1 - rss_w / sum(yd^2) else NA_real_,
+      sigma            = sqrt(rss_w / (N - K_full)),
+      logLik           = ll,
+      AIC              = -2 * ll + 2 * K_full,
+      BIC              = -2 * ll + log(N) * K_full
+    )
+  }
+  fit
 }
 
 # Strip fixest_vcov (or any other) class/attributes down to a plain numeric
 # matrix so the engine's V contract is uniform across code paths.
 .plain_matrix <- function(V) {
   matrix(as.numeric(V), nrow = nrow(V), dimnames = dimnames(V))
+}
+
+# Dense 1-based integer codes for a grouping vector (hash-based match).
+# NA values stay NA. Level order is arbitrary; downstream code relies only
+# on group identity, never on ordering.
+.dense_codes <- function(v) {
+  u <- unique(v)
+  u <- u[!is.na(u)]
+  match(v, u)
 }
 
 # Sequential Cholesky with keep-first column dropping (chol_seq_drop_cpp).
@@ -187,11 +278,57 @@
   nc %/% 2L
 }
 
+# Shared post-fit extraction for the fixest delegation paths: t-based
+# inference columns (using the model's own t degrees of freedom, matching
+# what broom::tidy(<fixest>) reports), the estimation-sample row indices,
+# and optional fit statistics in the engine's $stats layout.
+.fes_fixest_extras <- function(model, n_input, keep_stats) {
+  df_t <- tryCatch(fixest::degrees_freedom(model, "t"),
+                   error = function(e) NA_real_)
+
+  used <- seq_len(n_input)
+  os <- model$obs_selection
+  if (!is.null(os)) for (s in os) used <- used[s]
+
+  stats_out <- NULL
+  if (keep_stats) {
+    fs <- fixest::fitstat(model, ~ r2 + ar2 + wr2)
+    stats_out <- list(
+      nobs             = stats::nobs(model),
+      r.squared        = as.numeric(fs$r2),
+      adj.r.squared    = as.numeric(fs$ar2),
+      within.r.squared = as.numeric(fs$wr2),
+      sigma            = stats::sigma(model),
+      logLik           = as.numeric(stats::logLik(model)),
+      AIC              = stats::AIC(model),
+      BIC              = stats::BIC(model)
+    )
+  }
+
+  list(df_t = df_t, used = used, stats = stats_out)
+}
+
+# t-based statistic/p.value columns for a coefficient table; falls back to
+# the normal approximation when no t dof is available.
+.fes_stat_cols <- function(tidy, df_t) {
+  stat_v <- tidy$estimate / tidy$std.error
+  tidy$statistic <- stat_v
+  tidy$p.value <- if (is.na(df_t)) 2 * stats::pnorm(-abs(stat_v)) else
+    2 * stats::pt(-abs(stat_v), df_t)
+  tidy
+}
+
 # fixest delegation for requests the internal path does not cover
 # (multiway cluster, non-empty vcov_args, exotic vcov types). Reproduces the
 # exact previous behavior: feols estimation + .model_vcov_full() precedence.
 .fit_fe_ols_fixest <- function(y, X, fe_list, cluster_vals,
-                               vcov_type, vcov_args) {
+                               vcov_type, vcov_args,
+                               weights = NULL, keep_stats = FALSE) {
+  .require_fixest(
+    paste0("This variance specification (multiway clustering, non-empty ",
+           "`vcov_args`, or a vcov type other than iid/hetero/HC1)"),
+    "use a supported specification"
+  )
   fb <- data.frame(.y = y)
   fb$.X <- X
   fe_terms <- character(0L)
@@ -209,6 +346,7 @@
   if (!is.null(cluster_vals))
     args$cluster <- if (length(cluster_vals) == 1L) cluster_vals[[1L]] else
       cluster_vals
+  if (!is.null(weights)) args$weights <- as.numeric(weights)
 
   model <- do.call(fixest::feols, args)
   V <- .plain_matrix(.model_vcov_full(
@@ -227,12 +365,18 @@
   names(cf) <- fixn(names(cf))
   dimnames(V) <- list(fixn(rownames(V)), fixn(colnames(V)))
 
+  extras <- .fes_fixest_extras(model, length(y), keep_stats)
   tidy <- data.frame(term = names(cf), estimate = unname(cf),
                      std.error = unname(sqrt(diag(V))),
                      stringsAsFactors = FALSE)
+  tidy <- .fes_stat_cols(tidy, extras$df_t)
 
-  list(coef = cf, V = V, tidy = tidy, nobs = stats::nobs(model),
-       dropped = setdiff(colnames(X), names(cf)), engine = "fixest")
+  fit <- list(coef = cf, V = V, tidy = tidy, nobs = stats::nobs(model),
+              df.t = extras$df_t,
+              dropped = setdiff(colnames(X), names(cf)),
+              used = extras$used, engine = "fixest")
+  fit$stats <- extras$stats
+  fit
 }
 
 # Resolve a user cluster specification (formula / character column names /
@@ -284,6 +428,23 @@
   if (length(cols) == 1L) prefix else paste0(prefix, cols)
 }
 
+# Undo feols's matrix-column naming on a fit object: map "<prefix><col>"
+# (bare prefix for a single-column matrix) back to the matrix's own column
+# names in coef, V, and tidy.
+.strip_mat_prefix <- function(fit, prefix, cols) {
+  fixn <- function(nm) {
+    if (length(cols) == 1L) {
+      ifelse(nm == prefix, cols, nm)
+    } else {
+      ifelse(startsWith(nm, prefix), substring(nm, nchar(prefix) + 1L), nm)
+    }
+  }
+  names(fit$coef) <- fixn(names(fit$coef))
+  dimnames(fit$V) <- list(fixn(rownames(fit$V)), fixn(colnames(fit$V)))
+  fit$tidy$term   <- fixn(fit$tidy$term)
+  fit
+}
+
 # Expand fixest-style i(f, x, ref) interaction dummies: one column
 # x * 1(f == v) per level v of f (ascending, excluding ref), named
 # "<f_name>::<v>:<x_name>" like fixest's i() coefficients.
@@ -304,16 +465,30 @@
 # matrix columns already stored in `data` (e.g. data$.sa_X), exactly like
 # the pre-engine implementation.
 .fit_fe_ols_formula <- function(data, formula_str, cluster,
-                                vcov_type, vcov_args) {
+                                vcov_type, vcov_args,
+                                weights = NULL, keep_stats = FALSE) {
+  .require_fixest(
+    paste0("This fixed-effects or cluster specification (beyond plain ",
+           "columns, e.g. `~ id^year`)"),
+    "use plain column fixed effects / clustering"
+  )
   model_args <- list(stats::as.formula(formula_str), data = data)
   if (!is.null(cluster)) model_args$cluster <- cluster
+  if (!is.null(weights)) model_args$weights <- weights
   model <- do.call(fixest::feols, model_args)
 
   V  <- .plain_matrix(.model_vcov_full(model, vcov_type, cluster, vcov_args))
   cf <- stats::coef(model)
+
+  extras <- .fes_fixest_extras(model, nrow(data), keep_stats)
   tidy <- data.frame(term = names(cf), estimate = unname(cf),
                      std.error = unname(sqrt(diag(V))),
                      stringsAsFactors = FALSE)
-  list(coef = cf, V = V, tidy = tidy, nobs = stats::nobs(model),
-       dropped = character(0L), engine = "fixest-formula")
+  tidy <- .fes_stat_cols(tidy, extras$df_t)
+
+  fit <- list(coef = cf, V = V, tidy = tidy, nobs = stats::nobs(model),
+              df.t = extras$df_t, dropped = character(0L),
+              used = extras$used, engine = "fixest-formula")
+  fit$stats <- extras$stats
+  fit
 }

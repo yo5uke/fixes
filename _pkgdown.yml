@@ -13,37 +13,59 @@ reference:
     desc: >
       Estimate event-study curves, aggregated ATT, and basic two-way FE DiD.
     contents:
-      - run_es
-      - calc_att
-      - run_did
+      - event_study
+      - att
+      - did
 
   - title: Sensitivity analysis
     desc: Robust inference under violations of parallel trends.
     contents:
       - honest_sensitivity
 
-  - title: Visualization
-    desc: Plot event studies, ATT(g,t) matrices, and sensitivity results.
-    contents:
-      - plot_es
-      - plot_es_interactive
-      - plot_att_gt
-      - plot_honest
-      - plot_contamination_weights
-
   - title: Diagnostics
-    desc: Contamination-weight diagnostics for the Sun-Abraham estimator.
+    desc: >
+      ATT(g,t) extraction and contamination-weight diagnostics for the
+      Sun-Abraham estimator.
     contents:
-      - compute_contamination_weights
+      - att_gt
+      - contamination_weights
+
+  - title: Visualization
+    desc: >
+      Base plot() methods for every result class (static ggplot2; use
+      `interactive = TRUE` for plotly event-study charts).
+    contents:
+      - plot.es_result
+      - plot.att_result
+      - plot.att_gt_result
+      - plot.honest_result
+      - plot.sa_contamination_weights
 
   - title: S3 methods
     desc: broom and ggplot2 integration for result objects.
     contents:
       - autoplot.es_result
+      - tidy.es_result
+      - glance.es_result
       - tidy.did_result
       - glance.did_result
       - tidy.att_result
       - glance.att_result
+
+  - title: Deprecated
+    desc: >
+      Pre-1.0.0 verb-style API. Fully functional, but new code should use
+      the noun-style successors above.
+    contents:
+      - run_es
+      - calc_att
+      - run_did
+      - plot_es
+      - plot_es_interactive
+      - plot_att_gt
+      - plot_honest
+      - compute_contamination_weights
+      - plot_contamination_weights
 
 articles:
   - title: Get started

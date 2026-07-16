@@ -1,49 +1,8 @@
-#' Interactive event-study plot with hover details
-#'
-#' Creates an interactive plotly visualization of event study results with hover-over
-#' displays showing coefficients, confidence intervals, and other details.
-#'
-#' @param data An object of class `es_result` returned by [run_es()].
-#' @param ci_level Confidence level to display (e.g., 0.95). Default is 0.95.
-#' @param vline_val Numeric location for vertical reference line (default 0).
-#' @param hline_val Numeric location for horizontal reference line (default 0).
-#' @param vline_color Color for vertical reference line (default "#000").
-#' @param hline_color Color for horizontal reference line (default "#000").
-#' @param color Point and line color (default "#B25D91FF").
-#' @param fill Ribbon/band fill color (default "#B25D91FF").
-#' @param alpha Ribbon transparency (default 0.2).
-#' @param linewidth Line width (default 2).
-#' @param markersize Marker size (default 8).
-#' @param show_ribbon Logical; if TRUE, shows confidence interval as a ribbon band (default TRUE).
-#' @param show_simultaneous Logical; if `TRUE`, overlays a second (lighter) ribbon for
-#'   the simultaneous bootstrap CI and extends the hover tooltip with simultaneous CI bounds.
-#'   Requires `bootstrap = TRUE` in the originating [run_es()] call.
-#'   Default `FALSE`.
-#' @param height Plot height in pixels (default NULL for auto).
-#' @param width Plot width in pixels (default NULL for auto).
-#'
-#' @return A `plotly` object that can be displayed interactively.
-#'
-#' @details
-#' The hover tooltip displays:
-#'
-#' - Relative time to treatment
-#' - Point estimate (coefficient)
-#' - Confidence interval bounds
-#' - Standard error
-#' - P-value
-#' - Simultaneous CI bounds (when `show_simultaneous = TRUE`)
-#'
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Assuming res <- run_es(...)
-#' plot_es_interactive(res)
-#' plot_es_interactive(res, ci_level = 0.99, show_ribbon = FALSE)
-#' plot_es_interactive(res, show_simultaneous = TRUE)
-#' }
-plot_es_interactive <- function(
+# Interactive plotly event-study plot with hover tooltips (relative time,
+# estimate, CI bounds, SE, p-value, and simultaneous CI bounds when
+# requested). Shared engine behind plot(x, interactive = TRUE) and the
+# deprecated plot_es_interactive(). Requires the suggested {plotly} package.
+.plot_es_interactive_impl <- function(
   data,
   ci_level = 0.95,
   vline_val = 0,
@@ -74,7 +33,7 @@ plot_es_interactive <- function(
   if (isTRUE(show_simultaneous)) {
     if (!all(c("conf_low_sim", "conf_high_sim") %in% names(data))) {
       stop(
-        "Simultaneous CIs not found. Re-run with bootstrap = TRUE in run_es()."
+        "Simultaneous CIs not found. Re-run with bootstrap = TRUE in event_study()."
       )
     }
   }

@@ -17,10 +17,10 @@ knitr::opts_chunk$set(
   message = FALSE,
   fig.width = 7,
   fig.height = 5,
-  dpi = 150
+  dpi = 150,
+  eval = requireNamespace("fixest", quietly = TRUE)
 )
 
-# Load the development version of the package
 library(fixes)
 library(dplyr)
 library(ggplot2)
@@ -28,9 +28,20 @@ library(ggplot2)
 
 ## Introduction
 
-The **fixes** package provides an easy-to-use toolkit for creating, estimating, and visualizing event study models using fixed effects regression. With **fixes**, you can automatically generate lead and lag dummy variables, flexibly estimate fixed effects event study regressions, and visualize the results with `ggplot2` using a single pipeline.
+The **fixes** package provides an easy-to-use toolkit for estimating and
+visualizing difference-in-differences designs on panel data: event-study
+curves via `event_study()`, aggregated ATT via `att()`, and basic two-way
+fixed-effects DiD via `did()`. Every result has a base `plot()` method, so a
+complete analysis is a two-line pipeline.
 
-This vignette introduces the core functions of the package through simple examples, including recent updates such as multiple confidence interval support and improved plotting options.
+Estimation runs on the package's internal C++ fixed-effects OLS engine;
+the `fixest` package is an optional dependency (used only in this vignette
+for its example datasets and a few advanced specifications).
+
+> **Upgrading from fixes < 1.0.0?** The old verb-style functions
+> (`run_es()`, `calc_att()`, `run_did()`, `plot_es()`, ...) still work and
+> return identical results, but are deprecated. This vignette uses the new
+> noun-style API introduced in 1.0.0.
 
 ## Installation
 
@@ -52,128 +63,108 @@ To install the latest development version from GitHub:
 pak::pak("yo5uke/fixes")
 ```
 
-or
-
-```r
-devtools::install_github("yo5uke/fixes")
-```
-
 ## Minimal Example
 
-Below is a basic example using the built-in `fixest::base_did` dataset, running an event study, and visualizing the results.
+Below is a basic example using the built-in `fixest::base_did` dataset,
+running an event study, and visualizing the results.
 
 ```{r minimal-example}
 # Load example data
 df <- fixest::base_did
 
 # Run the event study (supports multiple confidence levels)
-event_study <- run_es(
+es <- event_study(
   data       = df,
   outcome    = y,
   treatment  = treat,
   time       = period,
-  timing     = 5,  # Treatment occurs at period 5
+  timing     = 5,  # Treatment occurs at period 5 (universal timing)
   fe         = ~ id + period,
   cluster    = ~ id,
   baseline   = -1,
   interval   = 1,
   lead_range = 3,
   lag_range  = 3,
-  conf.level = c(0.90, 0.95, 0.99)  # Multiple CIs supported!
+  conf_level = c(0.90, 0.95, 0.99)  # Multiple CIs supported!
 )
 
 # View results
-head(event_study)
+head(es)
 ```
+
+Because `timing = 5` is a scalar, `event_study()` recognizes a universal
+(non-staggered) design automatically; when `timing` names a column of
+adoption times, a staggered design is inferred instead.
 
 ## Visualizing Event Study Results
 
-The **fixes** package provides `plot_es()` for flexible visualization. You can easily switch between ribbon-style or error bar CIs, select the displayed CI level, and customize appearance.
+Results plot directly with `plot()`. You can switch between ribbon-style or
+error bar CIs, select the displayed CI level, and customize appearance.
 
 ```{r plot-basic}
 # Basic plot (default: ribbon, 95% CI)
-plot_es(event_study)
+plot(es)
 ```
 
 ```{r plot-errorbar}
 # Plot with error bars and 99% CI
-plot_es(event_study, type = "errorbar", ci_level = 0.99)
+plot(es, type = "errorbar", ci_level = 0.99)
 ```
 
 ```{r plot-custom}
 # Customize further with ggplot2
-plot_es(event_study, type = "errorbar", ci_level = 0.9, theme_style = "classic") +
+plot(es, type = "errorbar", ci_level = 0.9, theme_style = "classic") +
   scale_x_continuous(breaks = seq(-3, 3, by = 1)) +
   ggtitle("Event Study with 90% CI and Classic Theme")
 ```
 
-## Staggered Treatment with `sunab`
+For interactive exploration with hover tooltips (estimates, CIs, standard
+errors, p-values), pass `interactive = TRUE` (requires the suggested
+**plotly** package):
 
-For staggered adoption designs where treatment timing varies across units, you can use `method = "sunab"` to implement the Sun & Abraham (2021) estimator, which is robust to heterogeneous treatment effects.
-
-```{r sunab-example}
-# Example with fixest::base_stagg data
-df_stagg <- fixest::base_stagg
-
-event_study_sunab <- run_es(
-  data       = df_stagg,
-  outcome    = y,
-  treatment  = treated,
-  time       = year,
-  timing     = year_treated,
-  fe         = ~ id + year,
-  staggered  = TRUE,
-  method     = "sunab",  # Use Sun & Abraham decomposition
-  lead_range = 3,
-  lag_range  = 3,
-  cluster    = ~ id
-)
-
-head(event_study_sunab)
+```r
+plot(es, interactive = TRUE)
 ```
-
-```{r plot-sunab}
-# Visualize sunab results
-plot_es(event_study_sunab) +
-  ggtitle("Staggered Adoption Event Study (Sun & Abraham 2021)")
-```
-
-**New in v0.7.1:** The `baseline` parameter now applies to both `classic` and `sunab` methods, and the baseline period is included in results with zero estimates for consistent visualization.
 
 ## Package Highlights
 
-- **`run_es()`**:
-    - Fast, one-step event study for panel data.
-    - Automatic creation of lead/lag dummies relative to treatment.
-    - Supports both classic and staggered timing, covariates, clustering, weights, and flexible baseline normalization.
-    - Choice of estimation methods: `classic` (factor expansion) or `sunab` (Sun & Abraham 2021 for staggered designs).
-    - Multiple confidence interval levels supported (e.g., 90%, 95%, 99%).
+- **`event_study()`**:
+    - Fast, one-step event study for panel data on an internal C++
+      fixed-effects engine.
+    - Six estimators behind one interface (`estimator =`): classic TWFE,
+      Callaway & Sant'Anna, Sun & Abraham, Borusyak-Jaravel-Spiess,
+      Wooldridge two-way Mundlak, and Deb et al. FLEX.
+    - Automatic creation of lead/lag dummies relative to treatment, with
+      staggered/universal timing inferred from `timing`.
+    - Covariates, clustering, weights, and flexible baseline normalization.
+    - Multiple confidence interval levels (e.g., 90%, 95%, 99%).
     - Handles irregular time panels via `time_transform`.
-    - Results are filtered to specified `lead_range` and `lag_range` (v0.7.1+).
 
-- **`plot_es()`**:
-    - Intuitive event study plot with ribbon or errorbar CI display.
-    - CI level and visual style are fully customizable.
-    - ggplot2-based for further modification.
+- **`att()`**: aggregated ATT — overall, by cohort, or by calendar time —
+  for the CS and BJS estimators, with `broom::tidy()`/`glance()` methods.
 
-- **`plot_es_interactive()`** (v0.7.0+):
-    - Interactive plotly-based visualizations with hover tooltips.
-    - Displays point estimates, confidence intervals, standard errors, and p-values on hover.
+- **`did()`**: single-coefficient TWFE DiD compatible with
+  `modelsummary::modelsummary()`.
 
-## Staggered adoption estimators (v0.8.0)
+- **`plot()`**: every result class has a plot method — event-study curves,
+  ATT point-range charts, ATT(g,t) heatmaps (`plot(att_gt(x))`), honest
+  sensitivity plots, and contamination-weight heatmaps.
+
+## Staggered adoption estimators
 
 Standard TWFE event-study regressions can produce biased and sign-reversed
 estimates under heterogeneous treatment effects when units adopt treatment at
 different times (Callaway & Sant'Anna 2021; Sun & Abraham 2021; Borusyak,
-Jaravel & Spiess 2024). **fixes** v0.8.0 adds three robust alternatives, all
-accessible through the same `run_es()` interface via the `estimator` argument.
+Jaravel & Spiess 2024). **fixes** provides robust alternatives, all
+accessible through the same `event_study()` interface via the `estimator`
+argument.
 
-We demonstrate all three on `fixest::base_stagg`, a simulated staggered-adoption
-panel with true ATT = 1 for all cohorts and horizons.
+We demonstrate three of them on `fixest::base_stagg`, a simulated
+staggered-adoption panel with true ATT = 1 for all cohorts and horizons.
 
 ```{r stagg-data}
 df_stagg <- fixest::base_stagg
-# Mark never-treated units with NA (convention for all three estimators)
+# Mark never-treated units with NA (convention for all staggered estimators)
 df_stagg$timing <- df_stagg$year_treated
 df_stagg$timing[df_stagg$year_treated == 10000] <- NA
 ```
@@ -184,26 +175,26 @@ Estimates a separate ATT(g,t) for every cohort-by-period cell, then aggregates
 to an event-study curve using cohort-size weights.
 
 ```{r cs-est}
-res_cs <- run_es(
+res_cs <- event_study(
   data          = df_stagg,
   outcome       = y,
   time          = year,
   timing        = timing,
   unit          = id,
-  staggered     = TRUE,
   estimator     = "cs",
   control_group = "nevertreated"
 )
-plot_es(res_cs) + ggplot2::ggtitle("Callaway & Sant'Anna (2021)")
+plot(res_cs) + ggplot2::ggtitle("Callaway & Sant'Anna (2021)")
 ```
 
 ### Sun & Abraham (2021) — `estimator = "sa"`
 
 Builds cohort x relative-time interactions and aggregates with cohort-share
-weights. Numerically identical to `fixest::sunab()`.
+weights. Numerically identical to `fixest::sunab()` (which the deprecated
+`run_es(method = "sunab")` used directly).
 
 ```{r sa-est}
-res_sa <- run_es(
+res_sa <- event_study(
   data      = df_stagg,
   outcome   = y,
   treatment = treated,
@@ -211,11 +202,10 @@ res_sa <- run_es(
   timing    = timing,
   unit      = id,
   fe        = ~ id + year,
-  staggered = TRUE,
   estimator = "sa",
   cluster   = ~ id
 )
-plot_es(res_sa) + ggplot2::ggtitle("Sun & Abraham (2021)")
+plot(res_sa) + ggplot2::ggtitle("Sun & Abraham (2021)")
 ```
 
 ### Borusyak, Jaravel & Spiess (2024) — `estimator = "bjs"`
@@ -224,25 +214,35 @@ Fits TWFE on untreated observations, imputes counterfactuals for treated units,
 then averages by horizon.
 
 ```{r bjs-est}
-res_bjs <- run_es(
+res_bjs <- event_study(
   data      = df_stagg,
   outcome   = y,
   time      = year,
   timing    = timing,
   unit      = id,
-  staggered = TRUE,
   estimator = "bjs"
 )
-plot_es(res_bjs) + ggplot2::ggtitle("Borusyak, Jaravel & Spiess (2024)")
+plot(res_bjs) + ggplot2::ggtitle("Borusyak, Jaravel & Spiess (2024)")
 ```
 
-Under homogeneous treatment effects (as in this DGP), all three estimators
-give similar results, each recovering a post-treatment ATT close to the true
-value of 1.
+Under homogeneous treatment effects (as in this DGP), the estimators give
+similar results, each recovering a post-treatment ATT close to the true
+value of 1. Wooldridge's two-way Mundlak (`"twm"`) and the Deb et al. FLEX
+estimator for repeated cross-sections (`"flex"`) round out the set.
+
+### Aggregated ATT — `att()`
+
+When you want a single number (or one per cohort / per period) instead of
+the full curve:
+
+```{r att-demo}
+att(df_stagg, outcome = y, time = year, timing = timing, unit = id,
+    estimator = "cs", aggregation = "simple")
+```
 
 ---
 
-## Bootstrap simultaneous confidence bands (v0.8.0)
+## Bootstrap simultaneous confidence bands
 
 ### Pointwise vs. simultaneous CIs
 
@@ -259,27 +259,26 @@ on simultaneous bands controls the family-wise error rate.
 
 ### Usage
 
-Pass `bootstrap = TRUE` to `run_es()` together with the CS estimator. The
-multiplier bootstrap (Algorithm 1 of Callaway & Sant'Anna 2021) is used.
+Pass `bootstrap = TRUE` to `event_study()` together with the CS estimator.
+The multiplier bootstrap (Algorithm 1 of Callaway & Sant'Anna 2021) is used.
 
 ```{r boot-demo, eval=FALSE}
-# NOTE: B = 199 shown here for brevity; use B = 999 in practice
-res_cs_boot <- run_es(
+# NOTE: boot_reps = 199 shown here for brevity; use 999 in practice
+res_cs_boot <- event_study(
   data          = df_stagg,
   outcome       = y,
   time          = year,
   timing        = timing,
   unit          = id,
-  staggered     = TRUE,
   estimator     = "cs",
   control_group = "nevertreated",
   bootstrap     = TRUE,
-  B             = 199,
+  boot_reps     = 199,
   boot_seed     = 42
 )
 # The lighter outer band is the simultaneous CI; the darker inner band is
 # the standard pointwise CI.
-plot_es(res_cs_boot, show_simultaneous = TRUE)
+plot(res_cs_boot, show_simultaneous = TRUE)
 ```
 
 The simultaneous critical value ĉ and per-period simultaneous CI bounds are
@@ -289,10 +288,10 @@ at least as wide as the pointwise band, since the critical value
 
 ---
 
-## ATT(g,t) visualization (v0.8.0)
+## ATT(g,t) visualization
 
 The CS estimator produces a separate ATT estimate for every (cohort g,
-calendar period t) pair. `plot_att_gt()` visualises this full matrix.
+calendar period t) pair. Extract the full matrix with `att_gt()` and plot it.
 
 ### Heatmap
 
@@ -301,7 +300,7 @@ zero are marked with a filled dot (●); when bootstrap data are available,
 simultaneously significant cells also receive an open diamond (◇).
 
 ```{r heatmap-demo}
-plot_att_gt(res_cs, type = "heatmap")
+plot(att_gt(res_cs), type = "heatmap")
 ```
 
 The vertical dashed lines mark each cohort's treatment onset (t = g).
@@ -312,7 +311,7 @@ One panel per cohort showing ATT over calendar time, with a pointwise CI
 ribbon. Useful for inspecting heterogeneous dynamics across cohorts.
 
 ```{r facet-demo}
-plot_att_gt(res_cs, type = "facet")
+plot(att_gt(res_cs), type = "facet")
 ```
 
 ---
@@ -324,9 +323,10 @@ The **fixes** package streamlines event study estimation and visualization for p
 For further details and full argument documentation, see:
 
 ```r
-?run_es
-?plot_es
-?plot_att_gt
+?event_study
+?att
+?did
+?plot.es_result
 ```
 
 Happy analyzing!

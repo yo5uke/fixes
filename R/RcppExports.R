@@ -91,12 +91,20 @@ build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key) {
 #' result bit-identical for any \code{nthreads}.
 #'
 #' \code{fe_ids} must contain dense 0-based level indices per dimension and
-#' the rows must already form the final estimation sample (NA rows and
-#' singleton FE levels removed by the caller, see \code{.fit_fe_ols()}).
+#' the rows must already form the final estimation sample (NA rows,
+#' zero-weight rows, and singleton FE levels removed by the caller, see
+#' \code{.fit_fe_ols()}).
+#'
+#' With observation weights (\code{w} of length N), group means become
+#' weighted means (sum of w*x over sum of w per level), i.e. the projection
+#' onto the fixed effects under weighted least squares. An empty \code{w}
+#' keeps the unweighted path with integer counts, bit-identical to before.
 #'
 #' @param M Numeric matrix (N x C): columns to demean (outcome + regressors).
 #' @param fe_ids Integer matrix (N x Q): 0-based FE level index per dimension.
 #' @param n_levels Integer vector (length Q): number of levels per dimension.
+#' @param w Numeric vector: observation weights (length N), or length 0 for
+#'   the unweighted case. Must be strictly positive.
 #' @param tol Relative convergence tolerance on subtracted group means.
 #' @param max_iter Maximum number of full sweeps per column.
 #' @param nthreads Number of OpenMP threads (ignored without OpenMP).
@@ -104,8 +112,8 @@ build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key) {
 #' @return A list with \code{M} (demeaned copy) and \code{converged}.
 #'
 #' @noRd
-demean_kway_cpp <- function(M, fe_ids, n_levels, tol, max_iter, nthreads) {
-    .Call(`_fixes_demean_kway_cpp`, M, fe_ids, n_levels, tol, max_iter, nthreads)
+demean_kway_cpp <- function(M, fe_ids, n_levels, w, tol, max_iter, nthreads) {
+    .Call(`_fixes_demean_kway_cpp`, M, fe_ids, n_levels, w, tol, max_iter, nthreads)
 }
 
 #' Sequential Cholesky with keep-first column dropping

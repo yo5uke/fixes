@@ -2,24 +2,8 @@
 #  Sensitivity plot for honest_sensitivity() results                            #
 # --------------------------------------------------------------------------- #
 
-#' Plot a honest sensitivity analysis
-#'
-#' @description
-#' Visualises the output of [honest_sensitivity()]: robust confidence intervals
-#' for the target effect under progressively weaker parallel-trends restrictions
-#' (increasing \eqn{M} or \eqn{\bar M}), alongside the original confidence
-#' interval that assumes parallel trends holds exactly.  This is the "top-down"
-#' sensitivity plot of Rambachan and Roth (2023).
-#'
-#' @param x A `honest_result` object from [honest_sensitivity()].
-#' @param ... Unused.
-#'
-#' @return A `ggplot` object.
-#' @seealso [honest_sensitivity()]
-#' @importFrom ggplot2 ggplot aes geom_errorbar geom_point geom_hline labs theme_bw scale_color_manual
-#' @importFrom rlang .data
-#' @export
-plot_honest <- function(x, ...) {
+# Shared engine behind plot.honest_result() and the deprecated plot_honest().
+.plot_honest_impl <- function(x, ...) {
   if (!inherits(x, "honest_result"))
     stop("`x` must be a `honest_result` object from honest_sensitivity().")
 
@@ -63,10 +47,31 @@ plot_honest <- function(x, ...) {
     ggplot2::theme_bw()
 }
 
-#' @rdname plot_honest
+#' Plot a honest sensitivity analysis
+#'
+#' @description
+#' Visualises the output of [honest_sensitivity()]: robust confidence intervals
+#' for the target effect under progressively weaker parallel-trends restrictions
+#' (increasing \eqn{M} or \eqn{\bar M}), alongside the original confidence
+#' interval that assumes parallel trends holds exactly.  This is the "top-down"
+#' sensitivity plot of Rambachan and Roth (2023).
+#'
+#' @param x A `honest_result` object from [honest_sensitivity()].
+#' @param ... Unused.
+#'
+#' @return A `ggplot` object.
+#' @seealso [honest_sensitivity()]
+#' @importFrom ggplot2 ggplot aes geom_errorbar geom_point geom_hline labs theme_bw scale_color_manual
+#' @importFrom rlang .data
+#' @export
+plot.honest_result <- function(x, ...) {
+  .plot_honest_impl(x, ...)
+}
+
+#' @rdname plot.honest_result
 #' @param object A `honest_result` object.
 #' @importFrom ggplot2 autoplot
 #' @exportS3Method ggplot2::autoplot honest_result
 autoplot.honest_result <- function(object, ...) {
-  plot_honest(object, ...)
+  .plot_honest_impl(object, ...)
 }

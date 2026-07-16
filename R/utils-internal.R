@@ -85,6 +85,19 @@
   cs
 }
 
+# Stop with an installation hint when a code path needs the optional
+# {fixest} dependency. `what` describes the feature; `alternative` (optional)
+# names a fixest-free way to proceed.
+.require_fixest <- function(what, alternative = NULL) {
+  if (requireNamespace("fixest", quietly = TRUE)) return(invisible(TRUE))
+  msg <- paste0(
+    what, " requires the {fixest} package, which is not installed.\n",
+    "Install it with install.packages(\"fixest\")"
+  )
+  if (!is.null(alternative)) msg <- paste0(msg, ", or ", alternative)
+  stop(msg, ".", call. = FALSE)
+}
+
 # Extract the full coefficient VCOV from a fixest model, honouring the same
 # cluster/HC1 precedence used by SA, TWM, and FLEX:
 #   - cluster supplied + vcov left at default "HC1"  -> model's clustered VCOV

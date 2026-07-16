@@ -47,7 +47,9 @@ test_that("run_did returns did_result S3 class that is a list", {
   expect_s3_class(res, "did_result")
   expect_true(is.list(res))
   expect_true("estimates" %in% names(res))
-  expect_true("model"     %in% names(res))
+  expect_true("coeftable" %in% names(res))
+  expect_true("vcov"      %in% names(res))
+  expect_true("fit_stats" %in% names(res))
 })
 
 # ---------------------------------------------------------------------------
@@ -115,6 +117,7 @@ test_that("fe auto-inferred from unit+time matches explicit fe", {
 # ---------------------------------------------------------------------------
 
 test_that("estimate agrees with direct fixest::feols at machine precision", {
+  skip_if_not_installed("fixest")
   res <- run_did(did_data, outcome = y, treatment = D,
                  fe = ~ id + year)
   ref <- fixest::feols(y ~ D | id + year, data = did_data,
@@ -322,4 +325,76 @@ test_that("vcov_type reflects explicit vcov when cluster is also specified", {
   res <- run_did(did_data, outcome = y, treatment = D,
                  fe = ~ id + year, cluster = ~ id, vcov = "iid")
   expect_equal(attr(res, "vcov_type"), "iid")
+})
+
+# ---------------------------------------------------------------------------
+# Oracle: tidy/glance reproduce broom on a direct feols fit (post-migration)
+# ---------------------------------------------------------------------------
+
+test_that("tidy(did_result) matches broom::tidy(feols) incl. conf.int", {
+  skip_if_not_installed("fixest")
+  df <- make_did_data()
+  df$x2 <- runif(nrow(df), 1, 3)
+  df$grp <- factor(sample(letters[1:3], nrow(df), replace = TRUE))
+
+  res <- run_did(df, outcome = y, treatment = D,
+                 covariates = ~ x1 + log(x2) + grp, fe = ~ id + year,
+                 cluster = ~ id)
+  ref <- fixest::feols(y ~ D + x1 + log(x2) + grp | id + year,
+                       data = df, cluster = ~id)
+  td  <- broom::tidy(res, conf.int = TRUE)
+  tdr <- broom::tidy(ref, conf.int = TRUE)
+
+  expect_equal(td$term, tdr$term)
+  expect_equal(td$estimate, as.numeric(tdr$estimate), tolerance = 1e-8)
+  expect_equal(td$std.error, as.numeric(tdr$std.error), tolerance = 1e-8)
+  expect_equal(td$statistic, as.numeric(tdr$statistic), tolerance = 1e-8)
+  expect_equal(td$p.value, as.numeric(tdr$p.value), tolerance = 1e-8)
+  expect_equal(td$conf.low, as.numeric(tdr$conf.low), tolerance = 1e-8)
+  expect_equal(td$conf.high, as.numeric(tdr$conf.high), tolerance = 1e-8)
+})
+
+test_that("glance(did_result) matches broom::glance(feols)", {
+  skip_if_not_installed("fixest")
+  df <- make_did_data()
+  df$w <- runif(nrow(df), 0.5, 2)
+
+  # FE + weights
+  res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year,
+                 weights = ~w)
+  ref <- fixest::feols(y ~ D | id + year, data = df, weights = ~w)
+  g  <- broom::glance(res)
+  gr <- broom::glance(ref)
+  for (nm in c("r.squared", "adj.r.squared", "within.r.squared", "sigma",
+               "nobs", "AIC", "BIC", "logLik")) {
+    expect_equal(as.numeric(g[[nm]]), as.numeric(gr[[nm]]),
+                 tolerance = 1e-8, info = nm)
+  }
+
+  # pooled OLS (no FE)
+  res_p <- suppressMessages(run_did(df, outcome = y, treatment = D))
+  ref_p <- fixest::feols(y ~ D, data = df)
+  g_p  <- broom::glance(res_p)
+  gr_p <- broom::glance(ref_p)
+  expect_equal(g_p$r.squared, as.numeric(gr_p$r.squared), tolerance = 1e-8)
+  expect_true(is.na(g_p$within.r.squared))
+  expect_equal(g_p$AIC, as.numeric(gr_p$AIC), tolerance = 1e-8)
+  expect_equal(res_p$coeftable$term[1], "(Intercept)")
+})
+
+test_that("run_did weighted estimates match feols weights", {
+  skip_if_not_installed("fixest")
+  df <- make_did_data()
+  df$w <- runif(nrow(df), 0.5, 2)
+  res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year,
+                 weights = ~w, cluster = ~id)
+  ref <- fixest::feols(y ~ D | id + year, data = df, weights = ~w,
+                       cluster = ~id)
+  tdr <- broom::tidy(ref)
+  expect_equal(res$estimates$estimate,
+               as.numeric(tdr$estimate[tdr$term == "D"]), tolerance = 1e-8)
+  expect_equal(res$estimates$std.error,
+               as.numeric(tdr$std.error[tdr$term == "D"]), tolerance = 1e-8)
+  expect_equal(res$estimates$p.value,
+               as.numeric(tdr$p.value[tdr$term == "D"]), tolerance = 1e-8)
 })

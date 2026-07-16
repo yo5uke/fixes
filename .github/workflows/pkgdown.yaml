@@ -1,5 +1,11 @@
 # Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
 # Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+#
+# Two-job GitHub Pages pattern: the site is built on every trigger (so pull
+# requests validate that the site still builds), but the artifact upload and
+# the deployment — which requires the protected `github-pages` environment —
+# only run outside pull requests. Declaring the environment on a job that
+# runs for PR merge refs would trip the environment protection rules.
 on:
   push:
     branches: [main, master]
@@ -15,18 +21,10 @@ permissions: read-all
 jobs:
   pkgdown:
     runs-on: ubuntu-latest
-    # Only restrict concurrency for non-PR jobs
     concurrency:
       group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
 
@@ -55,7 +53,17 @@ jobs:
         with:
           path: docs
 
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: pkgdown
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages 🚀
-        if: github.event_name != 'pull_request'
         id: deployment
         uses: actions/deploy-pages@v4
