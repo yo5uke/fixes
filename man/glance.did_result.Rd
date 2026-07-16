@@ -9,16 +9,17 @@ glance.did_result(x, ...)
 \arguments{
 \item{x}{A \code{did_result} object returned by \code{\link[=run_did]{run_did()}}.}
 
-\item{...}{Additional arguments passed to \code{\link[broom:glance.fixest]{broom::glance.fixest()}}.}
+\item{...}{Unused; kept for compatibility with the \code{\link[broom:glance]{broom::glance()}}
+generic.}
 }
 \value{
-A one-row data frame of model-level statistics.
+A one-row tibble of model-level statistics.
 }
 \description{
 Returns a single-row summary of model-level statistics from a \code{\link[=run_did]{run_did()}}
-result.  Delegates to \code{\link[broom:glance.fixest]{broom::glance.fixest()}} which provides
-\code{nobs}, \code{r.squared}, \code{adj.r.squared}, \code{within.r.squared}, \code{AIC}, \code{BIC},
-and related statistics.
+result: \code{r.squared}, \code{adj.r.squared}, \code{within.r.squared}, \code{sigma},
+\code{nobs}, \code{AIC}, \code{BIC}, and \code{logLik}, in the column layout of
+\code{\link[broom:glance]{broom::glance()}} on a \code{fixest} model.
 }
 \examples{
 \dontrun{

@@ -7,26 +7,30 @@
 honest_sensitivity(
   object = NULL,
   type = c("relative_magnitude", "smoothness"),
-  Mvec = NULL,
+  m_grid = NULL,
   l_vec = NULL,
   alpha = 0.05,
-  gridPoints = 1000L,
+  grid_points = 1000L,
   betahat = NULL,
   sigma = NULL,
-  numPrePeriods = NULL,
-  numPostPeriods = NULL
+  n_pre_periods = NULL,
+  n_post_periods = NULL,
+  Mvec = lifecycle::deprecated(),
+  gridPoints = lifecycle::deprecated(),
+  numPrePeriods = lifecycle::deprecated(),
+  numPostPeriods = lifecycle::deprecated()
 )
 }
 \arguments{
-\item{object}{An \code{es_result} from \code{\link[=run_es]{run_es()}} (with \code{estimator = "twfe"},
-i.e. classic or \code{method = "sunab"}, which carry the event-study coefficient
+\item{object}{An \code{es_result} from \code{\link[=event_study]{event_study()}} with
+\code{estimator = "twfe"} (which carries the event-study coefficient
 covariance).  Alternatively, supply \code{betahat} and \code{sigma} directly (see
 below) for any estimator.}
 
 \item{type}{Restriction family: \code{"relative_magnitude"} (default) or
 \code{"smoothness"}.}
 
-\item{Mvec}{Numeric vector of restriction parameters.  For
+\item{m_grid}{Numeric vector of restriction parameters.  For
 \code{"relative_magnitude"} these are \eqn{\bar M} values (default
 \code{seq(0, 2, by = 0.5)}); for \code{"smoothness"} these are \eqn{M} values
 (default a data-driven sequence from 0 to the largest pre-period SD).}
@@ -37,7 +41,8 @@ period.}
 
 \item{alpha}{Significance level (default \code{0.05} for 95\% confidence sets).}
 
-\item{gridPoints}{Number of grid points for test inversion (default \code{1000}).}
+\item{grid_points}{Number of grid points for test inversion (default
+\code{1000}).}
 
 \item{betahat}{Optional event-study coefficient vector (pre then post,
 excluding the reference period), ordered by relative time.  Required when
@@ -45,8 +50,16 @@ excluding the reference period), ordered by relative time.  Required when
 
 \item{sigma}{Optional covariance matrix of \code{betahat}.}
 
-\item{numPrePeriods, numPostPeriods}{Optional integer counts; inferred from
+\item{n_pre_periods, n_post_periods}{Optional integer counts; inferred from
 \code{object} or from \code{betahat}/\code{l_vec} when omitted.}
+
+\item{Mvec}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Renamed to \code{m_grid}.}
+
+\item{gridPoints}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Renamed to
+\code{grid_points}.}
+
+\item{numPrePeriods, numPostPeriods}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+Renamed to \code{n_pre_periods} / \code{n_post_periods}.}
 }
 \value{
 A \code{data.frame} of class \code{"honest_result"} with one row per
@@ -81,5 +94,5 @@ Rambachan, A. and Roth, J. (2023). A More Credible Approach to Parallel
 Trends. \emph{Review of Economic Studies}, 90(5), 2555-2591.
 }
 \seealso{
-\code{\link[=run_es]{run_es()}}, \code{\link[=plot_honest]{plot_honest()}}
+\code{\link[=event_study]{event_study()}}, \code{\link[=plot.honest_result]{plot.honest_result()}}
 }

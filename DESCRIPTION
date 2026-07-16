@@ -1,8 +1,8 @@
 Package: fixes
 Type: Package
 Title: Staggered DiD Tools: Event Studies and ATT Aggregation
-Version: 0.12.0
-Date: 2026-07-05
+Version: 1.0.0
+Date: 2026-07-16
 Authors@R: c(
     person(
       "Yosuke", "Abe",
@@ -11,11 +11,14 @@ Authors@R: c(
     )
   )
 Description: Provides tools for difference-in-differences (DiD) estimation and
-    visualization with staggered adoption. Includes run_es() for event-study
-    curves (dynamic effects by relative time) and calc_att() for aggregated
-    ATT estimation (overall, by cohort, by calendar time). Supports multiple
-    modern estimators: Callaway-Sant'Anna (2021), Sun-Abraham (2021),
-    Borusyak-Jaravel-Spiess (2024), Wooldridge TWM, and Deb et al. FLEX.
+    visualization with staggered adoption. Includes event_study() for
+    event-study curves (dynamic effects by relative time), att() for
+    aggregated ATT estimation (overall, by cohort, by calendar time), and
+    did() for basic two-way fixed-effects DiD, all running on an internal
+    C++ fixed-effects OLS engine. Supports multiple modern estimators:
+    Callaway-Sant'Anna (2021), Sun-Abraham (2021), Borusyak-Jaravel-Spiess
+    (2024), Wooldridge TWM, and Deb et al. FLEX. Results plot via base
+    plot() methods.
 Depends: R (>= 4.1.0)
 Imports:
     dplyr,

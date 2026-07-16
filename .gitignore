@@ -32,3 +32,4 @@ profvis_*_files/
 proto_*.R
 run_check.R
 fix_nonascii.R
+sandbox/

@@ -11,19 +11,22 @@
 
 \item{conf.int}{Logical; add \code{conf.low}/\code{conf.high} columns? Default \code{FALSE}.}
 
-\item{conf.level}{Confidence level for \code{conf.int}. Default \code{0.95}.}
+\item{conf.level}{Confidence level for \code{conf.int}. Default \code{0.95}.
+Intervals use Student-t quantiles with the fit's degrees of freedom,
+matching \code{fixest}/\code{broom} conventions.}
 
-\item{...}{Additional arguments passed to \code{\link[broom:tidy.fixest]{broom::tidy.fixest()}}.}
+\item{...}{Unused; kept for compatibility with the \code{\link[broom:tidy]{broom::tidy()}} generic.}
 }
 \value{
-A data frame with columns \code{term}, \code{estimate}, \code{std.error},
+A tibble with columns \code{term}, \code{estimate}, \code{std.error},
 \code{statistic}, \code{p.value} (and optionally \code{conf.low}, \code{conf.high}).
 }
 \description{
-Returns a tidy data frame of model coefficients from a \code{\link[=run_did]{run_did()}} result.
-Delegates to \code{\link[broom:tidy.fixest]{broom::tidy.fixest()}} on the underlying \code{fixest} model so
-that all regressors (treatment and covariates) appear in the output — the
-format expected by \code{modelsummary::modelsummary()}.
+Returns a tidy data frame of model coefficients from a \code{\link[=run_did]{run_did()}} result:
+all regressors (treatment and covariates), in the format expected by
+\code{modelsummary::modelsummary()}. The table is read from the fit stored at
+estimation time; the VCOV type chosen in \code{\link[=run_did]{run_did()}} (\code{vcov} / \code{cluster})
+is already reflected in the standard errors.
 }
 \examples{
 \dontrun{
