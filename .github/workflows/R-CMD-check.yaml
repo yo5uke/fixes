@@ -73,6 +73,15 @@ jobs:
           extra-packages: any::testthat, any::pkgload
           dependencies: '"hard"'
 
+      - name: Ensure fixest is absent
+        run: |
+          if (requireNamespace("fixest", quietly = TRUE)) {
+            lib <- dirname(find.package("fixest"))
+            remove.packages("fixest", lib = lib)
+          }
+          stopifnot(!requireNamespace("fixest", quietly = TRUE))
+        shell: Rscript {0}
+
       - name: Test without suggested packages
         run: |
           stopifnot(!requireNamespace("fixest", quietly = TRUE))
