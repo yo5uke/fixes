@@ -211,6 +211,7 @@ test_that("cross-period included weights sum to 0 (Prop 1-ii)", {
 # mu_l (TWFE) = sum_{(e, l')} omega^l_{e,l'} * CATT_{e,l'}
 # This is an exact algebraic identity (up to floating-point).
 test_that("OVB decomposition: TWFE = sum(weight * CATT) (Eq 20)", {
+  skip_if_not_installed("fixest")
   # ---- SA CATT estimates ---------------------------------------------------
   sa_res <- run_es(
     data = cw_data,

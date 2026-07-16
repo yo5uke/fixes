@@ -20,7 +20,6 @@ Depends: R (>= 4.1.0)
 Imports:
     dplyr,
     ggplot2,
-    fixest,
     broom,
     tibble,
     rlang,
@@ -31,6 +30,7 @@ Imports:
 License: MIT + file LICENSE
 Encoding: UTF-8
 Suggests:
+    fixest,
     knitr,
     rmarkdown,
     haven,

@@ -43,6 +43,7 @@ solver_fe_fit <- function(df) {
 # ---------------------------------------------------------------------------
 
 test_that("solver matches fixest on a balanced panel", {
+  skip_if_not_installed("fixest")
   set.seed(1)
   df <- expand.grid(unit = sprintf("u%02d", 1:20), time = 2001:2010,
                     stringsAsFactors = FALSE)
@@ -62,6 +63,7 @@ test_that("solver matches fixest on a balanced panel", {
 # ---------------------------------------------------------------------------
 
 test_that("solver matches fixest on an unbalanced panel", {
+  skip_if_not_installed("fixest")
   set.seed(2)
   df <- expand.grid(unit = 1:30, time = 1:12)
   df$y <- rnorm(30)[df$unit] + 0.2 * df$time + rnorm(nrow(df), sd = 0.4)
@@ -80,6 +82,7 @@ test_that("solver matches fixest on an unbalanced panel", {
 # ---------------------------------------------------------------------------
 
 test_that("solver drops singleton FE levels like fixest", {
+  skip_if_not_installed("fixest")
   df <- data.frame(
     unit = c("A", "A", "A", "B", "B", "B", "S"),
     time = c(1, 2, 3, 1, 2, 3, 2),
@@ -109,6 +112,7 @@ test_that("solver drops singleton FE levels like fixest", {
 # must then be dropped as a time singleton, leaving 4 observations.
 
 test_that("solver removes chained singletons iteratively like fixest", {
+  skip_if_not_installed("fixest")
   df <- data.frame(
     unit = c("A", "A", "A", "B", "B", "B", "S"),
     time = c(1, 2, 3, 1, 2, 3, 2),
@@ -135,6 +139,7 @@ test_that("solver removes chained singletons iteratively like fixest", {
 # ---------------------------------------------------------------------------
 
 test_that("solver matches fixest on a large sparse unbalanced panel", {
+  skip_if_not_installed("fixest")
   set.seed(5)
   df <- expand.grid(unit = 1:300, time = 1:40)
   df$y <- rnorm(300, sd = 2)[df$unit] + cumsum(rnorm(40, sd = 0.3))[df$time] +
@@ -156,6 +161,7 @@ test_that("solver matches fixest on a large sparse unbalanced panel", {
 # estimation sample (treated observations). Verify against predict().
 
 test_that("out-of-sample alpha + beta lookups match fixest predict()", {
+  skip_if_not_installed("fixest")
   set.seed(6)
   df <- expand.grid(unit = 1:25, time = 1:10)
   df$y <- rnorm(25)[df$unit] + 0.5 * df$time + rnorm(nrow(df), sd = 0.3)
@@ -217,6 +223,7 @@ bjs_reference_fixest <- function(data, outcome, timing, time, unit) {
 }
 
 test_that("bjs end-to-end estimates match the fixest-based v0.11 pipeline", {
+  skip_if_not_installed("fixest")
   set.seed(42)
   n_units <- 50L
   periods <- 1995:2005
@@ -250,6 +257,7 @@ test_that("bjs end-to-end estimates match the fixest-based v0.11 pipeline", {
 })
 
 test_that("bjs end-to-end matches the v0.11 pipeline on an unbalanced panel", {
+  skip_if_not_installed("fixest")
   set.seed(43)
   n_units <- 40L
   periods <- 1:12
@@ -282,6 +290,7 @@ test_that("bjs end-to-end matches the v0.11 pipeline on an unbalanced panel", {
 })
 
 test_that("bjs end-to-end matches the v0.11 pipeline on mpdta", {
+  skip_if_not_installed("fixest")
   skip_if_not_installed("did")
   data(mpdta, package = "did", envir = environment())
 

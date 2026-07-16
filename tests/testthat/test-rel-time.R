@@ -28,6 +28,7 @@ make_stagger <- function(seed = 7L) {
 }
 
 test_that("rel_time matches direct feols i(rel, treat, ref) to machine eps", {
+  skip_if_not_installed("fixest")
   df <- make_stagger()
 
   res <- run_es(df, outcome = y, treatment = treat, time = year,
