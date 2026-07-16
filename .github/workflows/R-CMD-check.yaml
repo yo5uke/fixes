@@ -68,18 +68,29 @@ jobs:
           r-version: 'release'
           use-public-rspm: true
 
+      # cache: false keeps this library hermetic — with caching on, a
+      # prefix-matched cache restored from the full-dependency jobs brings
+      # fixest (and every other Suggests) back into the library.
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::testthat, any::pkgload
+          cache: false
           dependencies: '"hard"'
+          extra-packages: |
+            any::testthat
+            any::pkgload
 
-      - name: Ensure fixest is absent
+      # Belt and braces: drop fixest if anything installed it anyway. Checked
+      # via the directory, not requireNamespace() — loading the namespace
+      # would keep it loadable for the rest of the R session even after the
+      # files are removed.
+      - name: Remove fixest if present
         run: |
-          if (requireNamespace("fixest", quietly = TRUE)) {
-            lib <- dirname(find.package("fixest"))
-            remove.packages("fixest", lib = lib)
+          for (lib in .libPaths()) {
+            if (dir.exists(file.path(lib, "fixest"))) {
+              remove.packages("fixest", lib = lib)
+              cat("Removed fixest from", lib, "\n")
+            }
           }
-          stopifnot(!requireNamespace("fixest", quietly = TRUE))
         shell: Rscript {0}
 
       - name: Test without suggested packages
