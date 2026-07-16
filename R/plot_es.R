@@ -1,26 +1,6 @@
-#' Plot event-study results with ribbons or error bars
-#'
-#' @param data An object of class `es_result` returned by [run_es()].
-#' @param ci_level Confidence level to display (e.g., 0.95).
-#' @param type One of `"ribbon"` (default) or `"errorbar"`.
-#' @param vline_val,hline_val Numeric locations for vertical/horizontal reference lines (default 0).
-#' @param vline_color,hline_color Colors for reference lines.
-#' @param linewidth,pointsize,alpha,barwidth Styling parameters for lines/points/bands/bars.
-#' @param color,fill Optional, override line/point color and ribbon fill.
-#' @param theme_style One of `"bw"`, `"minimal"`, or `"classic"` for ggplot theme.
-#' @param show_simultaneous Logical; if `TRUE`, overlays the simultaneous bootstrap CI
-#'   (lighter band, alpha 0.15) alongside the standard pointwise CI (alpha 0.3), with a
-#'   legend distinguishing the two bands.  Requires `bootstrap = TRUE` in the
-#'   originating [run_es()] call.  Default `FALSE`.
-#'
-#' @return A `ggplot` object.
-#' @export
-#'
-#' @examples
-#' # Assuming `res <- run_es(...)`
-#' # p <- plot_es(res, ci_level = 0.95, type = "ribbon")
-#' # print(p)
-plot_es <- function(
+# Static event-study plot (ribbon or errorbar). Shared engine behind
+# plot.es_result() and the deprecated plot_es().
+.plot_es_impl <- function(
   data,
   ci_level = 0.95,
   type = "ribbon",
@@ -44,7 +24,7 @@ plot_es <- function(
   if (isTRUE(show_simultaneous)) {
     if (!all(c("conf_low_sim", "conf_high_sim") %in% names(data))) {
       stop(
-        "Simultaneous CIs not found. Re-run with bootstrap = TRUE in run_es()."
+        "Simultaneous CIs not found. Re-run with bootstrap = TRUE in event_study()."
       )
     }
   }
@@ -200,4 +180,60 @@ plot_es <- function(
   }
 
   p
+}
+
+#' Plot an event-study result
+#'
+#' @description
+#' Base `plot()` method for `es_result` objects returned by [event_study()]
+#' (or the deprecated [run_es()]). Draws the event-study curve with pointwise
+#' confidence bands as a static ggplot, or — with `interactive = TRUE` — an
+#' interactive plotly chart with hover tooltips (requires the suggested
+#' \{plotly\} package).
+#'
+#' @param x An `es_result` object.
+#' @param ci_level Confidence level to display (default `0.95`).
+#' @param type `"ribbon"` (default) or `"errorbar"`. Static plots only.
+#' @param interactive Logical; if `TRUE`, return an interactive plotly chart
+#'   instead of a ggplot. Default `FALSE`.
+#' @param show_simultaneous Logical; overlay the simultaneous bootstrap CI
+#'   band (requires `bootstrap = TRUE` in the originating [event_study()]
+#'   call). Default `FALSE`.
+#' @param ... Further styling arguments: for static plots
+#'   `vline_val`, `hline_val`, `vline_color`, `hline_color`, `linewidth`,
+#'   `pointsize`, `alpha`, `barwidth`, `color`, `fill`, `theme_style`
+#'   (`"bw"`, `"minimal"`, or `"classic"`); for interactive plots
+#'   `markersize`, `show_ribbon`, `height`, `width`, and the shared color
+#'   arguments.
+#'
+#' @return A `ggplot` object, or a `plotly` object when
+#'   `interactive = TRUE`.
+#'
+#' @examples
+#' \dontrun{
+#' res <- event_study(df, outcome = y, time = year, timing = g,
+#'                    unit = id, estimator = "cs")
+#' plot(res)
+#' plot(res, type = "errorbar", ci_level = 0.9)
+#' plot(res, interactive = TRUE)
+#' }
+#'
+#' @seealso [event_study()], [autoplot.es_result()]
+#' @export
+plot.es_result <- function(
+  x,
+  ci_level = 0.95,
+  type = c("ribbon", "errorbar"),
+  interactive = FALSE,
+  show_simultaneous = FALSE,
+  ...
+) {
+  if (isTRUE(interactive)) {
+    return(.plot_es_interactive_impl(
+      x, ci_level = ci_level, show_simultaneous = show_simultaneous, ...
+    ))
+  }
+  type <- match.arg(type)
+  .plot_es_impl(x, ci_level = ci_level, type = type,
+                show_simultaneous = show_simultaneous, ...)
 }

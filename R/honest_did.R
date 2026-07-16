@@ -492,13 +492,13 @@
 #' test (Section 3.2.1), which is uniformly valid and recommended for general
 #' restriction sets.
 #'
-#' @param object An `es_result` from [run_es()] (with `estimator = "twfe"`,
-#'   i.e. classic or `method = "sunab"`, which carry the event-study coefficient
+#' @param object An `es_result` from [event_study()] with
+#'   `estimator = "twfe"` (which carries the event-study coefficient
 #'   covariance).  Alternatively, supply `betahat` and `sigma` directly (see
 #'   below) for any estimator.
 #' @param type Restriction family: `"relative_magnitude"` (default) or
 #'   `"smoothness"`.
-#' @param Mvec Numeric vector of restriction parameters.  For
+#' @param m_grid Numeric vector of restriction parameters.  For
 #'   `"relative_magnitude"` these are \eqn{\bar M} values (default
 #'   `seq(0, 2, by = 0.5)`); for `"smoothness"` these are \eqn{M} values
 #'   (default a data-driven sequence from 0 to the largest pre-period SD).
@@ -506,13 +506,19 @@
 #'   target \eqn{\theta = l'\tau_{post}}.  Defaults to the first post-treatment
 #'   period.
 #' @param alpha Significance level (default `0.05` for 95% confidence sets).
-#' @param gridPoints Number of grid points for test inversion (default `1000`).
+#' @param grid_points Number of grid points for test inversion (default
+#'   `1000`).
 #' @param betahat Optional event-study coefficient vector (pre then post,
 #'   excluding the reference period), ordered by relative time.  Required when
 #'   `object` does not carry an `es_vcov` attribute.
 #' @param sigma Optional covariance matrix of `betahat`.
-#' @param numPrePeriods,numPostPeriods Optional integer counts; inferred from
+#' @param n_pre_periods,n_post_periods Optional integer counts; inferred from
 #'   `object` or from `betahat`/`l_vec` when omitted.
+#' @param Mvec `r lifecycle::badge("deprecated")` Renamed to `m_grid`.
+#' @param gridPoints `r lifecycle::badge("deprecated")` Renamed to
+#'   `grid_points`.
+#' @param numPrePeriods,numPostPeriods `r lifecycle::badge("deprecated")`
+#'   Renamed to `n_pre_periods` / `n_post_periods`.
 #'
 #' @return A `data.frame` of class `"honest_result"` with one row per
 #'   restriction value plus the original (parallel-trends) confidence interval,
@@ -524,20 +530,52 @@
 #' Rambachan, A. and Roth, J. (2023). A More Credible Approach to Parallel
 #' Trends. *Review of Economic Studies*, 90(5), 2555-2591.
 #'
-#' @seealso [run_es()], [plot_honest()]
+#' @seealso [event_study()], [plot.honest_result()]
 #' @export
 honest_sensitivity <- function(object = NULL,
                                type = c("relative_magnitude", "smoothness"),
-                               Mvec = NULL,
+                               m_grid = NULL,
                                l_vec = NULL,
                                alpha = 0.05,
-                               gridPoints = 1000L,
+                               grid_points = 1000L,
                                betahat = NULL,
                                sigma = NULL,
-                               numPrePeriods = NULL,
-                               numPostPeriods = NULL) {
+                               n_pre_periods = NULL,
+                               n_post_periods = NULL,
+                               Mvec = lifecycle::deprecated(),
+                               gridPoints = lifecycle::deprecated(),
+                               numPrePeriods = lifecycle::deprecated(),
+                               numPostPeriods = lifecycle::deprecated()) {
   type <- match.arg(type)
   .honest_require()
+
+  # ---- deprecated argument names (pre-1.0.0) --------------------------------
+  if (lifecycle::is_present(Mvec)) {
+    lifecycle::deprecate_warn("1.0.0", "honest_sensitivity(Mvec)",
+                              "honest_sensitivity(m_grid)")
+    m_grid <- Mvec
+  }
+  if (lifecycle::is_present(gridPoints)) {
+    lifecycle::deprecate_warn("1.0.0", "honest_sensitivity(gridPoints)",
+                              "honest_sensitivity(grid_points)")
+    grid_points <- gridPoints
+  }
+  if (lifecycle::is_present(numPrePeriods)) {
+    lifecycle::deprecate_warn("1.0.0", "honest_sensitivity(numPrePeriods)",
+                              "honest_sensitivity(n_pre_periods)")
+    n_pre_periods <- numPrePeriods
+  }
+  if (lifecycle::is_present(numPostPeriods)) {
+    lifecycle::deprecate_warn("1.0.0", "honest_sensitivity(numPostPeriods)",
+                              "honest_sensitivity(n_post_periods)")
+    n_post_periods <- numPostPeriods
+  }
+
+  # Internal names kept from the pre-1.0.0 implementation.
+  Mvec           <- m_grid
+  gridPoints     <- grid_points
+  numPrePeriods  <- n_pre_periods
+  numPostPeriods <- n_post_periods
 
   # ---- resolve betahat / sigma / pre-post counts ---------------------------
   if (is.null(betahat) || is.null(sigma)) {
@@ -548,7 +586,7 @@ honest_sensitivity <- function(object = NULL,
     if (is.null(V))
       stop("This `es_result` does not carry an event-study covariance ",
            "(`es_vcov`). honest_sensitivity() currently supports ",
-           "`estimator = \"twfe\"` (classic or `method = \"sunab\"`). ",
+           "`estimator = \"twfe\"`. ",
            "For other estimators, pass `betahat` and `sigma` directly.")
     rel <- as.integer(rownames(V))
     ord <- order(rel)
@@ -571,7 +609,7 @@ honest_sensitivity <- function(object = NULL,
   sigma   <- as.matrix(sigma)
   k <- length(betahat)
   if (is.null(numPrePeriods) || is.null(numPostPeriods)) {
-    stop("`numPrePeriods` and `numPostPeriods` must be supplied with ",
+    stop("`n_pre_periods` and `n_post_periods` must be supplied with ",
          "`betahat`/`sigma`.")
   }
   if (numPrePeriods + numPostPeriods != k)

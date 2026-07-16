@@ -11,15 +11,12 @@ print.es_result <- function(x, ...) {
       " | Treated units:", nt, " | Never-treated:", nn, "\n")
   cat("  FE: ", fe, "\n", sep = "")
   cat("  VCOV:", vc, " | Cluster:", paste(if (is.null(cl)) "-" else cl, collapse = " + "), "\n")
+  es <- attr(x, "estimator")
+  if (!is.null(es)) cat("  Estimator:", es, "\n")
   if (isTRUE(su)) {
     cat("  Method: SUNAB (staggered-safe)\n")
   } else {
     cat("  Method: classic  | lead_range:", lg, " lag_range:", rg, " baseline:", bs, "\n")
   }
   invisible(x)
-}
-
-#' @export
-autoplot.es_result <- function(object, ci_level = 0.95, type = "ribbon", ...) {
-  plot_es(object, ci_level = ci_level, type = type, ...)
 }

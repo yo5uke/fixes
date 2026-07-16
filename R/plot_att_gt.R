@@ -47,16 +47,20 @@
 #'
 #' @examples
 #' \dontrun{
-#' cs_result <- run_es(data = mydata, outcome = y, time = year,
-#'                     timing = g, unit = id, fe = ~id + year,
-#'                     staggered = TRUE, estimator = "cs")
-#' plot_att_gt(cs_result)
-#' plot_att_gt(cs_result, type = "facet")
+#' cs_result <- event_study(data = mydata, outcome = y, time = year,
+#'                          timing = g, unit = id, estimator = "cs")
+#' plot(att_gt(cs_result))
+#' plot(att_gt(cs_result), type = "facet")
 #' }
 #'
 #' @importFrom rlang .data
-#' @export
-plot_att_gt <- function(
+#' @name plot.att_gt_result
+NULL
+
+# Shared engine behind plot.att_gt_result() and the deprecated
+# plot_att_gt(). Accepts an es_result (reads its att_gt attribute) or an
+# att_gt_result / bare data frame.
+.plot_att_gt_impl <- function(
   x,
   type = c("heatmap", "facet"),
   ci_level = 0.95,
@@ -313,11 +317,28 @@ plot_att_gt <- function(
 }
 
 
-#' @rdname plot_att_gt
-#' @param object An \code{att_gt_result} object (extracted from an
-#'   \code{es_result} via \code{attr(result, "att_gt")}).
-#' @param ... Passed to \code{\link{plot_att_gt}}.
+#' @rdname plot.att_gt_result
+#' @export
+plot.att_gt_result <- function(
+  x,
+  type = c("heatmap", "facet"),
+  ci_level = 0.95,
+  zero_line = TRUE,
+  theme = c("bw", "minimal", "classic"),
+  color = "#B25D91FF",
+  fill = "#B25D91FF",
+  alpha = 0.2,
+  ...
+) {
+  .plot_att_gt_impl(x, type = type, ci_level = ci_level,
+                    zero_line = zero_line, theme = theme,
+                    color = color, fill = fill, alpha = alpha)
+}
+
+#' @rdname plot.att_gt_result
+#' @param object An \code{att_gt_result} object; see [att_gt()].
+#' @param ... Passed on to the plotting engine.
 #' @exportS3Method ggplot2::autoplot
 autoplot.att_gt_result <- function(object, ...) {
-  plot_att_gt(object, ...)
+  .plot_att_gt_impl(object, ...)
 }

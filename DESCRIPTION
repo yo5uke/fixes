@@ -24,6 +24,7 @@ Imports:
     broom,
     tibble,
     rlang,
+    lifecycle,
     Rcpp,
     scales,
     parallel
