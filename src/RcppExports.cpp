@@ -57,18 +57,19 @@ BEGIN_RCPP
 END_RCPP
 }
 // demean_kway_cpp
-List demean_kway_cpp(NumericMatrix M, IntegerMatrix fe_ids, IntegerVector n_levels, double tol, int max_iter, int nthreads);
-RcppExport SEXP _fixes_demean_kway_cpp(SEXP MSEXP, SEXP fe_idsSEXP, SEXP n_levelsSEXP, SEXP tolSEXP, SEXP max_iterSEXP, SEXP nthreadsSEXP) {
+List demean_kway_cpp(NumericMatrix M, IntegerMatrix fe_ids, IntegerVector n_levels, NumericVector w, double tol, int max_iter, int nthreads);
+RcppExport SEXP _fixes_demean_kway_cpp(SEXP MSEXP, SEXP fe_idsSEXP, SEXP n_levelsSEXP, SEXP wSEXP, SEXP tolSEXP, SEXP max_iterSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericMatrix >::type M(MSEXP);
     Rcpp::traits::input_parameter< IntegerMatrix >::type fe_ids(fe_idsSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type n_levels(n_levelsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
     Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
     Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
-    rcpp_result_gen = Rcpp::wrap(demean_kway_cpp(M, fe_ids, n_levels, tol, max_iter, nthreads));
+    rcpp_result_gen = Rcpp::wrap(demean_kway_cpp(M, fe_ids, n_levels, w, tol, max_iter, nthreads));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -153,7 +154,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
     {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 3},
-    {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 6},
+    {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 7},
     {"_fixes_chol_seq_drop_cpp", (DL_FUNC) &_fixes_chol_seq_drop_cpp, 3},
     {"_fixes_crossprod_omp_cpp", (DL_FUNC) &_fixes_crossprod_omp_cpp, 2},
     {"_fixes_solve_fe_2way_cpp", (DL_FUNC) &_fixes_solve_fe_2way_cpp, 7},

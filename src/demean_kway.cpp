@@ -16,12 +16,20 @@ using namespace Rcpp;
 //' result bit-identical for any \code{nthreads}.
 //'
 //' \code{fe_ids} must contain dense 0-based level indices per dimension and
-//' the rows must already form the final estimation sample (NA rows and
-//' singleton FE levels removed by the caller, see \code{.fit_fe_ols()}).
+//' the rows must already form the final estimation sample (NA rows,
+//' zero-weight rows, and singleton FE levels removed by the caller, see
+//' \code{.fit_fe_ols()}).
+//'
+//' With observation weights (\code{w} of length N), group means become
+//' weighted means (sum of w*x over sum of w per level), i.e. the projection
+//' onto the fixed effects under weighted least squares. An empty \code{w}
+//' keeps the unweighted path with integer counts, bit-identical to before.
 //'
 //' @param M Numeric matrix (N x C): columns to demean (outcome + regressors).
 //' @param fe_ids Integer matrix (N x Q): 0-based FE level index per dimension.
 //' @param n_levels Integer vector (length Q): number of levels per dimension.
+//' @param w Numeric vector: observation weights (length N), or length 0 for
+//'   the unweighted case. Must be strictly positive.
 //' @param tol Relative convergence tolerance on subtracted group means.
 //' @param max_iter Maximum number of full sweeps per column.
 //' @param nthreads Number of OpenMP threads (ignored without OpenMP).
@@ -33,6 +41,7 @@ using namespace Rcpp;
 List demean_kway_cpp(NumericMatrix M,
                      IntegerMatrix fe_ids,
                      IntegerVector n_levels,
+                     NumericVector w,
                      double tol,
                      int max_iter,
                      int nthreads) {
@@ -40,19 +49,26 @@ List demean_kway_cpp(NumericMatrix M,
     int C = M.ncol();
     int Q = fe_ids.ncol();
     if (nthreads < 1) nthreads = 1;
+    bool weighted = (w.size() > 0);
 
     NumericMatrix out(N, C);
     const double* pM  = M.begin();
     double* pOut      = out.begin();
     const int* pIds   = fe_ids.begin();
+    const double* pW  = weighted ? w.begin() : nullptr;
     std::vector<int> nl(Q);
     for (int q = 0; q < Q; q++) nl[q] = n_levels[q];
 
-    std::vector<std::vector<int>> counts(Q);
+    // Per-level denominators: observation counts (unweighted) or weight sums.
+    std::vector<std::vector<double>> denom(Q);
     for (int q = 0; q < Q; q++) {
-        counts[q].assign(nl[q], 0);
+        denom[q].assign(nl[q], 0.0);
         const int* idq = pIds + (size_t)q * N;
-        for (int k = 0; k < N; k++) counts[q][idq[k]]++;
+        if (weighted) {
+            for (int k = 0; k < N; k++) denom[q][idq[k]] += pW[k];
+        } else {
+            for (int k = 0; k < N; k++) denom[q][idq[k]] += 1.0;
+        }
     }
 
     int n_unconverged = 0;
@@ -80,9 +96,13 @@ List demean_kway_cpp(NumericMatrix M,
             for (int q = 0; q < Q; q++) {
                 const int* idq = pIds + (size_t)q * N;
                 std::fill(sums[q].begin(), sums[q].end(), 0.0);
-                for (int k = 0; k < N; k++) sums[q][idq[k]] += r[k];
+                if (weighted) {
+                    for (int k = 0; k < N; k++) sums[q][idq[k]] += pW[k] * r[k];
+                } else {
+                    for (int k = 0; k < N; k++) sums[q][idq[k]] += r[k];
+                }
                 for (int g = 0; g < nl[q]; g++) {
-                    sums[q][g] /= counts[q][g];
+                    sums[q][g] /= denom[q][g];
                     double a = std::abs(sums[q][g]);
                     if (a > max_mean) max_mean = a;
                 }

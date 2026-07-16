@@ -102,12 +102,14 @@ fe2 <- df[, c("unit", "time")]
 # ---------------------------------------------------------------------------
 
 test_that("engine matches feols: 2-way FE, iid / hetero / HC1", {
+  skip_if_not_installed("fixest")
   expect_engine_matches(df$y, X, fe2, vcov_type = "iid")
   expect_engine_matches(df$y, X, fe2, vcov_type = "hetero")
   expect_engine_matches(df$y, X, fe2, vcov_type = "HC1")
 })
 
 test_that("engine matches feols: one-way cluster (nested and non-nested)", {
+  skip_if_not_installed("fixest")
   # unit clusters: unit FE nested
   expect_engine_matches(df$y, X, fe2, cluster = df$unit)
   # time clusters: time FE nested
@@ -121,10 +123,12 @@ test_that("engine matches feols: one-way cluster (nested and non-nested)", {
 })
 
 test_that("engine matches feols: cluster with explicit iid vcov_type wins", {
+  skip_if_not_installed("fixest")
   expect_engine_matches(df$y, X, fe2, cluster = df$unit, vcov_type = "iid")
 })
 
 test_that("engine matches feols: 1 FE, 3 FE, and no FE (intercept)", {
+  skip_if_not_installed("fixest")
   expect_engine_matches(df$y, X, df[, "unit", drop = FALSE])
   expect_engine_matches(df$y, X, df[, "unit", drop = FALSE],
                         cluster = df$unit)
@@ -144,6 +148,7 @@ test_that("engine matches feols: 1 FE, 3 FE, and no FE (intercept)", {
 # ---------------------------------------------------------------------------
 
 test_that("engine drops later collinear and all-zero columns like feols", {
+  skip_if_not_installed("fixest")
   Xc <- cbind(a = df$x1, b = df$x1, z = 0, c = df$x2)  # b duplicates a; z zero
   ref <- feols_ref(df$y, Xc, fe2)
   fit <- engine_fit(df$y, Xc, fe2)
@@ -156,6 +161,7 @@ test_that("engine drops later collinear and all-zero columns like feols", {
 })
 
 test_that("engine drops columns absorbed by the FEs like feols", {
+  skip_if_not_installed("fixest")
   # unit-constant column is absorbed by the unit FE
   Xa <- cbind(x1 = df$x1, ufix = as.numeric(df$unit == 3L))
   # ufix varies over units — but a column constant WITHIN units:
@@ -172,6 +178,7 @@ test_that("engine drops columns absorbed by the FEs like feols", {
 # ---------------------------------------------------------------------------
 
 test_that("engine drops NA rows like feols", {
+  skip_if_not_installed("fixest")
   y2 <- df$y; y2[c(3L, 10L)] <- NA
   X2 <- X;    X2[15L, 1L]    <- NA
   expect_engine_matches(y2, X2, fe2)
@@ -179,6 +186,7 @@ test_that("engine drops NA rows like feols", {
 })
 
 test_that("engine removes singleton FE observations like feols", {
+  skip_if_not_installed("fixest")
   df_s <- rbind(df, data.frame(unit = 99L, time = 3L, grp = 1L,
                                x1 = 0.5, x2 = 0, y = 5))
   X_s  <- as.matrix(df_s[, c("x1", "x2")])
@@ -189,6 +197,7 @@ test_that("engine removes singleton FE observations like feols", {
 })
 
 test_that("engine handles a single-column X like feols", {
+  skip_if_not_installed("fixest")
   X1 <- X[, "x1", drop = FALSE]
   expect_engine_matches(df$y, X1, fe2)
   expect_engine_matches(df$y, X1, fe2, cluster = df$unit)
@@ -199,6 +208,7 @@ test_that("engine handles a single-column X like feols", {
 # ---------------------------------------------------------------------------
 
 test_that("engine falls back to fixest for non-empty vcov_args and matches", {
+  skip_if_not_installed("fixest")
   va <- list(ssc = fixest::ssc(adj = FALSE))
   ref <- feols_ref(df$y, X, fe2, vcov_type = "iid", vcov_args = va)
   fit <- engine_fit(df$y, X, fe2, vcov_type = "iid", vcov_args = va)
@@ -207,6 +217,7 @@ test_that("engine falls back to fixest for non-empty vcov_args and matches", {
 })
 
 test_that("engine falls back to fixest for multiway cluster and matches", {
+  skip_if_not_installed("fixest")
   ref_m <- {
     fb <- data.frame(.y = df$y); fb$.X <- X
     fb$.f1 <- df$unit; fb$.f2 <- df$time
@@ -223,6 +234,7 @@ test_that("engine falls back to fixest for multiway cluster and matches", {
 })
 
 test_that("engine falls back to fixest for unsupported vcov strings", {
+  skip_if_not_installed("fixest")
   # "twoway" errors in vcov() without more info -> .model_vcov_full falls
   # back to the model default; the engine must reproduce that chain.
   ref <- feols_ref(df$y, X, fe2, cluster = df$unit, vcov_type = "nonsense")
@@ -239,6 +251,7 @@ test_that("engine falls back to fixest for unsupported vcov strings", {
 # fixest's interaction regressors exactly (values, order, and names).
 
 test_that(".expand_i_dummies reproduces fixest i(f, x, ref) coefficients", {
+  skip_if_not_installed("fixest")
   set.seed(21)
   dd <- expand.grid(unit = 1:20, year = 2001:2008)
   dd$x <- rnorm(20)[dd$unit] + 0.1 * dd$year
@@ -261,6 +274,7 @@ test_that(".expand_i_dummies reproduces fixest i(f, x, ref) coefficients", {
 })
 
 test_that(".expand_i_dummies handles an unobserved ref and character levels", {
+  skip_if_not_installed("fixest")
   set.seed(22)
   dd <- expand.grid(grp = c("a", "b", "c"), t = 1:6)
   dd$x <- rnorm(nrow(dd))
@@ -283,6 +297,7 @@ test_that(".expand_i_dummies handles an unobserved ref and character levels", {
 # ---------------------------------------------------------------------------
 
 test_that("engine matches feols on a larger randomized design", {
+  skip_if_not_installed("fixest")
   set.seed(11)
   n_u <- 60L; n_t <- 10L
   dl <- expand.grid(unit = seq_len(n_u), time = seq_len(n_t))
@@ -301,4 +316,210 @@ test_that("engine matches feols on a larger randomized design", {
   expect_engine_matches(dl$y, Xl, fel, tol = 1e-6)
   expect_engine_matches(dl$y, Xl, fel, cluster = dl$unit, tol = 1e-6)
   expect_engine_matches(dl$y, Xl, fel, vcov_type = "hetero", tol = 1e-6)
+})
+
+# ---------------------------------------------------------------------------
+# Observation weights (WLS)
+# ---------------------------------------------------------------------------
+
+feols_ref_w <- function(y, X, w, fe_df = NULL, cluster = NULL,
+                        vcov_type = "HC1") {
+  fb <- data.frame(.y = y, .w = w)
+  fb$.X <- X
+  fe_terms <- character(0)
+  if (!is.null(fe_df)) {
+    for (nm in names(fe_df)) {
+      fb[[nm]] <- fe_df[[nm]]
+      fe_terms <- c(fe_terms, nm)
+    }
+  }
+  fml <- stats::as.formula(
+    if (length(fe_terms) > 0L)
+      paste0(".y ~ .X | ", paste(fe_terms, collapse = " + "))
+    else ".y ~ .X"
+  )
+  args <- list(fml, data = fb, weights = ~.w, warn = FALSE, notes = FALSE)
+  if (!is.null(cluster)) args$cluster <- cluster
+  m <- do.call(fixest::feols, args)
+  V <- if (!is.null(cluster) && identical(vcov_type, "HC1")) {
+    stats::vcov(m)
+  } else {
+    stats::vcov(m, vcov = vcov_type)
+  }
+  fixn <- function(nm) {
+    if (ncol(X) == 1L) ifelse(nm == ".X", colnames(X), nm)
+    else ifelse(startsWith(nm, ".X"), substring(nm, 3L), nm)
+  }
+  cf <- stats::coef(m)
+  names(cf) <- fixn(names(cf))
+  V <- matrix(as.numeric(V), nrow = nrow(V),
+              dimnames = list(fixn(rownames(V)), fixn(colnames(V))))
+  list(coef = cf, V = V, nobs = stats::nobs(m), model = m)
+}
+
+expect_engine_matches_w <- function(y, X, w, fe_df = NULL, cluster = NULL,
+                                    vcov_type = "HC1", tol = 1e-8) {
+  ref <- feols_ref_w(y, X, w, fe_df, cluster, vcov_type)
+  fe_list <- if (is.null(fe_df)) list() else as.list(fe_df)
+  cl <- if (is.null(cluster)) NULL else list(cluster)
+  fit <- fixes:::.fit_fe_ols(y, X, fe_list = fe_list, cluster_vals = cl,
+                             vcov_type = vcov_type, weights = w)
+  expect_equal(names(fit$coef), names(ref$coef))
+  expect_equal(fit$coef, ref$coef, tolerance = tol)
+  expect_equal(fit$V, ref$V, tolerance = tol)
+  expect_equal(fit$nobs, ref$nobs)
+  invisible(list(fit = fit, ref = ref))
+}
+
+test_that("engine matches weighted feols: iid / HC1 / cluster", {
+  skip_if_not_installed("fixest")
+  set.seed(21)
+  w <- runif(nrow(df), 0.5, 2)
+  expect_engine_matches_w(df$y, X, w, fe2, vcov_type = "iid")
+  expect_engine_matches_w(df$y, X, w, fe2, vcov_type = "HC1")
+  expect_engine_matches_w(df$y, X, w, fe2, cluster = df$unit)
+  expect_engine_matches_w(df$y, X, w, fe2, cluster = df$grp)
+  expect_engine_matches_w(df$y, X, w, fe_df = NULL, vcov_type = "HC1")
+})
+
+test_that("weighted engine: zero and NA weights drop rows, negative errors", {
+  skip_if_not_installed("fixest")
+  set.seed(22)
+  w <- runif(nrow(df), 0.5, 2)
+  w[c(1L, 4L)] <- 0
+  w[c(7L)] <- NA
+  ref <- suppressMessages(feols_ref_w(df$y, X, w, fe2))
+  fit <- fixes:::.fit_fe_ols(df$y, X, fe_list = as.list(fe2), weights = w)
+  expect_equal(fit$nobs, ref$nobs)
+  expect_equal(fit$coef, ref$coef, tolerance = 1e-8)
+  expect_equal(fit$V, ref$V, tolerance = 1e-8)
+  expect_false(any(c(1L, 4L, 7L) %in% fit$used))
+
+  w_neg <- w; w_neg[2L] <- -0.5
+  expect_error(
+    fixes:::.fit_fe_ols(df$y, X, fe_list = as.list(fe2), weights = w_neg),
+    "negative weights"
+  )
+})
+
+# ---------------------------------------------------------------------------
+# t-based inference (statistic / p.value / df.t) vs broom::tidy(feols)
+# ---------------------------------------------------------------------------
+
+expect_t_inference_matches <- function(y, X, fe_df = NULL, cluster = NULL,
+                                       w = NULL, tol = 1e-8) {
+  fb <- data.frame(.y = y)
+  fb$.X <- X
+  fe_terms <- character(0)
+  if (!is.null(fe_df)) {
+    for (nm in names(fe_df)) {
+      fb[[nm]] <- fe_df[[nm]]
+      fe_terms <- c(fe_terms, nm)
+    }
+  }
+  fml <- stats::as.formula(
+    if (length(fe_terms) > 0L)
+      paste0(".y ~ .X | ", paste(fe_terms, collapse = " + "))
+    else ".y ~ .X"
+  )
+  args <- list(fml, data = fb, warn = FALSE, notes = FALSE)
+  if (!is.null(cluster)) args$cluster <- cluster
+  if (!is.null(w)) { fb$.w <- w; args$data <- fb; args$weights <- ~.w }
+  m <- do.call(fixest::feols, args)
+  td_ref <- if (!is.null(cluster)) broom::tidy(m) else
+    broom::tidy(m, vcov = stats::vcov(m, vcov = "HC1"))
+
+  fe_list <- if (is.null(fe_df)) list() else as.list(fe_df)
+  cl <- if (is.null(cluster)) NULL else list(cluster)
+  fit <- fixes:::.fit_fe_ols(y, X, fe_list = fe_list, cluster_vals = cl,
+                             vcov_type = "HC1", weights = w)
+
+  # broom's columns can carry a "vcov_type" attribute; compare values only
+  expect_equal(fit$tidy$statistic, as.numeric(td_ref$statistic),
+               tolerance = tol)
+  expect_equal(fit$tidy$p.value, as.numeric(td_ref$p.value), tolerance = tol)
+  expect_equal(fit$df.t, fixest::degrees_freedom(m, "t"))
+}
+
+test_that("engine t-inference matches broom::tidy on feols", {
+  skip_if_not_installed("fixest")
+  expect_t_inference_matches(df$y, X, fe2)
+  expect_t_inference_matches(df$y, X, fe2, cluster = df$unit)
+  expect_t_inference_matches(df$y, X, fe_df = NULL)
+  set.seed(23)
+  w <- runif(nrow(df), 0.5, 2)
+  expect_t_inference_matches(df$y, X, fe2, w = w)
+  expect_t_inference_matches(df$y, X, fe2, cluster = df$grp, w = w)
+})
+
+# ---------------------------------------------------------------------------
+# keep_stats: fit statistics vs broom::glance(feols)
+# ---------------------------------------------------------------------------
+
+expect_stats_match_glance <- function(y, X, fe_df = NULL, w = NULL,
+                                      tol = 1e-8) {
+  fb <- data.frame(.y = y)
+  fb$.X <- X
+  fe_terms <- character(0)
+  if (!is.null(fe_df)) {
+    for (nm in names(fe_df)) {
+      fb[[nm]] <- fe_df[[nm]]
+      fe_terms <- c(fe_terms, nm)
+    }
+  }
+  fml <- stats::as.formula(
+    if (length(fe_terms) > 0L)
+      paste0(".y ~ .X | ", paste(fe_terms, collapse = " + "))
+    else ".y ~ .X"
+  )
+  args <- list(fml, data = fb, warn = FALSE, notes = FALSE)
+  if (!is.null(w)) { fb$.w <- w; args$data <- fb; args$weights <- ~.w }
+  m <- do.call(fixest::feols, args)
+  g <- as.data.frame(broom::glance(m))
+
+  fe_list <- if (is.null(fe_df)) list() else as.list(fe_df)
+  fit <- fixes:::.fit_fe_ols(y, X, fe_list = fe_list, weights = w,
+                             keep_stats = TRUE)
+  st <- fit$stats
+  expect_equal(st$nobs, g$nobs)
+  expect_equal(st$r.squared, g$r.squared, tolerance = tol)
+  expect_equal(st$adj.r.squared, g$adj.r.squared, tolerance = tol)
+  expect_equal(st$within.r.squared, as.numeric(g$within.r.squared),
+               tolerance = tol)
+  expect_equal(st$sigma, g$sigma, tolerance = tol)
+  expect_equal(st$logLik, as.numeric(g$logLik), tolerance = tol)
+  expect_equal(st$AIC, as.numeric(g$AIC), tolerance = tol)
+  expect_equal(st$BIC, as.numeric(g$BIC), tolerance = tol)
+}
+
+test_that("keep_stats matches broom::glance on feols", {
+  skip_if_not_installed("fixest")
+  expect_stats_match_glance(df$y, X, fe2)
+  expect_stats_match_glance(df$y, X, fe_df = NULL)
+  set.seed(24)
+  w <- runif(nrow(df), 0.5, 2)
+  expect_stats_match_glance(df$y, X, fe2, w = w)
+})
+
+test_that("used indices match the feols estimation sample", {
+  skip_if_not_installed("fixest")
+  df_na <- df
+  df_na$y[3L] <- NA
+  df_na$x1[10L] <- NA
+  X_na <- as.matrix(df_na[, c("x1", "x2")])
+  fit <- fixes:::.fit_fe_ols(df_na$y, X_na,
+                             fe_list = as.list(df_na[, c("unit", "time")]))
+  expect_false(any(c(3L, 10L) %in% fit$used))
+  expect_equal(length(fit$used), fit$nobs)
+
+  # fixest delegation path (vcov_args non-empty) also reports used/df.t/stats
+  fit_fx <- fixes:::.fit_fe_ols(
+    df_na$y, X_na, fe_list = as.list(df_na[, c("unit", "time")]),
+    vcov_type = "hetero", vcov_args = list(ssc = fixest::ssc(adj = FALSE)),
+    keep_stats = TRUE
+  )
+  expect_equal(sort(fit_fx$used), sort(fit$used))
+  expect_true(is.finite(fit_fx$df.t))
+  expect_true(all(c("statistic", "p.value") %in% names(fit_fx$tidy)))
+  expect_false(is.null(fit_fx$stats))
 })
