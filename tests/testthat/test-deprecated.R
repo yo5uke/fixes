@@ -24,6 +24,12 @@ strip_call <- function(x) {
   x
 }
 
+# honest_sensitivity() needs its numeric Suggests (mirrors test-honest.R).
+honest_solvers_ready <- function() {
+  all(vapply(c("lpSolveAPI", "Rglpk", "TruncatedNormal", "Matrix", "pracma"),
+             requireNamespace, logical(1L), quietly = TRUE))
+}
+
 test_that("run_es warns once and matches event_study (twfe classic)", {
   df <- make_dep_panel()
 
@@ -165,6 +171,7 @@ test_that("contamination_weights renames compute_contamination_weights", {
 })
 
 test_that("honest_sensitivity accepts old argument names with a warning", {
+  skip_if_not(honest_solvers_ready())
   df <- make_dep_panel(40L)
   res <- event_study(df, outcome = y, treatment = treated, time = year,
                      timing = gvar, fe = ~ id + year, staggered = TRUE)
@@ -177,6 +184,7 @@ test_that("honest_sensitivity accepts old argument names with a warning", {
 })
 
 test_that("plot.honest_result and deprecated plot_honest agree", {
+  skip_if_not(honest_solvers_ready())
   df <- make_dep_panel(41L)
   res <- event_study(df, outcome = y, treatment = treated, time = year,
                      timing = gvar, fe = ~ id + year, staggered = TRUE)
