@@ -7,10 +7,9 @@ inst/doc
 # pkgdown site (deployed to gh-pages via GitHub Actions)
 docs/
 
-# Claude Code related files
-.claude/
-CLAUDE.md
-VERSION_*.md
+# Claude Code: personal/machine-local settings only.
+# CLAUDE.md and .claude/rules/ are shared via source control.
+.claude/settings.local.json
 
 /.quarto/
 **/*.quarto_ipynb
@@ -22,7 +21,7 @@ papers/
 # reviews
 reviews/
 
-# Development / profiling artifacts (generated during Phase 2 work)
+# Development / profiling scratch files (not part of the package)
 bench_*.R
 diag_*.R
 profile*.R
