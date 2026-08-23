@@ -46,6 +46,10 @@ Tests set `options(lifecycle_verbosity = "quiet")` (`tests/testthat/setup-lifecy
 
 CI runs R-CMD-check on macOS/Windows (release) and Ubuntu (devel/release/oldrel-1), plus the no-fixest job.
 
+## Commit messages
+
+`type: imperative summary` in English, optionally `type(scope): summary` — e.g. `fix(run_did): report the estimation sample, not nrow(data)`. Common types used in this repo: `feat`, `fix`, `docs`, `test`, `ci`, `refactor`, `build`, `chore`.
+
 ## Testing policy
 
 - **Write tests before implementing any new estimator.**
