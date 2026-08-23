@@ -37,38 +37,46 @@ export(run_did)
 export(run_es)
 importFrom(Rcpp,sourceCpp)
 importFrom(broom,tidy)
-importFrom(dplyr,arrange)
-importFrom(dplyr,bind_rows)
-importFrom(dplyr,dense_rank)
-importFrom(dplyr,filter)
-importFrom(dplyr,group_by)
-importFrom(dplyr,left_join)
-importFrom(dplyr,mutate)
-importFrom(dplyr,n_distinct)
-importFrom(dplyr,ungroup)
-importFrom(ggplot2,aes)
-importFrom(ggplot2,autoplot)
-importFrom(ggplot2,geom_errorbar)
-importFrom(ggplot2,geom_hline)
-importFrom(ggplot2,geom_point)
-importFrom(ggplot2,ggplot)
-importFrom(ggplot2,labs)
-importFrom(ggplot2,scale_color_manual)
-importFrom(ggplot2,theme_bw)
-importFrom(rlang,.data)
-importFrom(rlang,as_string)
-importFrom(rlang,enexpr)
-importFrom(rlang,expr_text)
-importFrom(rlang,f_lhs)
-importFrom(rlang,f_rhs)
-importFrom(rlang,is_call)
-importFrom(rlang,is_symbol)
-importFrom(stats,as.formula)
-importFrom(stats,nobs)
-importFrom(stats,pnorm)
-importFrom(stats,qnorm)
-importFrom(stats,sd)
-importFrom(stats,setNames)
-importFrom(stats,vcov)
+importFrom(dplyr,
+  arrange,
+  bind_rows,
+  dense_rank,
+  filter,
+  group_by,
+  left_join,
+  mutate,
+  n_distinct,
+  ungroup
+)
+importFrom(ggplot2,
+  aes,
+  autoplot,
+  geom_errorbar,
+  geom_hline,
+  geom_point,
+  ggplot,
+  labs,
+  scale_color_manual,
+  theme_bw
+)
+importFrom(rlang,
+  .data,
+  as_string,
+  enexpr,
+  expr_text,
+  f_lhs,
+  f_rhs,
+  is_call,
+  is_symbol
+)
+importFrom(stats,
+  as.formula,
+  nobs,
+  pnorm,
+  qnorm,
+  sd,
+  setNames,
+  vcov
+)
 importFrom(utils,getFromNamespace)
 useDynLib(fixes, .registration = TRUE)
