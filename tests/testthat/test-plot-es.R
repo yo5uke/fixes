@@ -50,9 +50,9 @@ test_that("time_axis = 'calendar' relabels and rescales the x axis", {
   expect_identical(p_rel$data$.x, res$relative_time)
   expect_identical(p_cal$data$.x, res$relative_time + 2010)
 
-  # The dashed reference line follows the axis in use.
-  expect_identical(ggplot2::layer_data(p_rel, 1)$xintercept[1], 0)
-  expect_identical(ggplot2::layer_data(p_cal, 1)$xintercept[1], 2010)
+  # The dashed reference line sits at relative time -1 on either axis.
+  expect_identical(ggplot2::layer_data(p_rel, 1)$xintercept[1], -1)
+  expect_identical(ggplot2::layer_data(p_cal, 1)$xintercept[1], 2009)
 })
 
 test_that("an explicit vline_val still wins over the axis default", {
@@ -146,6 +146,48 @@ test_that("the interactive plot honours time_axis", {
     plot(res, interactive = TRUE, ci_level = 0.9),
     "No 90% confidence interval"
   )
+})
+
+test_that("the reference line marks the last pre-treatment period", {
+  res <- event_study(make_universal_panel(), outcome = y, treatment = treated,
+                     time = year, timing = 2010, fe = ~ id + year)
+
+  expect_identical(ggplot2::layer_data(plot(res), 1)$xintercept[1], -1)
+
+  # Dates land on the observed period, not on ref_time minus `interval`.
+  df <- make_universal_panel()
+  df$date <- as.Date(paste0(df$year, "-01-01"))
+  res_d <- event_study(df, outcome = y, treatment = treated, time = date,
+                       timing = as.Date("2010-01-01"), interval = 365,
+                       fe = ~ id + date)
+  expect_identical(
+    ggplot2::layer_data(plot(res_d, time_axis = "calendar"), 1)$xintercept[1],
+    as.numeric(as.Date("2009-01-01"))
+  )
+})
+
+test_that("points are drawn on top of the bars and the band", {
+  res <- event_study(make_universal_panel(), outcome = y, treatment = treated,
+                     time = year, timing = 2010, fe = ~ id + year)
+
+  geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], "")
+
+  g_eb <- geoms(plot(res))
+  expect_gt(which(g_eb == "GeomPoint"), which(g_eb == "GeomErrorbar"))
+
+  g_rb <- geoms(plot(res, type = "ribbon"))
+  expect_gt(which(g_rb == "GeomPoint"), which(g_rb == "GeomRibbon"))
+  expect_gt(which(g_rb == "GeomPoint"), which(g_rb == "GeomLine"))
+})
+
+test_that("error bars are thinner than the ribbon's line by default", {
+  res <- event_study(make_universal_panel(), outcome = y, treatment = treated,
+                     time = year, timing = 2010, fe = ~ id + year)
+
+  bar_lw <- ggplot2::layer_data(plot(res), 3)$linewidth[1]
+  line_lw <- ggplot2::layer_data(plot(res, type = "ribbon"), 4)$linewidth[1]
+  expect_lt(bar_lw, line_lw)
+  expect_identical(bar_lw, fixes:::.fixes_palette()$barwidth_line)
 })
 
 test_that("error bars are the default display, in black", {
