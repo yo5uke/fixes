@@ -37,8 +37,8 @@ call). Default \code{FALSE}.}
 \code{pointsize}, \code{alpha}, \code{barwidth}, \code{color}, \code{fill}, \code{errorbar_color},
 \code{theme_style} (\code{"bw"}, \code{"minimal"}, or \code{"classic"}); for interactive
 plots \code{markersize}, \code{show_ribbon}, \code{height}, \code{width}, and the shared
-color arguments. \code{vline_val} defaults to the treatment period on
-whichever axis is in use. \code{errorbar_color} colours the bars alone and
+color arguments. \code{vline_val} defaults to relative time -1, the last
+period before treatment, on whichever axis is in use. \code{errorbar_color} colours the bars alone and
 follows \code{color} unless set.}
 }
 \value{

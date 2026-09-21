@@ -40,7 +40,7 @@
   .es_check_simultaneous(data, show_simultaneous)
   ci <- .es_ci_cols(data, ci_level)
   ax <- .es_x_axis(data, time_axis)
-  if (is.null(vline_val)) vline_val <- ax$zero
+  if (is.null(vline_val)) vline_val <- ax$ref_line
 
   plot_data <- data
   plot_data$x <- ax$values

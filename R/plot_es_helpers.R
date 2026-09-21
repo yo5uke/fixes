@@ -56,7 +56,7 @@
   if (time_axis == "relative") {
     return(list(
       values = rel,
-      zero = 0,
+      ref_line = .es_ref_line(rel, rel, 0, 1),
       breaks = sort(unique(rel)),
       label = "Relative Time to Treatment",
       is_date = FALSE
@@ -104,9 +104,19 @@
 
   list(
     values = values,
-    zero = ref,
+    ref_line = .es_ref_line(rel, values, ref, interval),
     breaks = sort(unique(values)),
     label = label,
     is_date = inherits(values, "Date")
   )
+}
+
+# Where the dashed vertical line goes: relative time -1, the last period
+# before treatment. At relative time 0 the effect is usually already present,
+# so a line there reads as if the baseline sat inside the treated window.
+# `treated` and `step` only cover windows that exclude -1 (e.g. BJS without
+# pre-treatment estimates).
+.es_ref_line <- function(rel, values, treated, step) {
+  i <- match(-1L, rel)
+  if (is.na(i)) treated - step else values[[i]]
 }

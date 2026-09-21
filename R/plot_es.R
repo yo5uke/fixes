@@ -8,7 +8,7 @@
   vline_color = "#000",
   hline_val = 0,
   hline_color = "#000",
-  linewidth = 1,
+  linewidth = NULL,
   pointsize = 2,
   alpha = NULL,
   barwidth = .2,
@@ -33,11 +33,15 @@
   if (is.null(fill)) fill <- pal$ribbon
   if (is.null(alpha)) alpha <- pal$alpha
   if (is.null(errorbar_color)) errorbar_color <- color
+  # Error bars are drawn thin; the ribbon's own line carries more weight.
+  if (is.null(linewidth)) {
+    linewidth <- if (type == "ribbon") pal$linewidth else pal$barwidth_line
+  }
 
   .es_check_simultaneous(data, show_simultaneous)
   ci <- .es_ci_cols(data, ci_level)
   ax <- .es_x_axis(data, time_axis)
-  if (is.null(vline_val)) vline_val <- ax$zero
+  if (is.null(vline_val)) vline_val <- ax$ref_line
 
   plot_data <- data
   plot_data$.x <- ax$values
@@ -66,7 +70,6 @@
       linetype = "dashed",
       color = hline_color
     ) +
-    ggplot2::geom_point(size = pointsize, color = color) +
     ggplot2::labs(
       x = ax$label,
       y = sprintf("Estimate and %s%% CI", ci$pct)
@@ -153,6 +156,9 @@
     }
   }
 
+  # Points go on last so the bars (or band) never cover them.
+  p <- p + ggplot2::geom_point(size = pointsize, color = color)
+
   # One break per estimated period; a Date axis needs its own scale.
   if (ax$is_date) {
     p <- p + ggplot2::scale_x_date(breaks = ax$breaks)
@@ -217,8 +223,8 @@
 #'   `pointsize`, `alpha`, `barwidth`, `color`, `fill`, `errorbar_color`,
 #'   `theme_style` (`"bw"`, `"minimal"`, or `"classic"`); for interactive
 #'   plots `markersize`, `show_ribbon`, `height`, `width`, and the shared
-#'   color arguments. `vline_val` defaults to the treatment period on
-#'   whichever axis is in use. `errorbar_color` colours the bars alone and
+#'   color arguments. `vline_val` defaults to relative time -1, the last
+#'   period before treatment, on whichever axis is in use. `errorbar_color` colours the bars alone and
 #'   follows `color` unless set.
 #'
 #' @return A `ggplot` object, or a `plotly` object when
