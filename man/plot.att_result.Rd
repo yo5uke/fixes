@@ -8,7 +8,7 @@
 \method{plot}{att_result}(
   x,
   ci_level = 0.95,
-  color = "#B25D91FF",
+  color = NULL,
   zero_line = TRUE,
   theme_style = c("bw", "minimal", "classic"),
   ...
@@ -22,7 +22,7 @@
 \item{ci_level}{Confidence level to display (default \code{0.95}; must be one
 of the levels requested in the originating call).}
 
-\item{color}{Point and interval colour (default \code{"#B25D91FF"}).}
+\item{color}{Point and interval colour (default black).}
 
 \item{zero_line}{Logical; draw a dashed reference line at zero
 (default \code{TRUE}).}

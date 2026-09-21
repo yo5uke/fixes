@@ -325,7 +325,7 @@ print.att_result <- function(x, digits = 3L, ...) {
 #' @param x An `att_result` object.
 #' @param ci_level Confidence level to display (default `0.95`; must be one
 #'   of the levels requested in the originating call).
-#' @param color Point and interval colour (default `"#B25D91FF"`).
+#' @param color Point and interval colour (default black).
 #' @param zero_line Logical; draw a dashed reference line at zero
 #'   (default `TRUE`).
 #' @param theme_style One of `"bw"` (default), `"minimal"`, or `"classic"`.
@@ -345,12 +345,13 @@ print.att_result <- function(x, digits = 3L, ...) {
 plot.att_result <- function(
   x,
   ci_level = 0.95,
-  color = "#B25D91FF",
+  color = NULL,
   zero_line = TRUE,
   theme_style = c("bw", "minimal", "classic"),
   ...
 ) {
   theme_style <- match.arg(theme_style)
+  if (is.null(color)) color <- .fixes_palette()$point
 
   suf <- sprintf("%.0f", ci_level * 100)
   lo <- paste0("conf_low_", suf)

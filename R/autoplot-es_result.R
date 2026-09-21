@@ -6,7 +6,9 @@
 #'
 #' @param object An `es_result` returned by [event_study()].
 #' @param ci_level Confidence level (numeric, e.g., 0.95).
-#' @param type Plot type: `"ribbon"` (default) or `"errorbar"`.
+#' @param type Plot type: `"errorbar"` (default) or `"ribbon"`.
+#' @param time_axis `"relative"` (default) for event time, or `"calendar"`
+#'   for the original time values; see [plot.es_result()].
 #' @param ...  Additional styling arguments; see [plot.es_result()].
 #'
 #' @return A `ggplot` object.
@@ -20,9 +22,12 @@
 autoplot.es_result <- function(
   object,
   ci_level = 0.95,
-  type = c("ribbon", "errorbar"),
+  type = c("errorbar", "ribbon"),
+  time_axis = c("relative", "calendar"),
   ...
 ) {
   type <- match.arg(type)
-  .plot_es_impl(object, ci_level = ci_level, type = type, ...)
+  time_axis <- match.arg(time_axis)
+  .plot_es_impl(object, ci_level = ci_level, type = type,
+                time_axis = time_axis, ...)
 }

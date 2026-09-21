@@ -4,14 +4,23 @@
 \alias{autoplot.es_result}
 \title{Autoplot for event-study results}
 \usage{
-\method{autoplot}{es_result}(object, ci_level = 0.95, type = c("ribbon", "errorbar"), ...)
+\method{autoplot}{es_result}(
+  object,
+  ci_level = 0.95,
+  type = c("errorbar", "ribbon"),
+  time_axis = c("relative", "calendar"),
+  ...
+)
 }
 \arguments{
 \item{object}{An \code{es_result} returned by \code{\link[=event_study]{event_study()}}.}
 
 \item{ci_level}{Confidence level (numeric, e.g., 0.95).}
 
-\item{type}{Plot type: \code{"ribbon"} (default) or \code{"errorbar"}.}
+\item{type}{Plot type: \code{"errorbar"} (default) or \code{"ribbon"}.}
+
+\item{time_axis}{\code{"relative"} (default) for event time, or \code{"calendar"}
+for the original time values; see \code{\link[=plot.es_result]{plot.es_result()}}.}
 
 \item{...}{Additional styling arguments; see \code{\link[=plot.es_result]{plot.es_result()}}.}
 }

@@ -35,11 +35,11 @@
 #' @param theme One of `"bw"` (default), `"minimal"`, or
 #'   `"classic"`.
 #' @param color Line and point colour used in the `"facet"` display
-#'   (default `"#B25D91FF"`, matching [plot_es()]).
-#' @param fill Ribbon fill colour in the `"facet"` display (default
-#'   `"#B25D91FF"`).
+#'   (defaults to the package's steel blue, matching [plot.es_result()]).
+#' @param fill Ribbon fill colour in the `"facet"` display (defaults to the
+#'   package's lighter ribbon tint).
 #' @param alpha Ribbon transparency in the `"facet"` display
-#'   (default `0.2`).
+#'   (default `0.35`).
 #'
 #' @return A [ggplot2::ggplot()] object.
 #'
@@ -66,12 +66,17 @@ NULL
   ci_level = 0.95,
   zero_line = TRUE,
   theme = c("bw", "minimal", "classic"),
-  color = "#B25D91FF",
-  fill = "#B25D91FF",
-  alpha = 0.2
+  color = NULL,
+  fill = NULL,
+  alpha = NULL
 ) {
   type <- match.arg(type)
   theme <- match.arg(theme)
+
+  pal <- .fixes_palette()
+  if (is.null(color)) color <- pal$line
+  if (is.null(fill)) fill <- pal$ribbon
+  if (is.null(alpha)) alpha <- pal$alpha
 
   # ---- Extract bootstrap data (available only when x is es_result) ----------
   boot_gt <- attr(x, "bootstrap")
@@ -325,9 +330,9 @@ plot.att_gt_result <- function(
   ci_level = 0.95,
   zero_line = TRUE,
   theme = c("bw", "minimal", "classic"),
-  color = "#B25D91FF",
-  fill = "#B25D91FF",
-  alpha = 0.2,
+  color = NULL,
+  fill = NULL,
+  alpha = NULL,
   ...
 ) {
   .plot_att_gt_impl(x, type = type, ci_level = ci_level,

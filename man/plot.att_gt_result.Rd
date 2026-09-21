@@ -11,9 +11,9 @@
   ci_level = 0.95,
   zero_line = TRUE,
   theme = c("bw", "minimal", "classic"),
-  color = "#B25D91FF",
-  fill = "#B25D91FF",
-  alpha = 0.2,
+  color = NULL,
+  fill = NULL,
+  alpha = NULL,
   ...
 )
 
@@ -36,13 +36,13 @@ produced by extracting \code{attr(x, "att_gt")} and giving it class
 \code{"classic"}.}
 
 \item{color}{Line and point colour used in the \code{"facet"} display
-(default \code{"#B25D91FF"}, matching \code{\link[=plot_es]{plot_es()}}).}
+(defaults to the package's steel blue, matching \code{\link[=plot.es_result]{plot.es_result()}}).}
 
-\item{fill}{Ribbon fill colour in the \code{"facet"} display (default
-\code{"#B25D91FF"}).}
+\item{fill}{Ribbon fill colour in the \code{"facet"} display (defaults to the
+package's lighter ribbon tint).}
 
 \item{alpha}{Ribbon transparency in the \code{"facet"} display
-(default \code{0.2}).}
+(default \code{0.35}).}
 
 \item{...}{Passed on to the plotting engine.}
 

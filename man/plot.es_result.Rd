@@ -7,7 +7,8 @@
 \method{plot}{es_result}(
   x,
   ci_level = 0.95,
-  type = c("ribbon", "errorbar"),
+  type = c("errorbar", "ribbon"),
+  time_axis = c("relative", "calendar"),
   interactive = FALSE,
   show_simultaneous = FALSE,
   ...
@@ -16,9 +17,13 @@
 \arguments{
 \item{x}{An \code{es_result} object.}
 
-\item{ci_level}{Confidence level to display (default \code{0.95}).}
+\item{ci_level}{Confidence level to display (default \code{0.95}). Must be one of
+the levels the result was estimated at (\code{conf_level} in \code{\link[=event_study]{event_study()}}).}
 
-\item{type}{\code{"ribbon"} (default) or \code{"errorbar"}. Static plots only.}
+\item{type}{\code{"errorbar"} (default) or \code{"ribbon"}. Static plots only.}
+
+\item{time_axis}{\code{"relative"} (default) for event time, or \code{"calendar"} for
+the original time values. See Details.}
 
 \item{interactive}{Logical; if \code{TRUE}, return an interactive plotly chart
 instead of a ggplot. Default \code{FALSE}.}
@@ -29,10 +34,12 @@ call). Default \code{FALSE}.}
 
 \item{...}{Further styling arguments: for static plots
 \code{vline_val}, \code{hline_val}, \code{vline_color}, \code{hline_color}, \code{linewidth},
-\code{pointsize}, \code{alpha}, \code{barwidth}, \code{color}, \code{fill}, \code{theme_style}
-(\code{"bw"}, \code{"minimal"}, or \code{"classic"}); for interactive plots
-\code{markersize}, \code{show_ribbon}, \code{height}, \code{width}, and the shared color
-arguments.}
+\code{pointsize}, \code{alpha}, \code{barwidth}, \code{color}, \code{fill}, \code{errorbar_color},
+\code{theme_style} (\code{"bw"}, \code{"minimal"}, or \code{"classic"}); for interactive
+plots \code{markersize}, \code{show_ribbon}, \code{height}, \code{width}, and the shared
+color arguments. \code{vline_val} defaults to the treatment period on
+whichever axis is in use. \code{errorbar_color} colours the bars alone and
+follows \code{color} unless set.}
 }
 \value{
 A \code{ggplot} object, or a \code{plotly} object when
@@ -45,13 +52,36 @@ confidence bands as a static ggplot, or — with \code{interactive = TRUE} — a
 interactive plotly chart with hover tooltips (requires the suggested
 \{plotly\} package).
 }
+\details{
+The default display is black error bars. \code{type = "ribbon"} switches to a
+line with a shaded band and, unless \code{color}/\code{fill} say otherwise, to the
+package's muted steel-blue palette. In either display \code{color} sets the
+points (and the line), while \code{errorbar_color} can recolour the bars on
+their own.
+
+\code{time_axis} controls what the horizontal axis shows. The default
+\code{"relative"} plots event time (periods since treatment) and labels the axis
+"Relative Time to Treatment". \code{"calendar"} instead plots the original time
+values (e.g. \code{2010}, or a \code{Date}), labels the axis with the \code{time} column's
+name, and moves the dashed vertical reference line to the treatment period.
+It is available whenever every treated unit adopts in the same period —
+universal timing, or a staggered design that happens to have a single
+cohort — and errors otherwise, because with several cohorts one relative
+period corresponds to several calendar periods.
+}
 \examples{
 \dontrun{
 res <- event_study(df, outcome = y, time = year, timing = g,
                    unit = id, estimator = "cs")
 plot(res)
-plot(res, type = "errorbar", ci_level = 0.9)
+plot(res, type = "ribbon", ci_level = 0.9)
+plot(res, color = "#1B4965", errorbar_color = "grey50")
 plot(res, interactive = TRUE)
+
+# Universal timing: label the axis with calendar years instead
+uni <- event_study(df, outcome = y, treatment = d, time = year,
+                   timing = 2010, fe = ~ id + year)
+plot(uni, time_axis = "calendar")
 }
 
 }

@@ -100,6 +100,15 @@
   tidy
 }
 
+# Calendar period that relative time 0 refers to, or NULL when the design has
+# no single one (staggered adoption with several cohorts, or a pre-built
+# `rel_time` column). Used by the plots' `time_axis = "calendar"` option.
+.es_ref_time <- function(x) {
+  if (is.null(x)) return(NULL)
+  u <- unique(x[!is.na(x)])
+  if (length(u) == 1L) u else NULL
+}
+
 # Extract cluster variable name(s) as a character scalar/vector from the
 # `cluster` argument (formula or character).
 .cluster_vars_chr <- function(cluster) {
@@ -327,6 +336,8 @@ event_study <- function(
   # ---- resolve core variables ---------------------------------------------
   outcome_chr <- resolve_column(rlang::enexpr(outcome), data, allow_call = TRUE)
   time_chr <- resolve_column(rlang::enexpr(time), data)
+  # Kept for plot axis labels: `time_transform` overwrites `time_chr`.
+  time_var <- time_chr
 
   unit_chr <- NULL
   unit_expr <- rlang::enexpr(unit)
@@ -444,6 +455,10 @@ event_study <- function(
       lag_range,
       meta = list(
         interval = interval,
+        ref_time = .es_ref_time(data[[timing_chr]]),
+        time_levels = sort(unique(data[[time_chr]])),
+        time_var = time_var,
+        time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = "cs",
         N = nrow(data),
@@ -590,6 +605,10 @@ event_study <- function(
       lag_range,
       meta = list(
         interval = interval,
+        ref_time = .es_ref_time(data[[timing_chr]]),
+        time_levels = sort(unique(data[[time_chr]])),
+        time_var = time_var,
+        time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = sa_out$formula_str,
         N = sa_out$n_obs,
@@ -650,6 +669,10 @@ event_study <- function(
       lag_range,
       meta = list(
         interval = interval,
+        ref_time = .es_ref_time(data[[timing_chr]]),
+        time_levels = sort(unique(data[[time_chr]])),
+        time_var = time_var,
+        time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = "bjs",
         N = nrow(data),
@@ -721,6 +744,10 @@ event_study <- function(
       lag_range,
       meta = list(
         interval = interval,
+        ref_time = .es_ref_time(data[[timing_chr]]),
+        time_levels = sort(unique(data[[time_chr]])),
+        time_var = time_var,
+        time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = twm_out$formula_str,
         N = twm_out$n_obs,
@@ -792,6 +819,10 @@ event_study <- function(
       lag_range,
       meta = list(
         interval = interval,
+        ref_time = .es_ref_time(data[[timing_chr]]),
+        time_levels = sort(unique(data[[time_chr]])),
+        time_var = time_var,
+        time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = flex_out$formula_str,
         N = flex_out$n_obs,
@@ -1054,6 +1085,16 @@ event_study <- function(
   attr(tidy, "lag_range") <- lag_range
   attr(tidy, "baseline") <- baseline
   attr(tidy, "interval") <- interval
+  attr(tidy, "ref_time") <- if (staggered) {
+    .es_ref_time(data[[timing_chr]])
+  } else if (!use_rel_time) {
+    timing_val
+  } else {
+    NULL
+  }
+  attr(tidy, "time_levels") <- sort(unique(data[[time_chr]]))
+  attr(tidy, "time_var") <- time_var
+  attr(tidy, "time_transform") <- isTRUE(time_transform)
   attr(tidy, "call") <- match.call()
   attr(tidy, "model_formula") <- formula_string
   attr(tidy, "conf.level") <- conf.level

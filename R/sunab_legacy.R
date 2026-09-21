@@ -39,6 +39,8 @@
 
   outcome_chr <- .resolve_col(rlang::enexpr(outcome), data, allow_call = TRUE)
   time_chr <- .resolve_col(rlang::enexpr(time), data)
+  # Kept for plot axis labels: `time_transform` overwrites `time_chr`.
+  time_var <- time_chr
 
   unit_chr <- NULL
   unit_expr <- rlang::enexpr(unit)
@@ -97,6 +99,9 @@
     warning("`method='sunab'` is typically used with `staggered=TRUE`.")
   }
   timing_chr <- .resolve_col(rlang::enexpr(timing), data)
+
+  # Read before the NA recoding below, which would add a spurious cohort.
+  ref_time <- .es_ref_time(data[[timing_chr]])
 
   # fixest::sunab() has no NA-cohort convention: rows with an NA cohort are
   # dropped from the estimation sample, silently discarding the entire
@@ -248,6 +253,10 @@
   attr(tidy, "lag_range") <- lag_range
   attr(tidy, "baseline") <- baseline
   attr(tidy, "interval") <- interval
+  attr(tidy, "ref_time") <- ref_time
+  attr(tidy, "time_levels") <- sort(unique(data[[time_chr]]))
+  attr(tidy, "time_var") <- time_var
+  attr(tidy, "time_transform") <- isTRUE(time_transform)
   attr(tidy, "call") <- match.call()
   attr(tidy, "model_formula") <- formula_string
   attr(tidy, "conf.level") <- conf.level

@@ -3,61 +3,58 @@
 .plot_es_impl <- function(
   data,
   ci_level = 0.95,
-  type = "ribbon",
-  vline_val = 0,
+  type = "errorbar",
+  vline_val = NULL,
   vline_color = "#000",
   hline_val = 0,
   hline_color = "#000",
   linewidth = 1,
   pointsize = 2,
-  alpha = .2,
+  alpha = NULL,
   barwidth = .2,
-  color = "#B25D91FF",
-  fill = "#B25D91FF",
+  color = NULL,
+  fill = NULL,
   theme_style = "bw",
-  show_simultaneous = FALSE
+  show_simultaneous = FALSE,
+  time_axis = "relative",
+  errorbar_color = NULL
 ) {
   if (!inherits(data, "es_result")) {
     warning("`data` is not class 'es_result'. Attempting to proceed.")
   }
+  type <- match.arg(type, c("errorbar", "ribbon"))
+  theme_style <- match.arg(theme_style, c("bw", "minimal", "classic"))
 
-  if (isTRUE(show_simultaneous)) {
-    if (!all(c("conf_low_sim", "conf_high_sim") %in% names(data))) {
-      stop(
-        "Simultaneous CIs not found. Re-run with bootstrap = TRUE in event_study()."
-      )
-    }
+  # Colours default per display: black for error bars, steel blue for ribbons.
+  pal <- .fixes_palette()
+  if (is.null(color)) {
+    color <- if (type == "ribbon") pal$line else pal$point
   }
+  if (is.null(fill)) fill <- pal$ribbon
+  if (is.null(alpha)) alpha <- pal$alpha
+  if (is.null(errorbar_color)) errorbar_color <- color
 
-  ci_str <- sprintf("%.0f", ci_level * 100)
-  conf_low_col <- paste0("conf_low_", ci_str)
-  conf_high_col <- paste0("conf_high_", ci_str)
-  if (!conf_low_col %in% names(data)) {
-    conf_low_col <- "conf_low_95"
-  }
-  if (!conf_high_col %in% names(data)) {
-    conf_high_col <- "conf_high_95"
-  }
+  .es_check_simultaneous(data, show_simultaneous)
+  ci <- .es_ci_cols(data, ci_level)
+  ax <- .es_x_axis(data, time_axis)
+  if (is.null(vline_val)) vline_val <- ax$zero
 
   plot_data <- data
+  plot_data$.x <- ax$values
 
-  # Build legend labels for simultaneous mode (must happen before ggplot() call
-  # so the label columns exist in the data that gets stored inside `p`)
+  # Legend labels for the simultaneous overlay must exist as columns before
+  # ggplot() is called, since `p` stores the data it was built from.
   if (isTRUE(show_simultaneous)) {
-    boot_alpha <- attr(data, "boot_alpha")
-    ci_pct_str <- sprintf(
-      "%.0f%%",
-      (1 - if (!is.null(boot_alpha)) boot_alpha else 0.05) * 100
-    )
-    pw_label <- paste0(ci_pct_str, " pointwise CI")
-    sim_label <- paste0(ci_pct_str, " simultaneous CI")
+    sim_pct <- .es_sim_pct(data)
+    pw_label <- paste0(sim_pct, " pointwise CI")
+    sim_label <- paste0(sim_pct, " simultaneous CI")
     plot_data$.pw_label <- pw_label
     plot_data$.sim_label <- sim_label
   }
 
   p <- ggplot2::ggplot(
     plot_data,
-    ggplot2::aes(x = .data$relative_time, y = .data$estimate, group = 1)
+    ggplot2::aes(x = .data[[".x"]], y = .data$estimate, group = 1)
   ) +
     ggplot2::geom_vline(
       xintercept = vline_val,
@@ -71,8 +68,8 @@
     ) +
     ggplot2::geom_point(size = pointsize, color = color) +
     ggplot2::labs(
-      x = "Relative Time to Treatment",
-      y = sprintf("Estimate and %.0f%% CI", as.numeric(ci_str))
+      x = ax$label,
+      y = sprintf("Estimate and %s%% CI", ci$pct)
     )
 
   if (type == "ribbon") {
@@ -85,15 +82,15 @@
             ymax = .data[["conf_high_sim"]],
             fill = .data[[".sim_label"]]
           ),
-          alpha = 0.15
+          alpha = alpha * 0.55
         ) +
         ggplot2::geom_ribbon(
           ggplot2::aes(
-            ymin = .data[[conf_low_col]],
-            ymax = .data[[conf_high_col]],
+            ymin = .data[[ci$low]],
+            ymax = .data[[ci$high]],
             fill = .data[[".pw_label"]]
           ),
-          alpha = 0.3
+          alpha = alpha
         ) +
         ggplot2::scale_fill_manual(
           name = NULL,
@@ -105,15 +102,15 @@
       p <- p +
         ggplot2::geom_ribbon(
           ggplot2::aes(
-            ymin = .data[[conf_low_col]],
-            ymax = .data[[conf_high_col]]
+            ymin = .data[[ci$low]],
+            ymax = .data[[ci$high]]
           ),
           fill = fill,
           alpha = alpha
         ) +
         ggplot2::geom_line(linewidth = linewidth, color = color)
     }
-  } else if (type == "errorbar") {
+  } else {
     if (isTRUE(show_simultaneous)) {
       p <- p +
         ggplot2::geom_errorbar(
@@ -127,8 +124,8 @@
         ) +
         ggplot2::geom_errorbar(
           ggplot2::aes(
-            ymin = .data[[conf_low_col]],
-            ymax = .data[[conf_high_col]],
+            ymin = .data[[ci$low]],
+            ymax = .data[[ci$high]],
             color = .data[[".pw_label"]]
           ),
           width = barwidth,
@@ -136,37 +133,33 @@
         ) +
         ggplot2::scale_color_manual(
           name = NULL,
-          values = setNames(c(color, color), c(pw_label, sim_label)),
+          values = setNames(
+            c(errorbar_color, errorbar_color),
+            c(pw_label, sim_label)
+          ),
           breaks = c(pw_label, sim_label)
         )
     } else {
       p <- p +
         ggplot2::geom_errorbar(
           ggplot2::aes(
-            ymin = .data[[conf_low_col]],
-            ymax = .data[[conf_high_col]]
+            ymin = .data[[ci$low]],
+            ymax = .data[[ci$high]]
           ),
-          color = color,
+          color = errorbar_color,
           width = barwidth,
           linewidth = linewidth
         )
     }
-  } else {
-    stop("Invalid `type`. Choose 'ribbon' or 'errorbar'.")
   }
 
-  if (is.numeric(plot_data$relative_time)) {
-    p <- p +
-      ggplot2::scale_x_continuous(
-        breaks = seq(
-          floor(min(plot_data$relative_time, na.rm = TRUE)),
-          ceiling(max(plot_data$relative_time, na.rm = TRUE)),
-          by = 1
-        )
-      )
+  # One break per estimated period; a Date axis needs its own scale.
+  if (ax$is_date) {
+    p <- p + ggplot2::scale_x_date(breaks = ax$breaks)
+  } else if (is.numeric(ax$values)) {
+    p <- p + ggplot2::scale_x_continuous(breaks = ax$breaks)
   }
 
-  theme_style <- match.arg(theme_style, c("bw", "minimal", "classic"))
   if (theme_style == "bw") {
     p <- p +
       ggplot2::theme_bw() +
@@ -191,9 +184,29 @@
 #' interactive plotly chart with hover tooltips (requires the suggested
 #' \{plotly\} package).
 #'
+#' @details
+#' The default display is black error bars. `type = "ribbon"` switches to a
+#' line with a shaded band and, unless `color`/`fill` say otherwise, to the
+#' package's muted steel-blue palette. In either display `color` sets the
+#' points (and the line), while `errorbar_color` can recolour the bars on
+#' their own.
+#'
+#' `time_axis` controls what the horizontal axis shows. The default
+#' `"relative"` plots event time (periods since treatment) and labels the axis
+#' "Relative Time to Treatment". `"calendar"` instead plots the original time
+#' values (e.g. `2010`, or a `Date`), labels the axis with the `time` column's
+#' name, and moves the dashed vertical reference line to the treatment period.
+#' It is available whenever every treated unit adopts in the same period —
+#' universal timing, or a staggered design that happens to have a single
+#' cohort — and errors otherwise, because with several cohorts one relative
+#' period corresponds to several calendar periods.
+#'
 #' @param x An `es_result` object.
-#' @param ci_level Confidence level to display (default `0.95`).
-#' @param type `"ribbon"` (default) or `"errorbar"`. Static plots only.
+#' @param ci_level Confidence level to display (default `0.95`). Must be one of
+#'   the levels the result was estimated at (`conf_level` in [event_study()]).
+#' @param type `"errorbar"` (default) or `"ribbon"`. Static plots only.
+#' @param time_axis `"relative"` (default) for event time, or `"calendar"` for
+#'   the original time values. See Details.
 #' @param interactive Logical; if `TRUE`, return an interactive plotly chart
 #'   instead of a ggplot. Default `FALSE`.
 #' @param show_simultaneous Logical; overlay the simultaneous bootstrap CI
@@ -201,10 +214,12 @@
 #'   call). Default `FALSE`.
 #' @param ... Further styling arguments: for static plots
 #'   `vline_val`, `hline_val`, `vline_color`, `hline_color`, `linewidth`,
-#'   `pointsize`, `alpha`, `barwidth`, `color`, `fill`, `theme_style`
-#'   (`"bw"`, `"minimal"`, or `"classic"`); for interactive plots
-#'   `markersize`, `show_ribbon`, `height`, `width`, and the shared color
-#'   arguments.
+#'   `pointsize`, `alpha`, `barwidth`, `color`, `fill`, `errorbar_color`,
+#'   `theme_style` (`"bw"`, `"minimal"`, or `"classic"`); for interactive
+#'   plots `markersize`, `show_ribbon`, `height`, `width`, and the shared
+#'   color arguments. `vline_val` defaults to the treatment period on
+#'   whichever axis is in use. `errorbar_color` colours the bars alone and
+#'   follows `color` unless set.
 #'
 #' @return A `ggplot` object, or a `plotly` object when
 #'   `interactive = TRUE`.
@@ -214,8 +229,14 @@
 #' res <- event_study(df, outcome = y, time = year, timing = g,
 #'                    unit = id, estimator = "cs")
 #' plot(res)
-#' plot(res, type = "errorbar", ci_level = 0.9)
+#' plot(res, type = "ribbon", ci_level = 0.9)
+#' plot(res, color = "#1B4965", errorbar_color = "grey50")
 #' plot(res, interactive = TRUE)
+#'
+#' # Universal timing: label the axis with calendar years instead
+#' uni <- event_study(df, outcome = y, treatment = d, time = year,
+#'                    timing = 2010, fe = ~ id + year)
+#' plot(uni, time_axis = "calendar")
 #' }
 #'
 #' @seealso [event_study()], [autoplot.es_result()]
@@ -223,17 +244,20 @@
 plot.es_result <- function(
   x,
   ci_level = 0.95,
-  type = c("ribbon", "errorbar"),
+  type = c("errorbar", "ribbon"),
+  time_axis = c("relative", "calendar"),
   interactive = FALSE,
   show_simultaneous = FALSE,
   ...
 ) {
+  time_axis <- match.arg(time_axis)
   if (isTRUE(interactive)) {
     return(.plot_es_interactive_impl(
-      x, ci_level = ci_level, show_simultaneous = show_simultaneous, ...
+      x, ci_level = ci_level, time_axis = time_axis,
+      show_simultaneous = show_simultaneous, ...
     ))
   }
   type <- match.arg(type)
-  .plot_es_impl(x, ci_level = ci_level, type = type,
+  .plot_es_impl(x, ci_level = ci_level, type = type, time_axis = time_axis,
                 show_simultaneous = show_simultaneous, ...)
 }
