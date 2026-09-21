@@ -123,8 +123,8 @@ plot(es, ci_level = 0.9, color = "#1B4965", errorbar_color = "grey60",
 ```
 
 By default the horizontal axis shows event time (periods since treatment).
-With `time_axis = "calendar"` it shows the original time values instead, and
-the dashed reference line moves to the treatment period:
+With `time_axis = "calendar"` it shows the original time values instead, the
+dashed reference line moving with it:
 
 ```{r plot-calendar}
 plot(es, time_axis = "calendar")

@@ -12,14 +12,19 @@
   palette, so passing them explicitly works exactly as before.
 - `plot.es_result(type = "errorbar")` gains `errorbar_color`, which colours
   the bars on their own; it follows `color` unless given.
+- Error bars are drawn thinner, and points are now drawn last so neither the
+  bars nor the ribbon cover them — visible as soon as the point and interval
+  colours differ.
+- The dashed vertical reference line now marks relative time -1, the last
+  period before treatment, instead of relative time 0, where the effect is
+  usually already present. `vline_val` still overrides it.
 
 ## Event-study plots
 
 - `plot()` / `autoplot()` on an `es_result` gain `time_axis`. The default
   `"relative"` keeps the event-time axis; `"calendar"` plots the original
   time values instead (e.g. `2010`, or a `Date`), labels the axis with the
-  `time` column's name, and moves the dashed reference line to the treatment
-  period. Available whenever every treated unit adopts in the same period
+  `time` column's name, and moves the dashed reference line with it. Available whenever every treated unit adopts in the same period
   (universal timing, or a single-cohort staggered design); with several
   cohorts one relative period maps to several calendar periods, so it errors
   with an explanation. `es_result` objects carry the new `ref_time`,

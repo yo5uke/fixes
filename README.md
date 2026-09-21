@@ -528,8 +528,9 @@ plot(es_multi, ci_level = 0.90, theme_style = "minimal")
 `ci_level` must be one of the levels the result was estimated at.
 
 The x axis shows event time by default. With `time_axis = "calendar"` it
-shows the original time values and the dashed line moves to the treatment
-period — available for universal timing, not for staggered adoption:
+shows the original time values instead — available for universal timing, not
+for staggered adoption. The dashed line marks the last pre-treatment period
+on either axis:
 
 
 ``` r
