@@ -34,21 +34,19 @@ jobs:
 
       - uses: r-lib/actions/setup-pandoc@v2
 
+      # `always` extends Posit Package Manager to macOS, which "true" leaves
+      # on CRAN. Since 2026-09-20 CRAN's macOS builder emits zstd-compressed
+      # .tgz binaries, which pak cannot extract ("unknown archive type",
+      # r-lib/pkgdepends#485); P3M still serves gzip builds of the same
+      # versions. Put this back to "true" once pkgdepends understands zstd.
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
-          use-public-rspm: true
+          use-public-rspm: always
 
-      # `use-public-rspm: always` also routes macOS through Posit Package
-      # Manager. Since 2026-09-20 CRAN's macOS builder emits zstd-compressed
-      # .tgz binaries, which pak cannot extract ("unknown archive type",
-      # r-lib/pkgdepends#485); P3M still serves gzip builds of the same
-      # versions. Drop this back to the setup-r default once pkgdepends
-      # understands zstd.
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          use-public-rspm: always
           extra-packages: any::rcmdcheck
           needs: check
 
