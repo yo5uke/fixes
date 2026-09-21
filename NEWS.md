@@ -1,3 +1,39 @@
+# fixes (development version)
+
+## Plot defaults
+
+- Event-study plots now draw **error bars by default**; `type = "ribbon"`
+  gives the previous line-and-band display.
+- New default palette across every `plot()` method. Error bars and point
+  ranges (`plot.es_result()`, `plot.att_result()`) are black; ribbon
+  displays (`type = "ribbon"`, the interactive plot, the `"facet"` display
+  of `plot.att_gt_result()`) use a muted steel blue with a lighter band.
+  `color`, `fill` and `alpha` default to `NULL` and resolve from that
+  palette, so passing them explicitly works exactly as before.
+- `plot.es_result(type = "errorbar")` gains `errorbar_color`, which colours
+  the bars on their own; it follows `color` unless given.
+
+## Event-study plots
+
+- `plot()` / `autoplot()` on an `es_result` gain `time_axis`. The default
+  `"relative"` keeps the event-time axis; `"calendar"` plots the original
+  time values instead (e.g. `2010`, or a `Date`), labels the axis with the
+  `time` column's name, and moves the dashed reference line to the treatment
+  period. Available whenever every treated unit adopts in the same period
+  (universal timing, or a single-cohort staggered design); with several
+  cohorts one relative period maps to several calendar periods, so it errors
+  with an explanation. `es_result` objects carry the new `ref_time`,
+  `time_var`, `time_levels` and `time_transform` attributes that back it.
+- `ci_level` now errors when the result was not estimated at that confidence
+  level, naming the levels that are available. Previously the plot silently
+  fell back to the 95% band, or failed with an opaque error when no 95% band
+  existed.
+- The interactive plot's dashed vertical line now spans the full plotted
+  range. It was scaled from the CI bounds, so it came out too short (or
+  inverted) whenever the bounds did not straddle zero.
+- `alpha` is now honoured by the ribbons of `show_simultaneous = TRUE`
+  plots, which previously used hard-coded opacities.
+
 # fixes 1.0.0 (2026-07-16)
 
 Major release: the package API is reborn with modern noun-style function

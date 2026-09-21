@@ -98,25 +98,41 @@ adoption times, a staggered design is inferred instead.
 
 ## Visualizing Event Study Results
 
-Results plot directly with `plot()`. You can switch between ribbon-style or
-error bar CIs, select the displayed CI level, and customize appearance.
+Results plot directly with `plot()`. You can switch between error bar and
+ribbon CIs, select the displayed CI level, and customize appearance.
 
 ```{r plot-basic}
-# Basic plot (default: ribbon, 95% CI)
+# Basic plot (default: error bars, 95% CI)
 plot(es)
 ```
 
-```{r plot-errorbar}
-# Plot with error bars and 99% CI
-plot(es, type = "errorbar", ci_level = 0.99)
+```{r plot-ribbon}
+# Ribbon display with the 99% CI
+plot(es, type = "ribbon", ci_level = 0.99)
 ```
+
+`color` sets the points, `fill` the ribbon band, and `errorbar_color` the
+bars alone (it follows `color` unless given).
 
 ```{r plot-custom}
 # Customize further with ggplot2
-plot(es, type = "errorbar", ci_level = 0.9, theme_style = "classic") +
+plot(es, ci_level = 0.9, color = "#1B4965", errorbar_color = "grey60",
+     theme_style = "classic") +
   scale_x_continuous(breaks = seq(-3, 3, by = 1)) +
   ggtitle("Event Study with 90% CI and Classic Theme")
 ```
+
+By default the horizontal axis shows event time (periods since treatment).
+With `time_axis = "calendar"` it shows the original time values instead, and
+the dashed reference line moves to the treatment period:
+
+```{r plot-calendar}
+plot(es, time_axis = "calendar")
+```
+
+This needs a single treatment period, so it is available for universal timing
+(as here) but not for staggered adoption, where one relative period
+corresponds to a different calendar period in every cohort.
 
 For interactive exploration with hover tooltips (estimates, CIs, standard
 errors, p-values), pass `interactive = TRUE` (requires the suggested

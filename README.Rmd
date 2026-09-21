@@ -395,10 +395,20 @@ The numeric helpers (`lpSolveAPI`, `Rglpk`, `TruncatedNormal`, `Matrix`,
 
 ## Plotting options
 
-`plot()` works with results from any estimator.
+`plot()` works with results from any estimator. The default display is black
+error bars; `type = "ribbon"` draws a line with a shaded band in the
+package's muted steel blue.
 
-```{r plot-options}
-plot(es, type = "errorbar")
+```{r plot-ribbon}
+plot(es, type = "ribbon")
+```
+
+`color` sets the points (and the ribbon line), `fill` the band, and
+`errorbar_color` recolours the bars on their own — it follows `color` unless
+you set it.
+
+```{r plot-colours}
+plot(es, color = "#1B4965", errorbar_color = "grey60")
 ```
 
 ```{r plot-ci}
@@ -413,6 +423,16 @@ es_multi <- event_study(
   conf_level = c(0.90, 0.95, 0.99)
 )
 plot(es_multi, ci_level = 0.90, theme_style = "minimal")
+```
+
+`ci_level` must be one of the levels the result was estimated at.
+
+The x axis shows event time by default. With `time_axis = "calendar"` it
+shows the original time values and the dashed line moves to the treatment
+period — available for universal timing, not for staggered adoption:
+
+```{r plot-calendar}
+plot(es, time_axis = "calendar")
 ```
 
 ### Interactive plots
