@@ -74,7 +74,8 @@
 
 # Cohort sizes = number of unique units per cohort.  Returns a named integer
 # vector keyed by cohort (as character).  Used by CS, SA, and TWM (FLEX counts
-# unique groups instead and keeps its own logic).
+# unique groups instead and keeps its own logic).  Pass only the estimation
+# sample: the cohort shares are sample shares of the units used in the fit.
 .compute_cohort_sizes <- function(data, timing_chr, unit_chr, cohorts) {
   tv <- data[[timing_chr]]
   uv <- data[[unit_chr]]
@@ -91,6 +92,13 @@
   cs <- vapply(cohorts, function(g) sum(u_t == g), integer(1L))
   names(cs) <- as.character(cohorts)
   cs
+}
+
+# Cohort sizes over the rows a fit actually used (`used` = row indices).
+.sample_cohort_sizes <- function(data, used, timing_chr, unit_chr, cohorts) {
+  if (length(used) != nrow(data))
+    data <- data[used, c(unit_chr, timing_chr), drop = FALSE]
+  .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
 }
 
 # Stop with an installation hint when a code path needs the optional

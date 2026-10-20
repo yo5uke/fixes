@@ -83,8 +83,6 @@
   never_units  <- unique(data[[unit_chr]][is.na(timing_vec)])
   n_never      <- length(never_units)
 
-  cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
-
   # ---- Build cohort x calendar-time indicator matrix -------------------------
   # TWM (Wooldridge 2025, Procedure 5.1):
   #   T_{g,s}(i,t) = 1(G_i=g) * 1(t=s)
@@ -309,7 +307,10 @@
   rownames(tau_gt) <- NULL
 
   # ---- IW aggregation — same formula as SA (2021) eq. (4) -------------------
+  # Cohort shares count only units in the estimation sample.
   # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
+  cohort_sizes <- .sample_cohort_sizes(data, fit$used, timing_chr, unit_chr,
+                                       cohorts)
   es <- .aggregate_iw(tau_gt, V_full, coef_names, cohort_sizes, min_t, max_t)
 
   if (nrow(es) == 0L)

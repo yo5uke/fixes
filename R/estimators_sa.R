@@ -77,8 +77,6 @@
   never_units <- unique(data[[unit_chr]][is.na(data[[timing_chr]])])
   n_never     <- length(never_units)
 
-  cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
-
   # ---- Build cohort x relative-time indicator matrix -------------------------
   # SA (2021) eq. (1): D_{g,l}(i,t) = 1(G_i=g) * 1(t-G_i=l)
   #
@@ -237,7 +235,10 @@
   # w(g,l)      = n_g / sum_{g': g'+l in [min_t,max_t]} n_{g'}
   # Var(theta_es(l)) = w(l)' * Sigma_l * w(l)
   #
+  # n_g are sample shares of the units in the estimation sample (Step 2).
   # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
+  cohort_sizes <- .sample_cohort_sizes(data, fit$used, timing_chr, unit_chr,
+                                       cohorts)
   es <- .aggregate_iw(catt_df, V_full, coef_names, cohort_sizes, min_t, max_t)
 
   if (nrow(es) == 0L)
