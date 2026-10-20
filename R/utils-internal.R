@@ -78,9 +78,17 @@
 .compute_cohort_sizes <- function(data, timing_chr, unit_chr, cohorts) {
   tv <- data[[timing_chr]]
   uv <- data[[unit_chr]]
-  cs <- vapply(cohorts, function(g) {
-    length(unique(uv[!is.na(tv) & tv == g]))
-  }, integer(1L))
+  ok <- !is.na(tv)
+  if (!any(ok)) {
+    cs <- rep(0L, length(cohorts))
+    names(cs) <- as.character(cohorts)
+    return(cs)
+  }
+  u_ok <- uv[ok]
+  t_ok <- tv[ok]
+  not_dup <- !duplicated(u_ok)
+  u_t <- t_ok[not_dup]
+  cs <- vapply(cohorts, function(g) sum(u_t == g), integer(1L))
   names(cs) <- as.character(cohorts)
   cs
 }

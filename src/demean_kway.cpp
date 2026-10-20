@@ -33,6 +33,8 @@ using namespace Rcpp;
 //' @param tol Relative convergence tolerance on subtracted group means.
 //' @param max_iter Maximum number of full sweeps per column.
 //' @param nthreads Number of OpenMP threads (ignored without OpenMP).
+//' @param scale_sqrt_w Logical: if TRUE and \code{w} is non-empty, multiply
+//'   each demeaned row \code{k} by \code{sqrt(w[k])} in place before returning.
 //'
 //' @return A list with \code{M} (demeaned copy) and \code{converged}.
 //'
@@ -44,7 +46,8 @@ List demean_kway_cpp(NumericMatrix M,
                      NumericVector w,
                      double tol,
                      int max_iter,
-                     int nthreads) {
+                     int nthreads,
+                     bool scale_sqrt_w = false) {
     int N = M.nrow();
     int C = M.ncol();
     int Q = fe_ids.ncol();
@@ -58,6 +61,12 @@ List demean_kway_cpp(NumericMatrix M,
     const double* pW  = weighted ? w.begin() : nullptr;
     std::vector<int> nl(Q);
     for (int q = 0; q < Q; q++) nl[q] = n_levels[q];
+
+    std::vector<double> sw;
+    if (weighted && scale_sqrt_w) {
+        sw.resize(N);
+        for (int k = 0; k < N; k++) sw[k] = std::sqrt(pW[k]);
+    }
 
     // Per-level denominators: observation counts (unweighted) or weight sums.
     std::vector<std::vector<double>> denom(Q);
@@ -113,7 +122,11 @@ List demean_kway_cpp(NumericMatrix M,
         if (!converged) n_unconverged++;
 
         double* ocol = pOut + (size_t)c * N;
-        for (int k = 0; k < N; k++) ocol[k] = r[k];
+        if (weighted && scale_sqrt_w) {
+            for (int k = 0; k < N; k++) ocol[k] = r[k] * sw[k];
+        } else {
+            for (int k = 0; k < N; k++) ocol[k] = r[k];
+        }
     }
 
     return List::create(

@@ -25,6 +25,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// compute_psi_cs_cpp
+NumericMatrix compute_psi_cs_cpp(NumericMatrix Y_mat, NumericVector unit_timing, IntegerVector gt_g, IntegerVector gt_t, IntegerVector col_t, IntegerVector col_base, std::string control_group);
+RcppExport SEXP _fixes_compute_psi_cs_cpp(SEXP Y_matSEXP, SEXP unit_timingSEXP, SEXP gt_gSEXP, SEXP gt_tSEXP, SEXP col_tSEXP, SEXP col_baseSEXP, SEXP control_groupSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type Y_mat(Y_matSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type unit_timing(unit_timingSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type gt_g(gt_gSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type gt_t(gt_tSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type col_t(col_tSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type col_base(col_baseSEXP);
+    Rcpp::traits::input_parameter< std::string >::type control_group(control_groupSEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_psi_cs_cpp(Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group));
+    return rcpp_result_gen;
+END_RCPP
+}
 // compute_att_gt_cpp
 Rcpp::DataFrame compute_att_gt_cpp(Rcpp::IntegerVector unit_id, Rcpp::IntegerVector time_id, Rcpp::NumericVector outcome, Rcpp::IntegerVector cohort, Rcpp::IntegerVector cohorts, Rcpp::IntegerVector all_times, std::string control_group, int anticipation);
 RcppExport SEXP _fixes_compute_att_gt_cpp(SEXP unit_idSEXP, SEXP time_idSEXP, SEXP outcomeSEXP, SEXP cohortSEXP, SEXP cohortsSEXP, SEXP all_timesSEXP, SEXP control_groupSEXP, SEXP anticipationSEXP) {
@@ -57,8 +74,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // demean_kway_cpp
-List demean_kway_cpp(NumericMatrix M, IntegerMatrix fe_ids, IntegerVector n_levels, NumericVector w, double tol, int max_iter, int nthreads);
-RcppExport SEXP _fixes_demean_kway_cpp(SEXP MSEXP, SEXP fe_idsSEXP, SEXP n_levelsSEXP, SEXP wSEXP, SEXP tolSEXP, SEXP max_iterSEXP, SEXP nthreadsSEXP) {
+List demean_kway_cpp(NumericMatrix M, IntegerMatrix fe_ids, IntegerVector n_levels, NumericVector w, double tol, int max_iter, int nthreads, bool scale_sqrt_w);
+RcppExport SEXP _fixes_demean_kway_cpp(SEXP MSEXP, SEXP fe_idsSEXP, SEXP n_levelsSEXP, SEXP wSEXP, SEXP tolSEXP, SEXP max_iterSEXP, SEXP nthreadsSEXP, SEXP scale_sqrt_wSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -69,7 +86,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
     Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
     Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
-    rcpp_result_gen = Rcpp::wrap(demean_kway_cpp(M, fe_ids, n_levels, w, tol, max_iter, nthreads));
+    Rcpp::traits::input_parameter< bool >::type scale_sqrt_w(scale_sqrt_wSEXP);
+    rcpp_result_gen = Rcpp::wrap(demean_kway_cpp(M, fe_ids, n_levels, w, tol, max_iter, nthreads, scale_sqrt_w));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -95,6 +113,62 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type M(MSEXP);
     Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     rcpp_result_gen = Rcpp::wrap(crossprod_omp_cpp(M, nthreads));
+    return rcpp_result_gen;
+END_RCPP
+}
+// row_no_na_cpp
+LogicalVector row_no_na_cpp(NumericMatrix X);
+RcppExport SEXP _fixes_row_no_na_cpp(SEXP XSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type X(XSEXP);
+    rcpp_result_gen = Rcpp::wrap(row_no_na_cpp(X));
+    return rcpp_result_gen;
+END_RCPP
+}
+// bind_yx_cpp
+List bind_yx_cpp(NumericVector y, NumericMatrix X, IntegerVector keep_idx, NumericVector w, int nthreads);
+RcppExport SEXP _fixes_bind_yx_cpp(SEXP ySEXP, SEXP XSEXP, SEXP keep_idxSEXP, SEXP wSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type X(XSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type keep_idx(keep_idxSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(bind_yx_cpp(y, X, keep_idx, w, nthreads));
+    return rcpp_result_gen;
+END_RCPP
+}
+// fe_ols_meat_cpp
+List fe_ols_meat_cpp(NumericMatrix Md, IntegerVector kept, NumericVector b, int vcov_mode, IntegerVector cl_i, int G, int nthreads);
+RcppExport SEXP _fixes_fe_ols_meat_cpp(SEXP MdSEXP, SEXP keptSEXP, SEXP bSEXP, SEXP vcov_modeSEXP, SEXP cl_iSEXP, SEXP GSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type Md(MdSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type kept(keptSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type b(bSEXP);
+    Rcpp::traits::input_parameter< int >::type vcov_mode(vcov_modeSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type cl_i(cl_iSEXP);
+    Rcpp::traits::input_parameter< int >::type G(GSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(fe_ols_meat_cpp(Md, kept, b, vcov_mode, cl_i, G, nthreads));
+    return rcpp_result_gen;
+END_RCPP
+}
+// build_twfe_design_cpp
+NumericMatrix build_twfe_design_cpp(NumericVector f_vals, NumericVector tr_vals, NumericVector lv);
+RcppExport SEXP _fixes_build_twfe_design_cpp(SEXP f_valsSEXP, SEXP tr_valsSEXP, SEXP lvSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type f_vals(f_valsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type tr_vals(tr_valsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lv(lvSEXP);
+    rcpp_result_gen = Rcpp::wrap(build_twfe_design_cpp(f_vals, tr_vals, lv));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -152,11 +226,16 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
+    {"_fixes_compute_psi_cs_cpp", (DL_FUNC) &_fixes_compute_psi_cs_cpp, 7},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
     {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 3},
-    {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 7},
+    {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 8},
     {"_fixes_chol_seq_drop_cpp", (DL_FUNC) &_fixes_chol_seq_drop_cpp, 3},
     {"_fixes_crossprod_omp_cpp", (DL_FUNC) &_fixes_crossprod_omp_cpp, 2},
+    {"_fixes_row_no_na_cpp", (DL_FUNC) &_fixes_row_no_na_cpp, 1},
+    {"_fixes_bind_yx_cpp", (DL_FUNC) &_fixes_bind_yx_cpp, 5},
+    {"_fixes_fe_ols_meat_cpp", (DL_FUNC) &_fixes_fe_ols_meat_cpp, 7},
+    {"_fixes_build_twfe_design_cpp", (DL_FUNC) &_fixes_build_twfe_design_cpp, 3},
     {"_fixes_solve_fe_2way_cpp", (DL_FUNC) &_fixes_solve_fe_2way_cpp, 7},
     {"_fixes_build_indicator_matrix_cpp", (DL_FUNC) &_fixes_build_indicator_matrix_cpp, 4},
     {"_fixes_aggregate_iw_cpp", (DL_FUNC) &_fixes_aggregate_iw_cpp, 10},

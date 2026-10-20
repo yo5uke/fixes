@@ -141,8 +141,6 @@
 
   # ---- initialise output matrix ---------------------------------------------
   n_gt <- nrow(att_gt)
-  psi <- matrix(0.0, nrow = n_units, ncol = n_gt)
-
   gt_index <- data.frame(
     col_idx = seq_len(n_gt),
     g = att_gt$g,
@@ -150,56 +148,18 @@
     stringsAsFactors = FALSE
   )
 
-  # ---- main loop: one column per (g, t) pair --------------------------------
-  for (j in seq_len(n_gt)) {
-    g_j <- att_gt$g[j]
-    t_j <- att_gt$t[j]
-    att_j <- att_gt[[att_col]][j]
-    base_t <- g_j - 1L - anticipation
+  col_t    <- unname(time_to_col[as.character(att_gt$t)])
+  col_base <- unname(time_to_col[as.character(att_gt$g - 1L - anticipation)])
 
-    col_t <- time_to_col[as.character(t_j)]
-    col_base <- time_to_col[as.character(base_t)]
-    if (is.na(col_t) || is.na(col_base)) {
-      next
-    }
-
-    # ΔY_{i, g, t} = Y_{i,t} - Y_{i, base_t}  for every unit
-    delta_y <- Y_mat[, col_t] - Y_mat[, col_base] # length n_units; NA if obs missing
-
-    # treated: G_i = g_j
-    is_treat <- !is.na(unit_timing) & unit_timing == g_j
-    # control: depends on control_group
-    if (control_group == "nevertreated") {
-      is_ctrl <- is.na(unit_timing)
-    } else {
-      # notyettreated: G_i > t_j (including never-treated), excluding cohort g_j
-      is_ctrl <- (is.na(unit_timing) | unit_timing > t_j) &
-        (is.na(unit_timing) | unit_timing != g_j)
-    }
-
-    # restrict to units with valid ΔY observations
-    valid_treat <- is_treat & !is.na(delta_y)
-    valid_ctrl <- is_ctrl & !is.na(delta_y)
-
-    n_treat <- sum(valid_treat)
-    n_ctrl <- sum(valid_ctrl)
-    if (n_treat == 0L || n_ctrl == 0L) {
-      next
-    }
-
-    mean_g <- mean(delta_y[valid_treat])
-    mean_c <- mean(delta_y[valid_ctrl])
-
-    # large-scale weights: n_units / group_size
-    w_treat <- n_units / n_treat
-    w_ctrl <- n_units / n_ctrl
-
-    # treated contribution (positive)
-    psi[valid_treat, j] <- w_treat * (delta_y[valid_treat] - mean_g)
-    # control contribution (negative)
-    psi[valid_ctrl, j] <- psi[valid_ctrl, j] -
-      w_ctrl * (delta_y[valid_ctrl] - mean_c)
-  }
+  psi <- compute_psi_cs_cpp(
+    Y_mat         = Y_mat,
+    unit_timing   = as.numeric(unit_timing),
+    gt_g          = as.integer(att_gt$g),
+    gt_t          = as.integer(att_gt$t),
+    col_t         = as.integer(col_t),
+    col_base      = as.integer(col_base),
+    control_group = control_group
+  )
 
   list(psi = psi, gt_index = gt_index)
 }
@@ -235,6 +195,7 @@
     stringsAsFactors = FALSE
   )
 
+  key_gt <- paste(gt_index$g, gt_index$t, sep = "\r")
   for (j in seq_len(n_es)) {
     ell <- event_times[j]
     # rows of att_gt with this relative time
@@ -249,17 +210,12 @@
     if (total == 0L) {
       next
     }
-    w <- sz / total
+    w <- as.numeric(sz) / total
 
-    key_gt <- paste(gt_index$g, gt_index$t, sep = "\r")
-    for (k in seq_along(eligible_g)) {
-      g_k <- eligible_g[k]
-      t_k <- g_k + ell
-      col_k <- gt_index$col_idx[match(paste(g_k, t_k, sep = "\r"), key_gt)]
-      if (is.na(col_k)) {
-        next
-      }
-      psi_es[, j] <- psi_es[, j] + w[k] * psi_gt[, col_k]
+    cols <- gt_index$col_idx[match(paste(eligible_g, eligible_g + ell, sep = "\r"), key_gt)]
+    ok   <- !is.na(cols)
+    if (any(ok)) {
+      psi_es[, j] <- drop(psi_gt[, cols[ok], drop = FALSE] %*% w[ok])
     }
   }
 

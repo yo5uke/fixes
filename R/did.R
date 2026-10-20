@@ -167,6 +167,7 @@ did <- function(
   # group_chr is set to the original treatment group column when timing is used,
   # so the estimates output labels correctly.
   group_chr <- NULL
+  treat_vec <- NULL
 
   if (!is.null(timing)) {
     # --- validate timing argument
@@ -179,8 +180,7 @@ did <- function(
     # --- validate treatment as a group indicator (binary, typically unit-constant)
     treat_g <- data[[treatment_chr]]
     if (is.logical(treat_g)) {
-      data[[treatment_chr]] <- as.integer(treat_g)
-      treat_g <- data[[treatment_chr]]
+      treat_g <- as.integer(treat_g)
     } else if (!is.numeric(treat_g)) {
       stop("When `timing` is specified, `treatment` must be a binary (0/1) group indicator.")
     }
@@ -191,9 +191,7 @@ did <- function(
     # --- construct D_it = treatment_group * (time >= timing)
     d_temp <- ".did_D_it"
     while (d_temp %in% names(data)) d_temp <- paste0(d_temp, "_")
-    data[[d_temp]] <- as.integer(
-      data[[treatment_chr]] == 1L & data[[time_chr]] >= timing
-    )
+    treat_vec <- as.integer(treat_g == 1L & data[[time_chr]] >= timing)
     group_chr     <- treatment_chr   # remember original name for output
     treatment_chr <- d_temp          # regression uses the constructed D_it
 
@@ -201,7 +199,7 @@ did <- function(
     # --- validate pre-built treatment indicator (D_it)
     treat_col <- data[[treatment_chr]]
     if (is.logical(treat_col)) {
-      data[[treatment_chr]] <- as.integer(treat_col)
+      treat_vec <- as.integer(treat_col)
     } else if (!is.numeric(treat_col)) {
       stop("`treatment` column must be 0/1 numeric or logical.")
     } else {
@@ -209,6 +207,7 @@ did <- function(
       if (!all(uvals %in% c(0L, 1L))) {
         stop("`treatment` column must contain only 0 and 1 (binary indicator).")
       }
+      treat_vec <- treat_col
     }
   }
 
@@ -270,7 +269,7 @@ did <- function(
   # VCOV precedence: cluster with the default "HC1" gives cluster-robust SEs;
   # an explicit vcov type applies regardless of cluster. FE or cluster
   # specifications that are not plain columns keep the fixest formula path.
-  X <- matrix(as.numeric(data[[treatment_chr]]), ncol = 1L,
+  X <- matrix(as.numeric(treat_vec), ncol = 1L,
               dimnames = list(NULL, treatment_chr))
   if (nzchar(cov_text)) X <- cbind(X, .build_cov_matrix(cov_text, data))
 
@@ -342,10 +341,11 @@ did <- function(
   used_idx <- fit$used
 
   N         <- fit$nobs
+  all_used  <- (N == nrow(data))
   N_units   <- if (!is.null(unit_chr)) {
-    length(unique(data[[unit_chr]][used_idx]))
+    length(unique(if (all_used) data[[unit_chr]] else data[[unit_chr]][used_idx]))
   } else NA_integer_
-  N_treated <- sum(data[[treatment_chr]][used_idx] == 1L, na.rm = TRUE)
+  N_treated <- sum((if (all_used) treat_vec else treat_vec[used_idx]) == 1L, na.rm = TRUE)
 
   # vcov_type: when cluster is used with default vcov, the actual SE is
   # cluster-robust; reflect that in the metadata rather than showing "HC1".

@@ -73,8 +73,6 @@
   if (anticipation < 0L)
     stop("`anticipation` must be a non-negative integer.")
 
-  # ---- Bookkeeping -----------------------------------------------------------
-  data        <- data[order(data[[unit_chr]], data[[time_chr]]), ]
   all_periods <- sort(unique(data[[time_chr]]))
   min_t       <- min(all_periods)
   max_t       <- max(all_periods)

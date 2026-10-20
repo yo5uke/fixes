@@ -71,7 +71,6 @@
   .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
 
   # ---- Bookkeeping -----------------------------------------------------------
-  data        <- data[order(data[[unit_chr]], data[[time_chr]]), ]
   all_periods <- sort(unique(data[[time_chr]]))
   min_t       <- min(all_periods)
   max_t       <- max(all_periods)
@@ -163,8 +162,6 @@
          s   = gs_pairs$s[k],
          l   = gs_pairs$s[k] - gs_pairs$g[k]))   # relative time l = s - g
 
-  data$.twm_X <- ind_mat
-
   # ---- Optional: cohort-specific linear trends (Wooldridge 2025, Section 8) --
   # Procedure 5.1 + trends uses POLS with cohort + time FE (NOT unit FE).
   # With unit FE, d_g (cohort indicator) is absorbed, making d_g*t collinear
@@ -187,7 +184,6 @@
                 "cohort-specific linear trend may not be identified.")
     }
     colnames(trend_mat) <- trend_names
-    data$.twm_T_X <- trend_mat
     formula_trend <- " + .twm_T_X"
   } else {
     formula_trend <- ""
@@ -218,7 +214,6 @@
     cov_int_mat            <- build_cov_interactions_cpp(
                                cov_mat, ind_mat, as.integer(timing_vec))
     colnames(cov_int_mat)  <- ci_names
-    data$.twm_cov_X        <- cov_int_mat
 
     # Time × covariate terms for conditional parallel trends
     # i(time, x_j, ref=excl_t) creates (T-1) coefficients per covariate.
@@ -257,13 +252,17 @@
       X_blocks <- c(X_blocks, list(.expand_i_dummies(
         data[[time_chr]], data[[cv]], excl_t, time_chr, cv)))
   }
-  X_reg <- do.call(cbind, X_blocks)
+  X_reg <- if (length(X_blocks) == 1L) X_blocks[[1L]] else do.call(cbind, X_blocks)
 
   fe_vars <- .parse_fe_list(fe_str_eff, data)
   cl_vals <- .resolve_cluster_vals(cluster, data)
 
   fit <- tryCatch({
     if (isFALSE(fe_vars) || isFALSE(cl_vals)) {
+      data$.twm_X <- ind_mat
+      if (isTRUE(trends)) data$.twm_T_X <- trend_mat
+      if (!is.null(covariate_chrs) && length(covariate_chrs) > 0L)
+        data$.twm_cov_X <- cov_int_mat
       .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args)
     } else {
       .fit_fe_ols(data[[outcome_chr]], X_reg, fe_list = fe_vars,

@@ -1,4 +1,5 @@
 #include <Rcpp.h>
+#include <unordered_map>
 using namespace Rcpp;
 
 //' Build cohort-by-calendar-time indicator matrix
@@ -8,9 +9,9 @@ using namespace Rcpp;
 //' elsewhere.  \code{NA_integer_} values in \code{cohort_id} (never-treated
 //' units) are treated as no-cohort and always produce 0.
 //'
-//' This is a shared utility used by the SA, TWM, and FLEX estimators to
-//' replace the equivalent R nested for-loop, avoiding repeated vector
-//' allocation and R overhead per column.
+//' Uses an O(K) hash map from \code{(g, s)} to column index \code{k}, so
+//' filling the matrix takes a single O(N) pass over the rows instead of
+//' O(N * K).
 //'
 //' @param cohort_id Integer vector (length N): cohort assignment per row.
 //'   Pass \code{NA_integer_} for never-treated observations.
@@ -33,14 +34,27 @@ IntegerMatrix build_indicator_matrix_cpp(
     int N = cohort_id.size();
     int K = gs_g.size();
     IntegerMatrix mat(N, K);
+    if (K == 0 || N == 0) return mat;
 
+    std::unordered_map<long long, int> pair_to_col;
+    pair_to_col.reserve((size_t)K * 2);
     for (int k = 0; k < K; k++) {
-        int g = gs_g[k];
-        int s = gs_s[k];
-        for (int i = 0; i < N; i++) {
-            mat(i, k) = (!IntegerVector::is_na(cohort_id[i]) &&
-                         cohort_id[i] == g &&
-                         time_id[i]   == s) ? 1 : 0;
+        long long key = (((long long)gs_g[k]) << 32) | (unsigned int)gs_s[k];
+        pair_to_col[key] = k;
+    }
+
+    int* pMat      = mat.begin();
+    const int* pC  = cohort_id.begin();
+    const int* pT  = time_id.begin();
+
+    for (int i = 0; i < N; i++) {
+        int c = pC[i];
+        int t = pT[i];
+        if (c == NA_INTEGER || t == NA_INTEGER) continue;
+        long long key = (((long long)c) << 32) | (unsigned int)t;
+        auto it = pair_to_col.find(key);
+        if (it != pair_to_col.end()) {
+            pMat[(size_t)it->second * N + i] = 1;
         }
     }
     return mat;

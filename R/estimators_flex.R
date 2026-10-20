@@ -90,7 +90,6 @@
          ". Each group must have a single unique timing value.")
 
   # ---- Bookkeeping -----------------------------------------------------------
-  data        <- data[order(data[[group_chr]], data[[time_chr]]), ]
   all_periods <- sort(unique(data[[time_chr]]))
   min_t       <- min(all_periods)
   max_t       <- max(all_periods)
@@ -191,7 +190,6 @@
          s   = gs_pairs$s[k],
          l   = gs_pairs$s[k] - gs_pairs$g[k]))
 
-  data$.flex_X <- ind_mat
 
   # ---- Optional: covariate interactions (Deb et al. 2024, Eq. 3.1) -----------
   # Centering by (group, time) cell per Eq. 2.11: X̄_{g,t} = mean(X_{i,t}) for
@@ -222,7 +220,6 @@
     cov_int_mat           <- build_cov_interactions_cpp(
                               cov_mat, ind_mat, cell_key)
     colnames(cov_int_mat) <- ci_names
-    data$.flex_cov_X      <- cov_int_mat
 
     excl_t    <- as.integer(cohorts[1L] + baseline)
     ref_group <- sort(unique(group_vec))[1L]
@@ -265,13 +262,16 @@
       X_blocks <- c(X_blocks, list(.expand_i_dummies(
         group_vec, data[[cv]], ref_group, group_chr, cv)))
   }
-  X_reg <- do.call(cbind, X_blocks)
+  X_reg <- if (length(X_blocks) == 1L) X_blocks[[1L]] else do.call(cbind, X_blocks)
 
   fe_vars <- .parse_fe_list(fe_str_flex, data)
   cl_vals <- .resolve_cluster_vals(cluster, data)
 
   fit <- tryCatch({
     if (isFALSE(fe_vars) || isFALSE(cl_vals)) {
+      data$.flex_X <- ind_mat
+      if (!is.null(covariate_chrs) && length(covariate_chrs) > 0L)
+        data$.flex_cov_X <- cov_int_mat
       .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args)
     } else {
       .fit_fe_ols(data[[outcome_chr]], X_reg, fe_list = fe_vars,

@@ -68,27 +68,62 @@
   }
 
   # ---- Estimation sample: NA rows, then iterative singleton removal ---------
-  ok <- !is.na(y)
-  if (ncol(X) > 0L) ok <- ok & (rowSums(is.na(X)) == 0L)
-  for (f in fe_list) ok <- ok & !is.na(f)
-  if (!is.null(cl)) ok <- ok & !is.na(cl)
+  if (storage.mode(X) != "double") storage.mode(X) <- "double"
+  ok <- if (anyNA(y)) !is.na(y) else rep(TRUE, n)
+  if (ncol(X) > 0L) {
+    x_ok <- row_no_na_cpp(X)
+    if (length(x_ok) > 0L) ok <- ok & x_ok
+  }
+  for (f in fe_list) if (anyNA(f)) ok <- ok & !is.na(f)
+  if (!is.null(cl) && anyNA(cl)) ok <- ok & !is.na(cl)
   if (!is.null(w)) ok <- ok & !is.na(w) & w > 0
 
   # Grouping is done on dense integer codes (hash-based match) rather than
   # character conversion: only group identity matters downstream, never the
   # level ordering, and integer tabulation is far cheaper at panel scale.
+  all_ok_init <- all(ok)
   if (Q > 0L) {
     fe_code <- lapply(fe_list, .dense_codes)
-    repeat {
-      idx <- which(ok)
-      keep <- rep(TRUE, length(idx))
+    if (all_ok_init) {
+      # Fast first pass without allocating idx = 1:n
+      keep <- rep(TRUE, n)
+      any_sing <- FALSE
       for (q in seq_len(Q)) {
-        cq  <- fe_code[[q]][idx]
+        cq  <- fe_code[[q]]
         cnt <- tabulate(cq)
-        keep <- keep & cnt[cq] != 1L
+        if (any(cnt == 1L)) {
+          any_sing <- TRUE
+          keep <- keep & cnt[cq] != 1L
+        }
       }
-      if (all(keep)) break
-      ok[idx[!keep]] <- FALSE
+      if (any_sing) {
+        ok <- keep
+        repeat {
+          idx <- which(ok)
+          if (length(idx) == 0L) break
+          keep <- rep(TRUE, length(idx))
+          for (q in seq_len(Q)) {
+            cq  <- fe_code[[q]][idx]
+            cnt <- tabulate(cq)
+            keep <- keep & cnt[cq] != 1L
+          }
+          if (all(keep)) break
+          ok[idx[!keep]] <- FALSE
+        }
+      }
+    } else {
+      repeat {
+        idx <- which(ok)
+        if (length(idx) == 0L) break
+        keep <- rep(TRUE, length(idx))
+        for (q in seq_len(Q)) {
+          cq  <- fe_code[[q]][idx]
+          cnt <- tabulate(cq)
+          keep <- keep & cnt[cq] != 1L
+        }
+        if (all(keep)) break
+        ok[idx[!keep]] <- FALSE
+      }
     }
   }
 
@@ -97,50 +132,53 @@
     stop("FE-OLS: no observations remain after removing NA rows and ",
          "singleton fixed-effect levels.")
 
-  all_ok <- all(ok)
-  yk <- if (all_ok) as.numeric(y) else as.numeric(y[ok])
-  Xk <- if (all_ok) X else X[ok, , drop = FALSE]
-  storage.mode(Xk) <- "double"
-  wk <- if (is.null(w)) NULL else if (all_ok) w else w[ok]
-  sw <- if (is.null(wk)) NULL else sqrt(wk)
+  all_ok   <- (N == n)
+  keep_idx <- if (all_ok) integer(0L) else which(ok)
+  yk       <- if (all_ok) as.numeric(y) else as.numeric(y[keep_idx])
+  wk       <- if (is.null(w)) NULL else if (all_ok) w else w[keep_idx]
 
   nt <- .fes_nthreads()
 
   # ---- Demeaning (k-way alternating projections) -----------------------------
   # With weights, demeaning subtracts weighted group means and the demeaned
-  # [y | X] rows are then scaled by sqrt(w), so the crossprod/score code
-  # below computes the WLS quantities unchanged. `Md` holds [y | X]; the X
-  # block is only ever indexed by column, never materialized separately.
+  # [y | X] rows are then scaled by sqrt(w) inside demean_kway_cpp(), so the
+  # crossprod/score code below computes the WLS quantities unchanged. `Md`
+  # holds [y | X]; the X block is never materialized separately in R.
   if (Q > 0L) {
-    fe_f  <- lapply(fe_code, function(code) {
-      .dense_codes(if (all_ok) code else code[ok])
+    fe_f <- lapply(fe_code, function(code) {
+      if (all_ok) code else .dense_codes(code[keep_idx])
     })
-    n_lev <- vapply(fe_f, max, integer(1L))
+    n_lev  <- vapply(fe_f, max, integer(1L))
     fe_ids <- matrix(0L, nrow = N, ncol = Q)
     for (q in seq_len(Q)) fe_ids[, q] <- fe_f[[q]] - 1L
 
-    dm <- demean_kway_cpp(cbind(yk, Xk), fe_ids, n_lev,
+    byx <- bind_yx_cpp(as.numeric(y), X, keep_idx,
+                       if (is.null(wk)) numeric(0) else wk, nt)
+    d_pre <- byx$d_pre
+
+    dm <- demean_kway_cpp(byx$M, fe_ids, n_lev,
                           w = if (is.null(wk)) numeric(0) else wk,
-                          tol = 1e-12, max_iter = 10000L, nthreads = nt)
+                          tol = 1e-12, max_iter = 10000L, nthreads = nt,
+                          scale_sqrt_w = !is.null(wk))
     if (!dm$converged)
       warning("FE-OLS: demeaning did not fully converge; ",
               "results may be imprecise.")
-    Md <- dm$M
-    if (!is.null(sw)) Md <- Md * sw
-    yd <- Md[, 1L]
-    x_names <- colnames(Xk)
+    Md      <- dm$M
+    x_names <- colnames(X)
   } else {
+    Xk  <- if (all_ok) X else X[keep_idx, , drop = FALSE]
     Xd0 <- cbind(`(Intercept)` = 1, Xk)
-    if (is.null(sw)) {
+    if (is.null(wk)) {
       yd <- yk
     } else {
-      yd <- yk * sw
+      sw  <- sqrt(wk)
+      yd  <- yk * sw
       Xd0 <- Xd0 * sw
     }
-    Md <- cbind(yd, Xd0)
+    Md      <- cbind(yd, Xd0)
     x_names <- colnames(Xd0)
-    n_lev <- integer(0L)
-    fe_f  <- list()
+    n_lev   <- integer(0L)
+    fe_f    <- list()
   }
 
   # ---- Within-OLS with keep-first collinearity dropping ----------------------
@@ -151,11 +189,7 @@
 
   # Columns absorbed by the FEs are detected against their pre-demeaning
   # scale (their demeaned diagonal is numerically zero relative to it).
-  d_pre <- if (Q > 0L) {
-    if (is.null(wk)) colSums(Xk^2) else colSums(wk * Xk^2)
-  } else {
-    diag(XtX)
-  }
+  if (Q == 0L) d_pre <- diag(XtX)
 
   cd   <- .chol_seq_drop(XtX, d_pre = d_pre, tol = collin_tol)
   kept <- cd$kept
@@ -166,8 +200,6 @@
   Rk    <- cd$R
   b     <- drop(backsolve(Rk, forwardsolve(t(Rk), Xty[kept])))
   bread <- chol2inv(Rk)
-  Xd_k  <- Md[, kept + 1L, drop = FALSE]
-  e     <- yd - drop(Xd_k %*% b)
 
   cn <- x_names[kept]
   names(b) <- cn
@@ -182,7 +214,7 @@
 
   use_cluster <- !is.null(cl) && identical(vcov_type, "HC1")
   if (use_cluster) {
-    cl_i <- .dense_codes(cl[ok])
+    cl_i <- .dense_codes(if (all_ok) cl else cl[keep_idx])
     G    <- max(cl_i)
     # An FE dimension is nested in the cluster variable when every level
     # maps to a single cluster.
@@ -193,16 +225,18 @@
       all(m[fq] == cl_i)
     }, logical(1L))
     K_eff <- K_kept + fe_df_term(!nested)
-    S     <- rowsum(Xd_k * e, cl_i)
-    V <- bread %*% crossprod(S) %*% bread *
+    mk    <- fe_ols_meat_cpp(Md, kept, b, 2L, cl_i, G, nt)
+    V     <- bread %*% mk$meat %*% bread *
       (G / (G - 1)) * ((N - 1) / (N - K_eff))
-    df_t <- G - 1
+    df_t  <- G - 1
   } else {
     K_eff <- K_full
     if (tolower(vcov_type) == "iid") {
-      V <- bread * sum(e^2) / (N - K_eff)
+      mk <- fe_ols_meat_cpp(Md, kept, b, 0L, integer(0L), 0L, nt)
+      V  <- bread * mk$rss / (N - K_eff)
     } else {
-      V <- bread %*% crossprod_omp_cpp(Xd_k * e, nt) %*% bread * N / (N - K_eff)
+      mk <- fe_ols_meat_cpp(Md, kept, b, 1L, integer(0L), 0L, nt)
+      V  <- bread %*% mk$meat %*% bread * N / (N - K_eff)
     }
     df_t <- N - K_full
   }
@@ -218,9 +252,11 @@
 
   fit <- list(coef = b, V = V, tidy = tidy, nobs = N, df.t = df_t,
               dropped = setdiff(x_names, cn),
-              used = unname(which(ok)), engine = "internal")
+              used = if (all_ok) seq_len(n) else unname(keep_idx),
+              engine = "internal")
   if (keep_stats) {
-    rss_w  <- sum(e^2)
+    e      <- mk$e
+    rss_w  <- mk$rss
     rss_un <- if (is.null(wk)) rss_w else sum(e^2 / wk)
     wv     <- if (is.null(wk)) rep(1, N) else wk
     ybar   <- sum(wv * yk) / sum(wv)
@@ -230,7 +266,7 @@
       nobs             = N,
       r.squared        = 1 - rss_w / tss_w,
       adj.r.squared    = 1 - (rss_w / (N - K_full)) / (tss_w / (N - 1)),
-      within.r.squared = if (Q > 0L) 1 - rss_w / sum(yd^2) else NA_real_,
+      within.r.squared = if (Q > 0L) 1 - rss_w / mk$tss_yd else NA_real_,
       sigma            = sqrt(rss_w / (N - K_full)),
       logLik           = ll,
       AIC              = -2 * ll + 2 * K_full,

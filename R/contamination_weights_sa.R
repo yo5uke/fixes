@@ -35,9 +35,83 @@
 #   plot_contamination_weights()      -- ggplot2 tile heatmap
 # ============================================================================
 
-# ---------------------------------------------------------------------------
-# compute_contamination_weights
-# ---------------------------------------------------------------------------
+# Multi-response within-OLS solver for contamination_weights().
+# Demeans [X | Z] jointly against the fixed effects in a single OpenMP pass,
+# applies keep-first Cholesky dropping to X'X, and solves for all K_z response
+# columns simultaneously.
+.fit_multi_fe_ols <- function(Z, X, fe_list, collin_tol = 1e-10) {
+  Q <- length(fe_list)
+  n <- nrow(X)
+  storage.mode(X) <- "double"
+  storage.mode(Z) <- "double"
+
+  ok <- rep(TRUE, n)
+  x_ok <- row_no_na_cpp(X)
+  if (length(x_ok) > 0L) ok <- ok & x_ok
+  z_ok <- row_no_na_cpp(Z)
+  if (length(z_ok) > 0L) ok <- ok & z_ok
+  for (f in fe_list) if (anyNA(f)) ok <- ok & !is.na(f)
+
+  if (Q > 0L) {
+    fe_code <- lapply(fe_list, .dense_codes)
+    repeat {
+      idx <- which(ok)
+      keep <- rep(TRUE, length(idx))
+      for (q in seq_len(Q)) {
+        cq  <- fe_code[[q]][idx]
+        cnt <- tabulate(cq)
+        keep <- keep & cnt[cq] != 1L
+      }
+      if (all(keep)) break
+      ok[idx[!keep]] <- FALSE
+    }
+  }
+
+  N <- sum(ok)
+  if (N == 0L) stop("No observations remain after removing NA rows and singletons.")
+
+  all_ok <- (N == n)
+  Xk <- if (all_ok) X else X[ok, , drop = FALSE]
+  Zk <- if (all_ok) Z else Z[ok, , drop = FALSE]
+  nt <- .fes_nthreads()
+
+  if (Q > 0L) {
+    fe_f <- lapply(fe_code, function(code) {
+      if (all_ok) code else .dense_codes(code[ok])
+    })
+    n_lev  <- vapply(fe_f, max, integer(1L))
+    fe_ids <- matrix(0L, nrow = N, ncol = Q)
+    for (q in seq_len(Q)) fe_ids[, q] <- fe_f[[q]] - 1L
+
+    dm <- demean_kway_cpp(cbind(Xk, Zk), fe_ids, n_lev,
+                          w = numeric(0), tol = 1e-12,
+                          max_iter = 10000L, nthreads = nt)
+    Md <- dm$M
+    K_x <- ncol(Xk)
+    x_names <- colnames(Xk)
+    d_pre <- colSums(Xk^2)
+  } else {
+    Xd0 <- cbind(`(Intercept)` = 1, Xk)
+    K_x <- ncol(Xd0)
+    Md  <- cbind(Xd0, Zk)
+    x_names <- colnames(Xd0)
+    d_pre <- NULL
+  }
+
+  CP  <- crossprod_omp_cpp(Md, nt)
+  XtX <- CP[seq_len(K_x), seq_len(K_x), drop = FALSE]
+  XtZ <- CP[seq_len(K_x), (K_x + 1L):ncol(Md), drop = FALSE]
+  if (is.null(d_pre)) d_pre <- diag(XtX)
+
+  cd   <- .chol_seq_drop(XtX, d_pre = d_pre, tol = collin_tol)
+  kept <- cd$kept
+  if (length(kept) == 0L) stop("All regressors were dropped as collinear.")
+
+  Rk <- cd$R
+  B  <- backsolve(Rk, forwardsolve(t(Rk), XtZ[kept, , drop = FALSE]))
+  rownames(B) <- x_names[kept]
+  B
+}
 
 #' Contamination Weights for TWFE Event-Study Coefficients (Sun-Abraham 2021)
 #'
@@ -173,7 +247,6 @@ contamination_weights <- function(
   }
 
   # ---- Bookkeeping --------------------------------------------------------
-  data <- data[order(data[[unit_chr]], data[[time_chr]]), ]
   all_periods <- sort(unique(data[[time_chr]]))
 
   timing_vec <- data[[timing_chr]]
@@ -191,14 +264,7 @@ contamination_weights <- function(
 
   reltime_vec <- data[[time_chr]] - timing_vec # NA for never-treated
 
-  cohort_sizes <- vapply(
-    cohorts,
-    function(g) {
-      length(unique(data[[unit_chr]][!is.na(timing_vec) & timing_vec == g]))
-    },
-    integer(1L)
-  )
-  names(cohort_sizes) <- as.character(cohorts)
+  cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
 
   # ---- Build (cohort, l) index for ALL observed periods -------------------
   # gl_all: all (g, l) pairs within the observed window.
@@ -223,11 +289,9 @@ contamination_weights <- function(
   # ---- Build cohort-SPECIFIC indicator matrix Z ---------------------------
   # Z[, k] = 1{E_i = g_k} * 1{t - E_i = l_k}  (never-treated rows = 0)
   # Column naming follows .run_sa() convention: ".z__<g>__<l>"
-  Z_mat <- matrix(0L, nrow = N, ncol = K_z)
   Z_colnames <- character(K_z)
   k <- 0L
   for (g in cohorts) {
-    g_mask <- !is.na(timing_vec) & timing_vec == g
     for (j in which(gl_all$g == g)) {
       l <- gl_all$l[j]
       k <- k + 1L
@@ -235,15 +299,16 @@ contamination_weights <- function(
         ".z__",
         g,
         "__",
-        if (l < 0L) {
-          paste0("neg", -l)
-        } else {
-          as.character(l)
-        }
+        if (l < 0L) paste0("neg", -l) else as.character(l)
       )
-      Z_mat[, k] <- as.integer(g_mask & !is.na(reltime_vec) & reltime_vec == l)
     }
   }
+  Z_mat <- build_indicator_matrix_cpp(
+    cohort_id = as.integer(timing_vec),
+    time_id   = as.integer(reltime_vec),
+    gs_g      = as.integer(gl_all$g),
+    gs_s      = as.integer(gl_all$l)
+  )
   colnames(Z_mat) <- Z_colnames
 
   # ---- Build cohort-AGGREGATED indicator matrix X -------------------------
@@ -252,20 +317,16 @@ contamination_weights <- function(
   incl_periods <- sort(unique(gl_all$l[gl_all$l != baseline]))
   K_x <- length(incl_periods)
 
-  X_mat <- matrix(0L, nrow = N, ncol = K_x)
-  X_colnames <- character(K_x)
-  for (j in seq_len(K_x)) {
-    l_j <- incl_periods[j]
-    X_colnames[j] <- paste0(
-      ".x__",
-      if (l_j < 0L) {
-        paste0("neg", -l_j)
-      } else {
-        as.character(l_j)
-      }
-    )
-    X_mat[, j] <- as.integer(!is.na(reltime_vec) & reltime_vec == l_j)
-  }
+  X_colnames <- paste0(
+    ".x__",
+    ifelse(incl_periods < 0L, paste0("neg", -incl_periods), as.character(incl_periods))
+  )
+  X_mat <- build_indicator_matrix_cpp(
+    cohort_id = ifelse(is.na(reltime_vec), NA_integer_, 1L),
+    time_id   = as.integer(reltime_vec),
+    gs_g      = rep(1L, K_x),
+    gs_s      = as.integer(incl_periods)
+  )
   colnames(X_mat) <- X_colnames
 
   # ---- Auxiliary OVB regressions ------------------------------------------
@@ -274,26 +335,10 @@ contamination_weights <- function(
   #                 X[i,t; l''] + u_{i,t}
   # The coefficient on X[, l''] is omega^{l''}_{e,l}: how much of CATT_{e,l}
   # leaks into the TWFE estimate mu_{l''}.
-  # All K_z regressions share the same regressor matrix X; only the response
-  # changes.  We store X as a matrix column ".aux_X" in a working copy of data
-  # so fixest reads all K_x aggregated columns as a single matrix block.
+  # All K_z regressions share the same regressor matrix X and fixed effects;
+  # only the response changes. On the internal engine we demean [X | Z] and
+  # solve all K_z right-hand sides in a single pass.
 
-  wdata <- data # working copy (avoids modifying user df)
-  wdata$.aux_X <- X_mat # fixed across loop iterations
-
-  weight_rows <- vector("list", K_z * K_x)
-  row_idx <- 0L
-
-  fml_str <- if (nzchar(fe_rhs_text)) {
-    paste0(".aux_resp ~ .aux_X | ", fe_rhs_text)
-  } else {
-    ".aux_resp ~ .aux_X"
-  }
-  fml <- stats::as.formula(fml_str)
-
-  # Only point coefficients are needed, so the internal FE-OLS engine runs
-  # with iid VCOV (cheapest); the fixest formula path remains for FE
-  # specifications that are not plain column sums.
   X_aux <- X_mat
   colnames(X_aux) <- .mat_coef_names(".aux_X", X_colnames)
   fe_vars_aux <- .parse_fe_list(fe_rhs_text, data)
@@ -303,55 +348,69 @@ contamination_weights <- function(
              "e.g. `~ id^year`)"),
       "use plain column fixed effects"
     )
-  }
+    wdata <- data
+    wdata$.aux_X <- X_mat
+    fml_str <- if (nzchar(fe_rhs_text)) {
+      paste0(".aux_resp ~ .aux_X | ", fe_rhs_text)
+    } else {
+      ".aux_resp ~ .aux_X"
+    }
+    fml <- stats::as.formula(fml_str)
 
-  for (k_z in seq_len(K_z)) {
-    g_k <- gl_all$g[k_z]
-    l_k <- gl_all$l[k_z]
-
-    coefs <- tryCatch({
-      if (isFALSE(fe_vars_aux)) {
+    weight_rows <- vector("list", K_z * K_x)
+    row_idx <- 0L
+    for (k_z in seq_len(K_z)) {
+      g_k <- gl_all$g[k_z]
+      l_k <- gl_all$l[k_z]
+      coefs <- tryCatch({
         wdata$.aux_resp <- Z_mat[, k_z]
         stats::coef(fixest::feols(fml, data = wdata,
                                   warn = FALSE, notes = FALSE))
-      } else {
-        .fit_fe_ols(Z_mat[, k_z], X_aux, fe_list = fe_vars_aux,
-                    vcov_type = "iid")$coef
+      }, error = function(e) {
+        warning("Auxiliary regression for CATT(g=", g_k, ", l=", l_k,
+                ") failed: ", e$message, "; weights set to NA.")
+        NULL
+      })
+      for (j in seq_len(K_x)) {
+        l_twfe <- incl_periods[j]
+        if (is.null(coefs)) {
+          w_val <- NA_real_
+        } else {
+          cname <- paste0(".aux_X", X_colnames[j])
+          w_val <- if (cname %in% names(coefs)) coefs[[cname]] else NA_real_
+        }
+        row_idx <- row_idx + 1L
+        weight_rows[[row_idx]] <- data.frame(
+          catt_cohort = g_k, catt_period = l_k, twfe_period = l_twfe,
+          weight = w_val, stringsAsFactors = FALSE
+        )
       }
-    }, error = function(e) {
-      warning(
-        "Auxiliary regression for CATT(g=",
-        g_k,
-        ", l=",
-        l_k,
-        ") failed: ",
-        e$message,
-        "; weights set to NA."
-      )
-      NULL
-    })
-
-    for (j in seq_len(K_x)) {
-      l_twfe <- incl_periods[j]
-      if (is.null(coefs)) {
-        w_val <- NA_real_
-      } else {
-        # feols prepends the matrix-column name ".aux_X" to each column name
-        cname <- paste0(".aux_X", X_colnames[j])
-        w_val <- if (cname %in% names(coefs)) coefs[[cname]] else NA_real_
-      }
-      row_idx <- row_idx + 1L
-      weight_rows[[row_idx]] <- data.frame(
-        catt_cohort = g_k,
-        catt_period = l_k,
-        twfe_period = l_twfe,
-        weight = w_val,
-        stringsAsFactors = FALSE
-      )
     }
+    weights_df <- do.call(rbind, weight_rows[seq_len(row_idx)])
+  } else {
+    B_kept <- tryCatch(
+      .fit_multi_fe_ols(Z_mat, X_aux, fe_list = fe_vars_aux),
+      error = function(e) {
+        warning("Auxiliary regressions failed: ", e$message,
+                "; weights set to NA.")
+        NULL
+      }
+    )
+    W_full <- matrix(NA_real_, nrow = K_x, ncol = K_z)
+    if (!is.null(B_kept)) {
+      cnames <- if (K_x == 1L) ".aux_X" else paste0(".aux_X", X_colnames)
+      m_idx  <- match(rownames(B_kept), cnames)
+      hit    <- !is.na(m_idx)
+      W_full[m_idx[hit], ] <- B_kept[hit, , drop = FALSE]
+    }
+    weights_df <- data.frame(
+      catt_cohort = rep(gl_all$g, each = K_x),
+      catt_period = rep(gl_all$l, each = K_x),
+      twfe_period = rep(incl_periods, times = K_z),
+      weight      = as.numeric(W_full),
+      stringsAsFactors = FALSE
+    )
   }
-
-  weights_df <- do.call(rbind, weight_rows[seq_len(row_idx)])
   weights_df <- weights_df[
     order(
       weights_df$twfe_period,

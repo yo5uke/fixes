@@ -184,3 +184,67 @@ test_that("bootstrap_cs_cpp without seed produces different results across runs"
   expect_false(identical(crit1, crit2),
                label = "different seeds → different critical values")
 })
+
+# ---------------------------------------------------------------------------
+# Test 6 — compute_psi_cs_cpp matches pure-R influence function at 1e-12
+# ---------------------------------------------------------------------------
+test_that("compute_psi_cs_cpp matches pure-R influence calculation at 1e-12", {
+  r_compute_psi_cs <- function(data, att_gt, control_group, unit_chr,
+                               time_chr, timing_chr, outcome_chr,
+                               anticipation = 0L) {
+    data <- data[order(data[[unit_chr]], data[[time_chr]]), ]
+    units_vec <- sort(unique(data[[unit_chr]]))
+    times_vec <- sort(unique(data[[time_chr]]))
+    n_units   <- length(units_vec)
+    n_times   <- length(times_vec)
+    Y_mat <- matrix(NA_real_, nrow = n_units, ncol = n_times,
+                    dimnames = list(as.character(units_vec),
+                                    as.character(times_vec)))
+    r_idx <- match(data[[unit_chr]], units_vec)
+    c_idx <- match(data[[time_chr]], times_vec)
+    Y_mat[cbind(r_idx, c_idx)] <- data[[outcome_chr]]
+    unit_timing <- data[[timing_chr]][match(units_vec, data[[unit_chr]])]
+
+    valid_gt <- att_gt
+    n_gt     <- nrow(valid_gt)
+    psi      <- matrix(0, nrow = n_units, ncol = n_gt)
+    for (j in seq_len(n_gt)) {
+      g_j <- valid_gt$g[j]
+      t_j <- valid_gt$t[j]
+      base_t <- g_j - 1L - anticipation
+      ct <- match(as.character(t_j), colnames(Y_mat))
+      cb <- match(as.character(base_t), colnames(Y_mat))
+      if (is.na(ct) || is.na(cb)) next
+      dy <- Y_mat[, ct] - Y_mat[, cb]
+      is_tr <- !is.na(unit_timing) & unit_timing == g_j
+      is_ct <- if (control_group == "nevertreated") is.na(unit_timing) else
+        (is.na(unit_timing) | unit_timing > t_j) & (is.na(unit_timing) | unit_timing != g_j)
+      ok <- !is.na(dy)
+      idx_tr <- which(is_tr & ok)
+      idx_ct <- which(is_ct & ok)
+      if (length(idx_tr) == 0L || length(idx_ct) == 0L) next
+      psi[idx_tr, j] <- (n_units / length(idx_tr)) * (dy[idx_tr] - mean(dy[idx_tr]))
+      psi[idx_ct, j] <- psi[idx_ct, j] - (n_units / length(idx_ct)) * (dy[idx_ct] - mean(dy[idx_ct]))
+    }
+    psi
+  }
+
+  boot_data <- make_boot_data(seed = 19L, n_units = 40L)
+  # Shuffle rows to also verify order invariance
+  boot_data <- boot_data[sample(nrow(boot_data)), ]
+
+  for (cg in c("nevertreated", "notyettreated")) {
+    cs_res <- event_study(boot_data, outcome = y, time = year, timing = g,
+                          unit = id, estimator = "cs", control_group = cg)
+    att_gt_df <- attr(cs_res, "att_gt")
+    psi_cpp <- fixes:::.compute_influence_cs(
+      data = boot_data, att_gt = att_gt_df, control_group = cg,
+      unit_chr = "id", time_chr = "year", timing_chr = "g", outcome_chr = "y"
+    )$psi
+    psi_r <- r_compute_psi_cs(
+      data = boot_data, att_gt = att_gt_df, control_group = cg,
+      unit_chr = "id", time_chr = "year", timing_chr = "g", outcome_chr = "y"
+    )
+    expect_equal(psi_cpp, psi_r, tolerance = 1e-12)
+  }
+})

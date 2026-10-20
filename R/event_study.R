@@ -595,7 +595,7 @@ event_study <- function(
       conf.level = conf.level
     )
 
-    n_units <- dplyr::n_distinct(data[[unit_chr]])
+    n_units <- length(unique(data[[unit_chr]]))
     tidy <- .make_tidy(sa_out$es, conf.level)
     tidy <- .es_finalize(
       tidy,
@@ -659,7 +659,7 @@ event_study <- function(
       conf.level = conf.level
     )
 
-    n_units <- dplyr::n_distinct(data[[unit_chr]])
+    n_units <- length(unique(data[[unit_chr]]))
     tidy <- .make_tidy(bjs_out$es, conf.level)
     tidy <- .es_finalize(
       tidy,
@@ -734,7 +734,7 @@ event_study <- function(
       conf.level = conf.level
     )
 
-    n_units <- dplyr::n_distinct(data[[unit_chr]])
+    n_units <- length(unique(data[[unit_chr]]))
     tidy <- .make_tidy(twm_out$es, conf.level)
     tidy <- .es_finalize(
       tidy,
@@ -801,7 +801,7 @@ event_study <- function(
       conf.level = conf.level
     )
 
-    n_groups <- dplyr::n_distinct(data[[group_chr]])
+    n_groups <- length(unique(data[[group_chr]]))
     cluster_vars_flex <- if (inherits(cluster, "formula")) {
       rlang::expr_text(rlang::f_rhs(cluster))
     } else if (!is.null(cluster)) {
@@ -858,7 +858,6 @@ event_study <- function(
   if (any(!tx %in% c(0, 1, NA))) {
     stop("`treatment` must be 0/1 (or NA).")
   }
-  data[[treatment_chr]] <- tx
 
   # rel_time and staggered both build the event-study factor (..k) from a
   # per-row relative-time value and use i(..k, treatment, ref = baseline);
@@ -881,7 +880,7 @@ event_study <- function(
     # Warn when a unit has treatment = 1 in some rows but timing = NA.
     # NA is the "never treated" sentinel, so such units are silently used as
     # controls — correct if intentional, dangerous if NA means missing timing.
-    treated_na_timing <- data[[treatment_chr]] == 1L & is.na(data[[timing_chr]])
+    treated_na_timing <- tx == 1L & is.na(data[[timing_chr]])
     if (any(treated_na_timing, na.rm = TRUE)) {
       if (!is.null(unit_chr)) {
         problem_units <- unique(data[[unit_chr]][treated_na_timing])
@@ -945,16 +944,15 @@ event_study <- function(
     }
     rt <- (tnum - tv) / interval
   }
-  data$..rt <- rt
-  if (all(is.na(data$..rt))) {
+  if (all(is.na(rt))) {
     stop("`relative_time` is NA for all rows. Check inputs.")
   }
 
   # integer event time
-  data$..k <- suppressWarnings(as.integer(round(data$..rt)))
+  k_vec <- suppressWarnings(as.integer(round(rt)))
 
   # auto ranges (based on treated units only)
-  k_treated <- data$..k[as.logical(data[[treatment_chr]])]
+  k_treated <- k_vec[tx == 1L & !is.na(tx)]
   if (is.null(lead_range)) {
     lead_range <- max(0L, abs(min(k_treated, na.rm = TRUE)))
   }
@@ -972,7 +970,7 @@ event_study <- function(
 
   # N_treated/N_nevertreated metadata must reflect the original NA pattern,
   # captured here before never-treated rows are patched below.
-  ..k_known <- !is.na(data$..k)
+  ..k_known <- !is.na(k_vec)
 
   # Keep never-treated controls in the estimation sample.  With staggered
   # timing their ..k is NA (timing = NA), and feols drops every row with an
@@ -981,7 +979,7 @@ event_study <- function(
   # filler produces all-zero dummies; the baseline value is used so the rows
   # fall in the already-excluded reference level.
   if (staggered_design) {
-    data$..k[is.na(data$..k)] <- as.integer(baseline)
+    k_vec[is.na(k_vec)] <- as.integer(baseline)
   }
 
   # The fixest-style formula string is kept as metadata for reproducibility
@@ -1014,7 +1012,7 @@ event_study <- function(
     data, outcome_chr, treatment_chr, time_chr,
     fe_rhs_text, cov_text, cluster, weights,
     staggered_design, timing_val, interval,
-    baseline, vcov, vcov_args
+    baseline, vcov, vcov_args, k_vec = k_vec, tx_vec = tx
   )
   tidy <- fit_c$tidy
 
@@ -1069,14 +1067,14 @@ event_study <- function(
 
   # metadata
   N_units <- if (!is.null(unit_chr)) {
-    dplyr::n_distinct(data[[unit_chr]])
+    length(unique(data[[unit_chr]]))
   } else {
     NA_integer_
   }
   N_treat <- sum(..k_known)
   N_never <- if (!is.na(N_units) && !is.null(unit_chr)) {
-    treated_by_unit <- tapply(..k_known, data[[unit_chr]], any)
-    sum(!treated_by_unit)
+    length(setdiff(unique(data[[unit_chr]]),
+                   unique(data[[unit_chr]][..k_known])))
   } else {
     NA_integer_
   }

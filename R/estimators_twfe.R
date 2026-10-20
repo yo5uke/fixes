@@ -26,12 +26,8 @@
     stop("Model estimation failed: no event-time levels remain outside ",
          "the reference period.")
 
-  X_ev <- matrix(0, length(f_vals), length(lv))
-  for (j in seq_along(lv)) {
-    sel <- !is.na(f_vals) & f_vals == lv[j]
-    X_ev[sel, j] <- tr_vals[sel]
-  }
-  X_ev[is.na(f_vals) | is.na(tr_vals), ] <- NA_real_
+  X_ev <- build_twfe_design_cpp(as.numeric(f_vals), as.numeric(tr_vals),
+                                as.numeric(lv))
   colnames(X_ev) <- paste0(f_name, "::", lv, ":", treatment_chr)
 
   rel_time <- if (staggered_design) {
@@ -77,9 +73,10 @@
 .run_twfe_classic <- function(data, outcome_chr, treatment_chr, time_chr,
                               fe_rhs_text, cov_text, cluster, weights,
                               staggered_design, timing_val, interval,
-                              baseline, vcov, vcov_args) {
+                              baseline, vcov, vcov_args, k_vec = NULL,
+                              tx_vec = NULL) {
   if (staggered_design) {
-    f_vals <- data$..k
+    f_vals <- if (!is.null(k_vec)) k_vec else data$..k
     ref    <- as.integer(baseline)
     f_name <- "..k"
   } else {
@@ -88,7 +85,8 @@
     f_name <- time_chr
   }
 
-  des <- .build_twfe_design(f_vals, data[[treatment_chr]], ref, f_name,
+  tr_vals <- if (!is.null(tx_vec)) tx_vec else data[[treatment_chr]]
+  des <- .build_twfe_design(f_vals, tr_vals, ref, f_name,
                             treatment_chr, staggered_design, timing_val,
                             interval)
   X <- des$X

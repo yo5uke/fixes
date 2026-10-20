@@ -38,6 +38,19 @@ bootstrap_cs_cpp <- function(psi, B, alpha, B_pilot) {
     .Call(`_fixes_bootstrap_cs_cpp`, psi, B, alpha, B_pilot)
 }
 
+#' Compute CS unit-level influence functions in C++
+#'
+#' Given the unit x time outcome matrix \code{Y_mat} (n_units x n_times),
+#' the per-unit timing vector \code{unit_timing} (NA_real_ for never-treated),
+#' the 1-based column indices \code{col_t} and \code{col_base} into \code{Y_mat}
+#' for each (g, t) pair, and the cohort values \code{gt_g} and calendar times
+#' \code{gt_t}, computes the n_units x n_gt influence matrix \code{psi}.
+#'
+#' @noRd
+compute_psi_cs_cpp <- function(Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group) {
+    .Call(`_fixes_compute_psi_cs_cpp`, Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group)
+}
+
 compute_att_gt_cpp <- function(unit_id, time_id, outcome, cohort, cohorts, all_times, control_group, anticipation = 0L) {
     .Call(`_fixes_compute_att_gt_cpp`, unit_id, time_id, outcome, cohort, cohorts, all_times, control_group, anticipation)
 }
@@ -108,12 +121,14 @@ build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key) {
 #' @param tol Relative convergence tolerance on subtracted group means.
 #' @param max_iter Maximum number of full sweeps per column.
 #' @param nthreads Number of OpenMP threads (ignored without OpenMP).
+#' @param scale_sqrt_w Logical: if TRUE and \code{w} is non-empty, multiply
+#'   each demeaned row \code{k} by \code{sqrt(w[k])} in place before returning.
 #'
 #' @return A list with \code{M} (demeaned copy) and \code{converged}.
 #'
 #' @noRd
-demean_kway_cpp <- function(M, fe_ids, n_levels, w, tol, max_iter, nthreads) {
-    .Call(`_fixes_demean_kway_cpp`, M, fe_ids, n_levels, w, tol, max_iter, nthreads)
+demean_kway_cpp <- function(M, fe_ids, n_levels, w, tol, max_iter, nthreads, scale_sqrt_w = FALSE) {
+    .Call(`_fixes_demean_kway_cpp`, M, fe_ids, n_levels, w, tol, max_iter, nthreads, scale_sqrt_w)
 }
 
 #' Sequential Cholesky with keep-first column dropping
@@ -154,6 +169,101 @@ crossprod_omp_cpp <- function(M, nthreads) {
     .Call(`_fixes_crossprod_omp_cpp`, M, nthreads)
 }
 
+#' Check row-wise NA across a numeric matrix
+#'
+#' Returns a logical vector of length N: TRUE where row \code{i} has no NA/NaN
+#' in any column of \code{X}, plus a scalar flag \code{has_na} via attribute or
+#' fast early check. Avoids allocating a logical matrix in R via
+#' \code{rowSums(is.na(X)) == 0L}.
+#'
+#' @param X Numeric matrix (N x K).
+#'
+#' @return LogicalVector of length N (or length 0 if no NA/NaN exists anywhere
+#'   in \code{X}).
+#'
+#' @noRd
+row_no_na_cpp <- function(X) {
+    .Call(`_fixes_row_no_na_cpp`, X)
+}
+
+#' Subset and bind outcome vector y and regressor matrix X
+#'
+#' Constructs the N_ok x (1 + K) double matrix \code{[y | X]} over kept rows
+#' in a single pass, and simultaneously computes pre-demeaning column sums of
+#' squares \code{d_pre[j] = sum_i w_i * X_{i,j}^2} (with \code{w_i = 1} when
+#' unweighted). Avoids R-level \code{X[ok, ]}, \code{cbind(yk, Xk)}, and
+#' \code{colSums(Xk^2)} allocations.
+#'
+#' @param y Numeric vector (length N_full).
+#' @param X Numeric matrix (N_full x K).
+#' @param keep_idx Integer vector (1-based indices of kept rows), or length 0
+#'   when all rows are kept.
+#' @param w Numeric vector of kept-row weights (length N_ok), or length 0 when
+#'   unweighted.
+#' @param nthreads Number of OpenMP threads.
+#'
+#' @return List with \code{M} (N_ok x (1 + K) numeric matrix) and
+#'   \code{d_pre} (length-K numeric vector).
+#'
+#' @noRd
+bind_yx_cpp <- function(y, X, keep_idx, w, nthreads) {
+    .Call(`_fixes_bind_yx_cpp`, y, X, keep_idx, w, nthreads)
+}
+
+#' Compute residuals and VCOV meat for .fit_fe_ols()
+#'
+#' Given the demeaned (and sqrt(w)-scaled) matrix \code{Md = [y | X]} (N x (1+K)),
+#' the 1-based \code{kept} column indices of X (length K_kept), and the
+#' coefficient vector \code{b} (length K_kept), computes:
+#' \itemize{
+#'   \item residuals \code{e = yd - Xd_kept * b} and \code{rss = sum(e^2)}
+#'   \item for \code{vcov_mode == 1} (hetero / HC1): the K_kept x K_kept meat
+#'     \code{crossprod(Xd_kept * e)} without materializing \code{Xd_kept} or
+#'     \code{Xd_kept * e}
+#'   \item for \code{vcov_mode == 2} (one-way cluster): the G x K_kept cluster
+#'     score matrix \code{S[g, a] = sum_{i in g} Xd_{i, kept[a]} * e_i} and its
+#'     cross product \code{S'S}
+#' }
+#' All floating-point accumulations follow fixed index orders so results are
+#' bit-identical across \code{nthreads}.
+#'
+#' @param Md Numeric matrix (N x (1 + K)): demeaned \code{[y | X]}.
+#' @param kept Integer vector (length K_kept): 1-based kept column indices in X.
+#' @param b Numeric vector (length K_kept): OLS coefficients.
+#' @param vcov_mode Integer: 0 = iid (only residuals/rss), 1 = hetero meat,
+#'   2 = cluster meat.
+#' @param cl_i Integer vector: 1-based cluster index per row (length N) when
+#'   \code{vcov_mode == 2}; ignored otherwise.
+#' @param G Integer: number of clusters when \code{vcov_mode == 2}.
+#' @param nthreads Number of OpenMP threads.
+#'
+#' @return List with \code{e} (length-N residual vector), \code{rss},
+#'   \code{tss_yd} (\code{sum(yd^2)}), and \code{meat} (K_kept x K_kept matrix,
+#'   or 0 x 0 when \code{vcov_mode == 0}).
+#'
+#' @noRd
+fe_ols_meat_cpp <- function(Md, kept, b, vcov_mode, cl_i, G, nthreads) {
+    .Call(`_fixes_fe_ols_meat_cpp`, Md, kept, b, vcov_mode, cl_i, G, nthreads)
+}
+
+#' Expand classic TWFE event-study interaction dummies in C++
+#'
+#' Builds the N x L numeric matrix of interaction dummies
+#' \code{X[i, j] = tr_vals[i] * 1(f_vals[i] == lv[j])}, setting rows with NA
+#' in \code{f_vals} or \code{tr_vals} to \code{NA_real_} across all columns
+#' (matching \code{.build_twfe_design()}).
+#'
+#' @param f_vals Numeric vector (length N): event-time or calendar-time factor.
+#' @param tr_vals Numeric vector (length N): binary treatment indicator.
+#' @param lv Numeric vector (length L): sorted non-reference levels.
+#'
+#' @return NumericMatrix (N x L).
+#'
+#' @noRd
+build_twfe_design_cpp <- function(f_vals, tr_vals, lv) {
+    .Call(`_fixes_build_twfe_design_cpp`, f_vals, tr_vals, lv)
+}
+
 #' Alternating-projections solver for a two-way fixed-effects model
 #'
 #' Solves \eqn{Y = \alpha_{unit} + \beta_{time} + \varepsilon} by
@@ -192,9 +302,9 @@ solve_fe_2way_cpp <- function(y, unit_id, time_id, n_unit, n_time, tol, max_iter
 #' elsewhere.  \code{NA_integer_} values in \code{cohort_id} (never-treated
 #' units) are treated as no-cohort and always produce 0.
 #'
-#' This is a shared utility used by the SA, TWM, and FLEX estimators to
-#' replace the equivalent R nested for-loop, avoiding repeated vector
-#' allocation and R overhead per column.
+#' Uses an O(K) hash map from \code{(g, s)} to column index \code{k}, so
+#' filling the matrix takes a single O(N) pass over the rows instead of
+#' O(N * K).
 #'
 #' @param cohort_id Integer vector (length N): cohort assignment per row.
 #'   Pass \code{NA_integer_} for never-treated observations.

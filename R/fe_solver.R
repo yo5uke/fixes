@@ -18,25 +18,26 @@
 #   n_kept    : rows used in estimation
 #   converged : logical
 .solve_fe_2way <- function(y, unit, time, tol = 1e-12, max_iter = 100000L) {
-  u_chr <- as.character(unit)
-  t_chr <- as.character(time)
-  keep  <- !is.na(y) & !is.na(unit) & !is.na(time)
+  keep <- !is.na(y) & !is.na(unit) & !is.na(time)
+  u_code <- .dense_codes(unit)
+  t_code <- .dense_codes(time)
 
   repeat {
-    cu   <- table(u_chr[keep])
-    ct   <- table(t_chr[keep])
-    drop <- keep & (u_chr %in% names(cu)[cu == 1L] |
-                      t_chr %in% names(ct)[ct == 1L])
-    if (!any(drop)) break
-    keep <- keep & !drop
+    idx <- which(keep)
+    if (length(idx) == 0L) break
+    cu <- tabulate(u_code[idx])
+    ct <- tabulate(t_code[idx])
+    drop_idx <- cu[u_code[idx]] == 1L | ct[t_code[idx]] == 1L
+    if (!any(drop_idx)) break
+    keep[idx[drop_idx]] <- FALSE
   }
 
   if (!any(keep))
     stop("2-way FE solver: no observations remain after removing NA rows ",
          "and singleton fixed-effect levels.")
 
-  fu <- factor(u_chr[keep])
-  ft <- factor(t_chr[keep])
+  fu <- factor(as.character(unit[keep]))
+  ft <- factor(as.character(time[keep]))
 
   fit <- solve_fe_2way_cpp(
     y        = as.numeric(y[keep]),

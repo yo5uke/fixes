@@ -66,7 +66,6 @@
   .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
 
   # ---- Bookkeeping -----------------------------------------------------------
-  data        <- data[order(data[[unit_chr]], data[[time_chr]]), ]
   all_periods <- sort(unique(data[[time_chr]]))
   min_t       <- min(all_periods)
   max_t       <- max(all_periods)

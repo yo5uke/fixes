@@ -127,3 +127,92 @@ List bootstrap_cs_cpp(
         _["sigma_half"] = NumericVector(sigma_half.begin(), sigma_half.end())
     );
 }
+
+//' Compute CS unit-level influence functions in C++
+//'
+//' Given the unit x time outcome matrix \code{Y_mat} (n_units x n_times),
+//' the per-unit timing vector \code{unit_timing} (NA_real_ for never-treated),
+//' the 1-based column indices \code{col_t} and \code{col_base} into \code{Y_mat}
+//' for each (g, t) pair, and the cohort values \code{gt_g} and calendar times
+//' \code{gt_t}, computes the n_units x n_gt influence matrix \code{psi}.
+//'
+//' @noRd
+// [[Rcpp::export]]
+NumericMatrix compute_psi_cs_cpp(
+    NumericMatrix Y_mat,
+    NumericVector unit_timing,
+    IntegerVector gt_g,
+    IntegerVector gt_t,
+    IntegerVector col_t,
+    IntegerVector col_base,
+    std::string   control_group
+) {
+    int n_units = Y_mat.nrow();
+    int n_gt    = gt_g.size();
+    NumericMatrix psi(n_units, n_gt);
+    double* pPsi = psi.begin();
+    const double* pY = Y_mat.begin();
+    const double* pU = unit_timing.begin();
+    bool never_only = (control_group == "nevertreated");
+
+    std::vector<int> idx_tr, idx_ct;
+    idx_tr.reserve(n_units);
+    idx_ct.reserve(n_units);
+    std::vector<double> dy(n_units);
+
+    for (int j = 0; j < n_gt; j++) {
+        int ct = col_t[j];
+        int cb = col_base[j];
+        if (ct == NA_INTEGER || cb == NA_INTEGER || ct < 1 || cb < 1) continue;
+
+        const double* y_t    = pY + (size_t)(ct - 1) * n_units;
+        const double* y_base = pY + (size_t)(cb - 1) * n_units;
+        double g_j = (double)gt_g[j];
+        double t_j = (double)gt_t[j];
+
+        idx_tr.clear();
+        idx_ct.clear();
+        double sum_g = 0.0, sum_c = 0.0;
+
+        for (int i = 0; i < n_units; i++) {
+            double yt = y_t[i];
+            double yb = y_base[i];
+            if (ISNAN(yt) || ISNAN(yb)) continue;
+            double d = yt - yb;
+            dy[i] = d;
+
+            double ut = pU[i];
+            bool ut_na = ISNAN(ut);
+            if (!ut_na && ut == g_j) {
+                idx_tr.push_back(i);
+                sum_g += d;
+            }
+            bool is_ctrl = never_only
+                ? ut_na
+                : ((ut_na || ut > t_j) && (ut_na || ut != g_j));
+            if (is_ctrl) {
+                idx_ct.push_back(i);
+                sum_c += d;
+            }
+        }
+
+        int n_tr = (int)idx_tr.size();
+        int n_ct = (int)idx_ct.size();
+        if (n_tr == 0 || n_ct == 0) continue;
+
+        double mean_g = sum_g / n_tr;
+        double mean_c = sum_c / n_ct;
+        double w_tr   = (double)n_units / n_tr;
+        double w_ct   = (double)n_units / n_ct;
+
+        double* col_psi = pPsi + (size_t)j * n_units;
+        for (int i : idx_tr) {
+            col_psi[i] = w_tr * (dy[i] - mean_g);
+        }
+        for (int i : idx_ct) {
+            col_psi[i] -= w_ct * (dy[i] - mean_c);
+        }
+    }
+
+    return psi;
+}

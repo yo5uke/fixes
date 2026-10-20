@@ -113,16 +113,16 @@
   # exactly 1 observation in omega0).  Their FE is closed-form from
   # Theorem 2: alpha_hat_i = Y_{i,t} - beta_hat_t.  We patch those entries
   # before the imputation lookup below.
-  omega0_u_chr <- as.character(omega0[[unit_chr]])
-  omega0_t_chr <- as.character(omega0[[time_chr]])
-  u_keys       <- as.character(omega1[[unit_chr]])
-  t_keys       <- as.character(omega1[[time_chr]])
+  u_keys <- as.character(omega1[[unit_chr]])
+  t_keys <- as.character(omega1[[time_chr]])
 
   singleton_u <- unique(u_keys[is.na(alpha_hat[u_keys])])
   if (length(singleton_u) > 0L) {
+    omega0_u_chr <- as.character(omega0[[unit_chr]])
     sel <- omega0_u_chr %in% singleton_u
     if (any(sel)) {
-      resid0 <- omega0[[outcome_chr]][sel] - beta_hat[omega0_t_chr[sel]]
+      omega0_t_chr <- as.character(omega0[[time_chr]][sel])
+      resid0 <- omega0[[outcome_chr]][sel] - beta_hat[omega0_t_chr]
       means  <- tapply(resid0, omega0_u_chr[sel], mean, na.rm = TRUE)
       alpha_hat[names(means)] <- means
     }
@@ -159,12 +159,33 @@
   horizons <- sort(unique(omega1$.rel_t))
   es_rows  <- list()
 
+  # Pre-compute dense cluster integer codes on omega1 once (order-independent
+  # for sum of squares of cluster scores).
+  if (!is.null(clustervars) && length(clustervars) > 0L) {
+    if (length(clustervars) == 1L) {
+      clust_code_all <- .dense_codes(omega1[[clustervars[1L]]])
+    } else {
+      clust_str <- do.call(
+        paste,
+        c(lapply(clustervars, function(v) as.character(omega1[[v]])),
+          list(sep = "__"))
+      )
+      clust_code_all <- .dense_codes(clust_str)
+    }
+  } else {
+    clust_code_all <- .dense_codes(omega1[[unit_chr]])
+  }
+  g_code_all <- .dense_codes(omega1[[timing_chr]])
+  tau_all    <- omega1$.tau_hat
+  rel_t_all  <- omega1$.rel_t
+
   for (h in horizons) {
-    h_data <- omega1[omega1$.rel_t == h, ]
-    n_h    <- nrow(h_data)
+    idx_h <- which(rel_t_all == h)
+    n_h   <- length(idx_h)
     if (n_h == 0L) next
 
-    tau_h <- mean(h_data$.tau_hat)
+    tau_h_vec <- tau_all[idx_h]
+    tau_h     <- mean(tau_h_vec)
 
     # ---- SE: BJS (2024) Theorem 3, eqs. (7)-(8) — conservative ------------
     # Partition treated obs at horizon h into cells by cohort g.
@@ -176,21 +197,15 @@
     # Conservative approximation: the FWL projection term for untreated obs
     # (capturing uncertainty in alpha_hat_i and beta_hat_t from Step 1) is
     # omitted here.
-    h_data$.tau_tilde <- stats::ave(h_data$.tau_hat, h_data[[timing_chr]], FUN = mean)
-    h_data$.eps_tilde <- h_data$.tau_hat - h_data$.tau_tilde
+    g_h       <- .dense_codes(g_code_all[idx_h])
+    g_sums    <- as.numeric(rowsum(tau_h_vec, g_h, reorder = FALSE))
+    g_cnts    <- tabulate(g_h)
+    tau_tilde <- (g_sums / g_cnts)[g_h]
+    eps_tilde <- tau_h_vec - tau_tilde
 
-    if (!is.null(clustervars) && length(clustervars) > 0L) {
-      clust_id <- do.call(
-        paste,
-        c(lapply(clustervars, function(v) as.character(h_data[[v]])),
-          list(sep = "__"))
-      )
-    } else {
-      clust_id <- as.character(h_data[[unit_chr]])
-    }
-
-    unit_scores <- tapply(h_data$.eps_tilde, clust_id, sum) / n_h
-    se_h <- sqrt(sum(unit_scores^2))
+    cl_h        <- .dense_codes(clust_code_all[idx_h])
+    unit_scores <- as.numeric(rowsum(eps_tilde, cl_h, reorder = FALSE)) / n_h
+    se_h        <- sqrt(sum(unit_scores^2))
 
     es_rows[[length(es_rows) + 1L]] <- data.frame(
       relative_time = h,
