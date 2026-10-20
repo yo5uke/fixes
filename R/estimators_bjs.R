@@ -62,6 +62,7 @@
 
   # ---- Validate inputs -------------------------------------------------------
   .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
+  .assert_unit_constant_timing(data, timing_chr, unit_chr)
 
   # ---- Bookkeeping -----------------------------------------------------------
   data <- data[order(data[[unit_chr]], data[[time_chr]]), ]

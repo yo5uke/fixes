@@ -70,6 +70,7 @@
 
   # ---- Validate inputs -------------------------------------------------------
   .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
+  .assert_unit_constant_timing(data, timing_chr, unit_chr)
   if (anticipation < 0L)
     stop("`anticipation` must be a non-negative integer.")
   .assert_integerish(data[[time_chr]], time_chr)

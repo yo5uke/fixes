@@ -245,6 +245,7 @@ contamination_weights <- function(
   if (!is.numeric(data[[time_chr]])) {
     stop("'", time_chr, "' must be numeric.")
   }
+  .assert_unit_constant_timing(data, timing_chr, unit_chr)
 
   # ---- Bookkeeping --------------------------------------------------------
   all_periods <- sort(unique(data[[time_chr]]))

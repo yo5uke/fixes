@@ -72,6 +72,30 @@
          "cells). Rescale it to integers, e.g. via a consecutive time index.")
 }
 
+# Each unit must carry one timing value (NA = never treated) on every row;
+# otherwise cohort membership would depend on the row order of the input.
+.assert_unit_constant_timing <- function(data, timing_chr, unit_chr) {
+  uv <- data[[unit_chr]]
+  tv <- data[[timing_chr]]
+  keep <- !is.na(uv)
+  uv <- uv[keep]
+  tv <- tv[keep]
+  if (length(uv) == 0L) return(invisible(NULL))
+  u     <- .dense_codes(uv)
+  first <- tv[match(seq_len(max(u)), u)][u]
+  same  <- (is.na(first) & is.na(tv)) |
+    (!is.na(first) & !is.na(tv) & first == tv)
+  if (!all(same)) {
+    bad <- unique(uv[!same])
+    shown <- paste(utils::head(bad, 5L), collapse = ", ")
+    if (length(bad) > 5L) shown <- paste0(shown, ", ...")
+    stop("Unit(s) with more than one value of '", timing_chr, "': ", shown,
+         ". Each unit must have a single timing value on every row ",
+         "(NA for never-treated units).", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 # Cohort sizes = number of unique units per cohort.  Returns a named integer
 # vector keyed by cohort (as character).  Used by CS, SA, and TWM (FLEX counts
 # unique groups instead and keeps its own logic).  Pass only the estimation
