@@ -46,6 +46,15 @@ NumericMatrix build_cov_interactions_cpp(
     int p = cov_mat.ncol();
     int K = ind_mat.ncol();
 
+    // ---- Step 0: identify rows with any NA/NaN in cov_mat ------------------
+    std::vector<uint8_t> row_has_na(N, 0);
+    for (int j = 0; j < p; j++) {
+        const double* col_j = &cov_mat(0, j);
+        for (int i = 0; i < N; i++) {
+            if (ISNAN(col_j[i])) row_has_na[i] = 1;
+        }
+    }
+
     // ---- Step 1: group rows by group_key -----------------------------------
     // Skip NA_integer_ and 0.
     std::unordered_map<int, std::vector<int>> groups;
@@ -62,16 +71,24 @@ NumericMatrix build_cov_interactions_cpp(
 
     for (auto& kv : groups) {
         const std::vector<int>& rows = kv.second;
-        int ng = (int)rows.size();
-        if (ng == 0) continue;
+        int n_valid = 0;
+        for (int r : rows) {
+            if (!row_has_na[r]) n_valid++;
+        }
 
         for (int j = 0; j < p; j++) {
-            // column mean over group rows
+            if (n_valid == 0) {
+                for (int r : rows) x_centred(r, j) = NA_REAL;
+                continue;
+            }
             double sum = 0.0;
-            for (int r : rows) sum += cov_mat(r, j);
-            double mean_val = sum / ng;
-            // centre
-            for (int r : rows) x_centred(r, j) = cov_mat(r, j) - mean_val;
+            for (int r : rows) {
+                if (!row_has_na[r]) sum += cov_mat(r, j);
+            }
+            double mean_val = sum / n_valid;
+            for (int r : rows) {
+                x_centred(r, j) = row_has_na[r] ? NA_REAL : (cov_mat(r, j) - mean_val);
+            }
         }
     }
 
@@ -84,8 +101,7 @@ NumericMatrix build_cov_interactions_cpp(
         for (int i = 0; i < N; i++) {
             if (ind_mat(i, k) == 0) continue;
             for (int j = 0; j < p; j++) {
-                out(i, j * K + k) = x_centred(i, j);
-                // ind_mat(i,k) is always 1 when non-zero, so no multiplication needed
+                out(i, j * K + k) = row_has_na[i] ? NA_REAL : x_centred(i, j);
             }
         }
     }

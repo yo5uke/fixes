@@ -189,6 +189,8 @@
     formula_trend <- ""
   }
   fe_str_eff <- fe_str
+  fe_vars    <- .parse_fe_list(fe_str_eff, data)
+  cl_vals    <- .resolve_cluster_vals(cluster, data)
 
   # ---- Optional: covariate interactions (Wooldridge 2025, Procedure 5.1) -----
   # With unit FE, x_i main effects and d_g*x_i terms are absorbed.  What needs
@@ -211,8 +213,14 @@
         ci_names[(j - 1L) * K + kk] <- paste0(".twm_cov_X_",
                                                covariate_chrs[j], "__k__", kk)
 
+    g_key  <- as.integer(timing_vec)
+    est_ok <- .fe_ols_cov_sample_ok(
+      data[[outcome_chr]], cov_mat, fe_vars, cl_vals, data, fe_str_eff, cluster
+    )
+    if (!is.null(est_ok)) g_key[!est_ok] <- NA_integer_
+
     cov_int_mat            <- build_cov_interactions_cpp(
-                               cov_mat, ind_mat, as.integer(timing_vec))
+                               cov_mat, ind_mat, g_key)
     colnames(cov_int_mat)  <- ci_names
 
     # Time × covariate terms for conditional parallel trends
@@ -253,9 +261,6 @@
         data[[time_chr]], data[[cv]], excl_t, time_chr, cv)))
   }
   X_reg <- if (length(X_blocks) == 1L) X_blocks[[1L]] else do.call(cbind, X_blocks)
-
-  fe_vars <- .parse_fe_list(fe_str_eff, data)
-  cl_vals <- .resolve_cluster_vals(cluster, data)
 
   fit <- tryCatch({
     if (isFALSE(fe_vars) || isFALSE(cl_vals)) {

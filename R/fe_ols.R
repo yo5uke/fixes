@@ -483,14 +483,21 @@
 
 # Expand fixest-style i(f, x, ref) interaction dummies: one column
 # x * 1(f == v) per level v of f (ascending, excluding ref), named
-# "<f_name>::<v>:<x_name>" like fixest's i() coefficients.
+# "<f_name>::<v>:<x_name>" like fixest's i() coefficients. Rows with NA in
+# f or x are NA across all columns so the engine drops them, as feols does.
 .expand_i_dummies <- function(f_vals, x_vals, ref, f_name, x_name) {
   lv <- sort(unique(f_vals))
   lv <- lv[!(lv %in% ref)]
-  M  <- matrix(0, length(f_vals), length(lv))
-  for (j in seq_along(lv)) {
-    sel <- f_vals == lv[j]
-    M[sel, j] <- x_vals[sel]
+  if (is.numeric(f_vals) && is.numeric(x_vals) && length(lv) > 0L) {
+    M <- build_twfe_design_cpp(as.numeric(f_vals), as.numeric(x_vals),
+                               as.numeric(lv))
+  } else {
+    M <- matrix(0, length(f_vals), length(lv))
+    for (j in seq_along(lv)) {
+      sel <- !is.na(f_vals) & f_vals == lv[j]
+      M[sel, j] <- x_vals[sel]
+    }
+    M[is.na(f_vals) | is.na(x_vals), ] <- NA_real_
   }
   colnames(M) <- paste0(f_name, "::", lv, ":", x_name)
   M
@@ -527,4 +534,72 @@
               used = extras$used, engine = "fixest-formula")
   fit$stats <- extras$stats
   fit
+}
+
+
+# Identify rows that survive into the regression estimation sample (no NA in
+# outcome, covariates, FEs, or cluster, and no singleton FE levels) so that
+# within-cohort (TWM) and within-cell (FLEX) covariate centering is computed
+# strictly on the estimation sample. Returns NULL when all rows are valid.
+.fe_ols_cov_sample_ok <- function(y, cov_mat, fe_vars, cl_vals,
+                                  data, fe_str, cluster) {
+  has_na <- anyNA(y) || anyNA(cov_mat)
+  if (!has_na) {
+    if (is.list(fe_vars)) {
+      for (f in fe_vars) if (anyNA(f)) { has_na <- TRUE; break }
+    } else if (!is.null(fe_str) && nzchar(fe_str)) {
+      for (v in all.vars(stats::as.formula(paste("~", fe_str))))
+        if (v %in% names(data) && anyNA(data[[v]])) { has_na <- TRUE; break }
+    }
+  }
+  if (!has_na && !is.null(cl_vals)) {
+    if (is.list(cl_vals)) {
+      for (c_v in cl_vals) if (anyNA(c_v)) { has_na <- TRUE; break }
+    } else if (inherits(cluster, "formula")) {
+      for (v in all.vars(cluster))
+        if (v %in% names(data) && anyNA(data[[v]])) { has_na <- TRUE; break }
+    }
+  }
+  if (!has_na) {
+    has_singleton <- is.list(fe_vars) && any(vapply(fe_vars, function(f)
+      any(tabulate(.dense_codes(f)) == 1L), logical(1L)))
+    if (!has_singleton) return(NULL)
+  }
+
+  n  <- length(y)
+  ok <- !is.na(y)
+  if (ncol(cov_mat) > 0L) {
+    if (storage.mode(cov_mat) != "double") storage.mode(cov_mat) <- "double"
+    x_ok <- row_no_na_cpp(cov_mat)
+    if (length(x_ok) > 0L) ok <- ok & x_ok
+  }
+  if (is.list(fe_vars)) {
+    for (f in fe_vars) if (anyNA(f)) ok <- ok & !is.na(f)
+  } else if (!is.null(fe_str) && nzchar(fe_str)) {
+    for (v in all.vars(stats::as.formula(paste("~", fe_str))))
+      if (v %in% names(data) && anyNA(data[[v]])) ok <- ok & !is.na(data[[v]])
+  }
+  if (is.list(cl_vals)) {
+    for (c_v in cl_vals) if (anyNA(c_v)) ok <- ok & !is.na(c_v)
+  } else if (inherits(cluster, "formula")) {
+    for (v in all.vars(cluster))
+      if (v %in% names(data) && anyNA(data[[v]])) ok <- ok & !is.na(data[[v]])
+  }
+
+  if (is.list(fe_vars) && length(fe_vars) > 0L) {
+    fe_code <- lapply(fe_vars, .dense_codes)
+    repeat {
+      idx <- which(ok)
+      if (length(idx) == 0L) break
+      keep <- rep(TRUE, length(idx))
+      for (q in seq_along(fe_code)) {
+        cq  <- fe_code[[q]][idx]
+        cnt <- tabulate(cq)
+        keep <- keep & cnt[cq] != 1L
+      }
+      if (all(keep)) break
+      ok[idx[!keep]] <- FALSE
+    }
+  }
+  ok
 }

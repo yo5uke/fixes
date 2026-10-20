@@ -190,6 +190,10 @@
          s   = gs_pairs$s[k],
          l   = gs_pairs$s[k] - gs_pairs$g[k]))
 
+  # FE: group + time (not unit + time, since RCS has no unit tracking)
+  fe_str_flex <- paste(group_chr, time_chr, sep = " + ")
+  fe_vars     <- .parse_fe_list(fe_str_flex, data)
+  cl_vals     <- .resolve_cluster_vals(cluster, data)
 
   # ---- Optional: covariate interactions (Deb et al. 2024, Eq. 3.1) -----------
   # Centering by (group, time) cell per Eq. 2.11: X̄_{g,t} = mean(X_{i,t}) for
@@ -210,6 +214,11 @@
                                           as.character(data[[time_chr]]),
                                           sep = "_")))
     cell_key[is.na(cohort_of_obs)] <- NA_integer_
+
+    est_ok <- .fe_ols_cov_sample_ok(
+      data[[outcome_chr]], cov_mat, fe_vars, cl_vals, data, fe_str_flex, cluster
+    )
+    if (!is.null(est_ok)) cell_key[!est_ok] <- NA_integer_
 
     ci_names <- character(K * n_cov)
     for (j in seq_len(n_cov))
@@ -239,8 +248,6 @@
     formula_cov <- ""
   }
 
-  # FE: group + time (not unit + time, since RCS has no unit tracking)
-  fe_str_flex <- paste(group_chr, time_chr, sep = " + ")
   formula_str <- paste0(outcome_chr, " ~ .flex_X", formula_cov, " | ", fe_str_flex)
 
   # ---- Run regression --------------------------------------------------------
@@ -263,9 +270,6 @@
         group_vec, data[[cv]], ref_group, group_chr, cv)))
   }
   X_reg <- if (length(X_blocks) == 1L) X_blocks[[1L]] else do.call(cbind, X_blocks)
-
-  fe_vars <- .parse_fe_list(fe_str_flex, data)
-  cl_vals <- .resolve_cluster_vals(cluster, data)
 
   fit <- tryCatch({
     if (isFALSE(fe_vars) || isFALSE(cl_vals)) {

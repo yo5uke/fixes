@@ -255,3 +255,49 @@ test_that("build_cov_interactions_cpp output dimensions are N x K*p", {
   cpp_out <- build_cov_interactions_cpp(cov_mat, ind_mat, timing)
   expect_equal(dim(cpp_out), c(N, K * p))
 })
+
+# ---------------------------------------------------------------------------
+# Test 7 — NA covariates in treated cohorts do not wipe out cohort means
+# ---------------------------------------------------------------------------
+test_that("build_cov_interactions_cpp centres on valid rows when covariates have NAs", {
+  df      <- make_covdm_data(seed = 7L, p = 2L)
+  cov_mat <- as.matrix(df[, c("x1", "x2")])
+  # Inject NAs into both treated cohorts (g = 3 and g = 5) and never-treated
+  cov_mat[1, 1]   <- NA_real_   # cohort 3, x1 NA
+  cov_mat[50, 2]  <- NA_real_   # cohort 5, x2 NA
+  cov_mat[100, 1] <- NA_real_   # never-treated, x1 NA
+
+  timing   <- as.integer(df$g)
+  cohorts  <- sort(unique(timing[!is.na(timing)]))
+  all_t    <- sort(unique(df$year))
+  gs_pairs <- do.call(rbind, lapply(cohorts, function(g)
+    data.frame(g = g, s = all_t[all_t != g - 1L])))
+  ind_mat  <- build_indicator_matrix_cpp(timing, as.integer(df$year),
+                                         as.integer(gs_pairs$g), as.integer(gs_pairs$s))
+
+  cpp_out <- build_cov_interactions_cpp(cov_mat, ind_mat, timing)
+
+  # Pure-R reference: group means over rows with no NA in cov_mat
+  N <- nrow(cov_mat); p <- ncol(cov_mat); K <- ncol(ind_mat)
+  row_ok <- complete.cases(cov_mat)
+  x_centred <- matrix(0.0, nrow = N, ncol = p)
+  for (g in cohorts) {
+    g_valid <- !is.na(timing) & timing == g & row_ok
+    g_all   <- !is.na(timing) & timing == g
+    for (j in seq_len(p)) {
+      m <- mean(cov_mat[g_valid, j])
+      x_centred[g_all, j] <- ifelse(row_ok[g_all], cov_mat[g_all, j] - m, NA_real_)
+    }
+  }
+  r_out <- matrix(0.0, nrow = N, ncol = K * p)
+  for (j in seq_len(p)) {
+    for (k in seq_len(K)) {
+      sel <- ind_mat[, k] != 0L
+      r_out[sel, (j - 1L) * K + k] <- x_centred[sel, j]
+    }
+  }
+
+  expect_equal(cpp_out, r_out, tolerance = 1e-12)
+  # Non-NA rows in treated cohorts must have finite interactions (not wiped out)
+  expect_false(anyNA(cpp_out[row_ok, ]))
+})
