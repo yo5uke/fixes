@@ -8,7 +8,7 @@ inst/doc
 docs/
 
 # Claude Code: personal/machine-local settings only.
-# CLAUDE.md and .claude/rules/ are shared via source control.
+# AGENTS.md and .claude/rules/ are shared via source control.
 .claude/settings.local.json
 
 /.quarto/

@@ -79,7 +79,7 @@ test_that("sa estimator returns es_result object", {
 # fixest::sunab() implements SA (2021) eq. 4 internally.
 # For a balanced panel with never-treated units, ref.c = Inf (never-treated)
 # and ref.p = -1 (baseline) reproduce the same IW aggregation as .run_sa().
-# Tolerance: 1e-6 per CLAUDE.md testing policy.
+# Tolerance: 1e-6 per AGENTS.md testing policy.
 
 test_that("sa IW estimates match fixest::sunab() at tolerance 1e-6", {
   skip_if_not_installed("fixest")

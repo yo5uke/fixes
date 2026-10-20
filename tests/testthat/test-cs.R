@@ -110,7 +110,7 @@ test_that("cs estimator returns es_result object", {
 # did::att_gt() + did::aggte(type = "dynamic") with the same never-treated
 # control group and no anticipation.
 #
-# Tolerance 1e-6 per CLAUDE.md testing policy.
+# Tolerance 1e-6 per AGENTS.md testing policy.
 
 test_that("cs ATT(g,t) estimates are numerically close to did::att_gt()", {
   skip_if_not_installed("did")

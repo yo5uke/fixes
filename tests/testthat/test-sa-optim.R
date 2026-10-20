@@ -6,7 +6,7 @@
 # and AFTER integration (verifying the optimisation produces identical output).
 #
 # The external reference is fixest::sunab() — an independent SA(2021)
-# implementation — at tolerance 1e-6 per CLAUDE.md testing policy.
+# implementation — at tolerance 1e-6 per AGENTS.md testing policy.
 
 library(testthat)
 library(fixes)
@@ -50,7 +50,7 @@ optim_data <- make_optim_data()
 # Test 1 — optimised SA estimates match fixest::sunab() on small simulation
 # ---------------------------------------------------------------------------
 # fixest::sunab() is an independent SA(2021) implementation.
-# Expected tolerance 1e-6 (same as CLAUDE.md agreement-test policy).
+# Expected tolerance 1e-6 (same as AGENTS.md agreement-test policy).
 # This test must pass both before and after integrating the i() optimisation.
 # ---------------------------------------------------------------------------
 test_that("optimized SA matches fixest::sunab() on small simulation", {
