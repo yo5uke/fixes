@@ -12,7 +12,8 @@ contamination_weights(data, time, timing, unit, fe = NULL, baseline = -1L)
 \item{time}{Unquoted name of the calendar time variable (numeric).}
 
 \item{timing}{Unquoted name of the first-treatment-period variable;
-\code{NA} marks never-treated units.}
+\code{NA} marks never-treated units. The value must be the same on every row
+of a unit.}
 
 \item{unit}{Unquoted name of the unit identifier.}
 

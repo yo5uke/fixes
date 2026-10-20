@@ -45,7 +45,7 @@ event_study(
 
 \item{time}{Unquoted time variable (numeric or Date).}
 
-\item{timing}{For \code{estimator = "twfe"}: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see \code{staggered}). For the staggered estimators (\code{"cs"}, \code{"sa"}, \code{"bjs"}, \code{"twm"}, \code{"flex"}): unquoted column giving each unit's first treatment period (\code{NA} = never treated).
+\item{timing}{For \code{estimator = "twfe"}: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see \code{staggered}). For the staggered estimators (\code{"cs"}, \code{"sa"}, \code{"bjs"}, \code{"twm"}, \code{"flex"}): unquoted column giving each unit's first treatment period (\code{NA} = never treated). The value must be the same on every row of a unit; \code{"cs"}, \code{"sa"}, \code{"bjs"} and \code{"twm"} stop with an error naming the offending units otherwise.
 \strong{Convention for staggered designs (cs, sa, bjs, twm, flex, twfe with staggered timing):}
 \code{NA} in the \code{timing} column means the unit is \emph{never treated} and will be used as a
 control. This follows the same convention as \code{did::att_gt()}, \code{fixest::sunab()}, and
@@ -182,6 +182,17 @@ it two observed waves before treatment (\code{-2}).  To reproduce an analysis bu
 on such a grid, pass that grid's event-time column via \code{rel_time} so the
 design matches \code{fixest::feols(y ~ i(rel_time, treatment, ref) | fe)} exactly.
 \code{att()} uses the same calendar-difference convention as the default here.
+
+\strong{Missing values and unbalanced panels.} With \code{estimator = "cs"}, rows
+with a missing or non-finite outcome, time, or unit are dropped, and the
+panel is then balanced by dropping every unit not observed in all periods,
+as \code{\link[did:att_gt]{did::att_gt()}} does by default (\code{allow_unbalanced_panel = FALSE}).
+Both steps warn, and \code{N}, \code{N_units}, \code{N_treated} and \code{N_nevertreated}
+describe the balanced sample. The regression-based estimators drop rows
+with missing values from the fit as \code{fixest::feols()} does; with
+\code{estimator = "sa"} or \code{"twm"} the cohort shares used to aggregate
+cohort-specific effects count only units that remain in the estimation
+sample (Sun and Abraham 2021, Section 4.1).
 }
 \section{Key Features}{
 

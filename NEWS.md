@@ -1,5 +1,63 @@
 # fixes (development version)
 
+## Behaviour changes
+
+- **CS (`estimator = "cs"` in `event_study()` and `att()`) now balances the
+  panel, as `did::att_gt()` does by default.** Rows with a missing or
+  non-finite outcome, time, or unit are dropped, then every unit not
+  observed in all periods is dropped; both steps warn. Previously a single
+  missing outcome turned every ATT(g, t) that touched it — and with it the
+  whole event-study curve — into `NA`, and units missing some periods were
+  kept wherever both periods of a comparison were observed. Estimates now
+  match `did::att_gt()` on panels with missing values, and `N`, `N_units`,
+  `N_treated` and `N_nevertreated` describe the balanced sample. Panels that
+  are already balanced and complete give the same results as before.
+- **`timing` must be constant within each unit.** `event_study()` with
+  `estimator = "cs"`, `"sa"`, `"bjs"` or `"twm"`, `att()`, and
+  `contamination_weights()` now stop with an error naming the offending
+  units when a unit carries more than one timing value, including a mix of
+  `NA` and a date. Such data previously ran, with cohort membership taken
+  from whichever row came first, so results depended on the row order.
+
+## Bug fixes
+
+- **SA and TWM cohort shares counted units outside the estimation sample.**
+  The event-study aggregation weights cohort-specific effects by cohort
+  size; units dropped from the fit (all outcomes missing, or a single
+  observation) were still counted. Shares now count only units in the
+  estimation sample (Sun and Abraham 2021, Section 4.1), so SA matches
+  `fixest::sunab()` in that case too.
+- **TWM and FLEX covariates with missing values.** A missing covariate value
+  in a treated cohort made that cohort's centring mean `NA`, which silently
+  removed all of the cohort's post-treatment cells (or stopped estimation
+  when every cohort had one). Rows with missing covariates are now dropped
+  as `fixest::feols()` drops them, including rows in the reference period,
+  which used to be kept. Covariates are centred on the estimation sample,
+  so results equal those from the same data with those rows removed.
+- `contamination_weights()` returned `NA` weights when only one TWFE
+  event-time coefficient was estimated; they are now computed.
+
+## Performance
+
+- Faster internal FE-OLS engine: the residual and VCOV "meat" computations,
+  the weighted rescaling, and the `[y | X]` assembly run in C++ without
+  intermediate copies, and the singleton and NA checks skip work on complete
+  data. Timings on one machine (20 periods, never-treated plus three
+  cohorts), before → after:
+
+  | Case | Before | After |
+  |---|---|---|
+  | Classic TWFE event study, 1,000,000 rows | 1.58 s | 1.14 s |
+  | `estimator = "sa"`, 100,000 rows | 0.42 s | 0.28 s |
+  | `contamination_weights()`, 30,000 rows | 2.03 s | 0.07 s |
+  | `"sa"` / `"twm"` / `"bjs"`, 300,000 rows (row order shuffled) | 1.40 / 1.30 / 0.94 s | 1.00 / 0.98 / 0.38 s |
+  | `"cs"`, 300,000 rows, without / with bootstrap | 0.44 / 1.61 s | 0.12 / 1.30 s |
+
+- `contamination_weights()` solves all auxiliary regressions in one pass
+  over the demeaned design instead of one regression per cohort-period cell.
+- CS: ATT(g, t) and the bootstrap influence functions are computed on a
+  dense unit × period grid in C++.
+
 ## Plot defaults
 
 - Event-study plots now draw **error bars by default**; `type = "ribbon"`

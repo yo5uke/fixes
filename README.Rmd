@@ -168,6 +168,9 @@ df_stagg$timing[df_stagg$year_treated == 10000] <- NA
 
 #### Callaway & Sant'Anna (2021) — `estimator = "cs"`
 
+CS runs on a balanced panel: rows with missing values and units not observed
+in every period are dropped with a warning, as `did::att_gt()` does by default.
+
 ```{r cs-run}
 cs <- event_study(
   data          = df_stagg,
@@ -470,7 +473,7 @@ plot(es, interactive = TRUE)
 | `outcome` | — | Outcome variable (unquoted) |
 | `treatment` | `NULL` | 0/1 treatment dummy (`"twfe"` only) |
 | `time` | — | Time variable (numeric) |
-| `timing` | — | Treatment date (scalar for `"twfe"`, column for others; `NA` = never treated) |
+| `timing` | — | Treatment date (scalar for `"twfe"`, column for others; `NA` = never treated; constant within each unit) |
 | `unit` | `NULL` | Unit ID (required for `"cs"`, `"sa"`, `"bjs"`, `"twm"`) |
 | `fe` | `NULL` | Fixed effects formula, e.g. `~ id + year` |
 | `estimator` | `"twfe"` | `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, or `"flex"` |
@@ -494,7 +497,7 @@ plot(es, interactive = TRUE)
 | `data` | — | Data frame (panel) |
 | `outcome` | — | Outcome variable (unquoted) |
 | `time` | — | Calendar time variable |
-| `timing` | — | First treatment period per unit; `NA` = never treated |
+| `timing` | — | First treatment period per unit; `NA` = never treated; constant within each unit |
 | `unit` | — | Unit identifier (required) |
 | `estimator` | `"cs"` | `"cs"` or `"bjs"` |
 | `aggregation` | `"simple"` | `"simple"`, `"by_cohort"`, or `"by_time"` |

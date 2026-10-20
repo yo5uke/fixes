@@ -27,7 +27,8 @@ att(
 \item{time}{Unquoted calendar time variable (numeric).}
 
 \item{timing}{Unquoted column giving each unit's first treatment period
-(\code{NA} = never treated).}
+(\code{NA} = never treated). The value must be the same on every row of a
+unit; otherwise \code{att()} stops with an error naming the offending units.}
 
 \item{unit}{Unquoted unit identifier (required).}
 
@@ -95,6 +96,11 @@ where \eqn{\overline{ATT(g,\cdot)}} is the mean over post-treatment periods.
 \item \strong{by_time}: \eqn{\theta(t) = \sum_{g \le t} w(g,t) \cdot ATT(g,t)}
 with \eqn{w(g,t) = n_g / \sum_{g' \le t} n_{g'}}.
 }
+
+Rows with a missing or non-finite outcome, time, or unit are dropped and
+the panel is balanced by dropping units not observed in every period, as
+\code{\link[did:att_gt]{did::att_gt()}} does by default; both steps warn, and \code{N}, \code{N_units},
+\code{N_treated} and \code{N_nevertreated} describe the balanced sample.
 }
 
 \section{Standard errors (BJS estimator)}{

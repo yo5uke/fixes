@@ -147,7 +147,8 @@
 #' @param data A data.frame with one row per unit-period (balanced panel).
 #' @param time Unquoted name of the calendar time variable (numeric).
 #' @param timing Unquoted name of the first-treatment-period variable;
-#'   `NA` marks never-treated units.
+#'   `NA` marks never-treated units. The value must be the same on every row
+#'   of a unit.
 #' @param unit Unquoted name of the unit identifier.
 #' @param fe One-sided fixed-effects formula, e.g. `~ id + year`.
 #'   When `NULL` (default), falls back to `~ <unit> + <time>`

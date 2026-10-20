@@ -155,6 +155,17 @@
 #' design matches `fixest::feols(y ~ i(rel_time, treatment, ref) | fe)` exactly.
 #' `att()` uses the same calendar-difference convention as the default here.
 #'
+#' **Missing values and unbalanced panels.** With `estimator = "cs"`, rows
+#' with a missing or non-finite outcome, time, or unit are dropped, and the
+#' panel is then balanced by dropping every unit not observed in all periods,
+#' as [did::att_gt()] does by default (`allow_unbalanced_panel = FALSE`).
+#' Both steps warn, and `N`, `N_units`, `N_treated` and `N_nevertreated`
+#' describe the balanced sample. The regression-based estimators drop rows
+#' with missing values from the fit as `fixest::feols()` does; with
+#' `estimator = "sa"` or `"twm"` the cohort shares used to aggregate
+#' cohort-specific effects count only units that remain in the estimation
+#' sample (Sun and Abraham 2021, Section 4.1).
+#'
 #' @section Key Features:
 #' - One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
 #' - Six estimators behind one interface: `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`.
@@ -166,7 +177,7 @@
 #' @param outcome Unquoted outcome (name or expression, e.g., `log(y)`).
 #' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when `estimator = "twfe"`.
 #' @param time Unquoted time variable (numeric or Date).
-#' @param timing For `estimator = "twfe"`: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see `staggered`). For the staggered estimators (`"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`): unquoted column giving each unit's first treatment period (`NA` = never treated).
+#' @param timing For `estimator = "twfe"`: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see `staggered`). For the staggered estimators (`"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`): unquoted column giving each unit's first treatment period (`NA` = never treated). The value must be the same on every row of a unit; `"cs"`, `"sa"`, `"bjs"` and `"twm"` stop with an error naming the offending units otherwise.
 #'   **Convention for staggered designs (cs, sa, bjs, twm, flex, twfe with staggered timing):**
 #'   `NA` in the `timing` column means the unit is *never treated* and will be used as a
 #'   control. This follows the same convention as `did::att_gt()`, `fixest::sunab()`, and

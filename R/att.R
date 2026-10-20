@@ -148,6 +148,11 @@
 #' - **by_time**: \eqn{\theta(t) = \sum_{g \le t} w(g,t) \cdot ATT(g,t)}
 #'   with \eqn{w(g,t) = n_g / \sum_{g' \le t} n_{g'}}.
 #'
+#' Rows with a missing or non-finite outcome, time, or unit are dropped and
+#' the panel is balanced by dropping units not observed in every period, as
+#' [did::att_gt()] does by default; both steps warn, and `N`, `N_units`,
+#' `N_treated` and `N_nevertreated` describe the balanced sample.
+#'
 #' @section Standard errors (BJS estimator):
 #' BJS SEs are approximate (naive sample variance of unit-time effects).
 #' Cluster-robust SEs for BJS aggregations are planned for a future release.
@@ -156,7 +161,8 @@
 #' @param outcome Unquoted outcome variable (name or expression, e.g., `log(y)`).
 #' @param time Unquoted calendar time variable (numeric).
 #' @param timing Unquoted column giving each unit's first treatment period
-#'   (`NA` = never treated).
+#'   (`NA` = never treated). The value must be the same on every row of a
+#'   unit; otherwise `att()` stops with an error naming the offending units.
 #' @param unit Unquoted unit identifier (required).
 #' @param estimator Estimation strategy: `"cs"` (Callaway-Sant'Anna 2021,
 #'   default) or `"bjs"` (Borusyak-Jaravel-Spiess 2024).
