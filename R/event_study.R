@@ -445,7 +445,7 @@ event_study <- function(
       conf.level = conf.level
     )
 
-    n_units <- dplyr::n_distinct(data[[unit_chr]])
+    n_units <- cs_out$n_units
     tidy <- .make_tidy(cs_out$es, conf.level)
     tidy <- .es_finalize(
       tidy,
@@ -455,13 +455,13 @@ event_study <- function(
       lag_range,
       meta = list(
         interval = interval,
-        ref_time = .es_ref_time(data[[timing_chr]]),
-        time_levels = sort(unique(data[[time_chr]])),
+        ref_time = .es_ref_time(cs_out$data[[timing_chr]]),
+        time_levels = sort(unique(cs_out$data[[time_chr]])),
         time_var = time_var,
         time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = "cs",
-        N = nrow(data),
+        N = cs_out$n_obs,
         N_units = n_units,
         N_treated = n_units - cs_out$n_never,
         N_nevertreated = cs_out$n_never,
@@ -480,7 +480,7 @@ event_study <- function(
     if (isTRUE(bootstrap)) {
       # 1. Unit-level influence functions at the (g,t) level
       infl <- .compute_influence_cs(
-        data = data,
+        data = cs_out$data,
         att_gt = cs_out$att_gt,
         control_group = control_group,
         unit_chr = unit_chr,

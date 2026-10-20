@@ -72,17 +72,77 @@
   .validate_panel_cols(data, c(outcome_chr, timing_chr, time_chr, unit_chr), time_chr)
   if (anticipation < 0L)
     stop("`anticipation` must be a non-negative integer.")
+  .assert_integerish(data[[time_chr]], time_chr)
+  .assert_integerish(data[[timing_chr]], timing_chr)
+
+  orig_cohorts <- sort(unique(data[[timing_chr]][
+    !is.na(data[[timing_chr]]) & is.finite(data[[timing_chr]])
+  ]))
+  if (length(orig_cohorts) == 0L)
+    stop("No treated units found: all values of '", timing_chr, "' are NA.")
+
+  # Drop rows with missing or non-finite values, then balance the panel across
+  # all observed periods (matching did::att_gt default allow_unbalanced_panel = FALSE).
+  bad_row <- !is.finite(data[[outcome_chr]]) | !is.finite(data[[time_chr]]) |
+    is.na(data[[unit_chr]]) |
+    (!is.na(data[[timing_chr]]) & !is.finite(data[[timing_chr]]))
+  if (any(bad_row)) {
+    warning("Dropped ", sum(bad_row),
+            " row(s) due to missing or non-finite values.",
+            call. = FALSE)
+    data <- data[!bad_row, , drop = FALSE]
+    if (nrow(data) == 0L)
+      stop("No valid observations remain after removing missing or non-finite values.")
+  }
 
   all_periods <- sort(unique(data[[time_chr]]))
-  min_t       <- min(all_periods)
-  max_t       <- max(all_periods)
+  n_periods   <- length(all_periods)
+  u_all       <- unique(data[[unit_chr]])
+  u_idx       <- match(data[[unit_chr]], u_all)
+  t_idx       <- match(data[[time_chr]], all_periods)
+  ut_code     <- (u_idx - 1L) * n_periods + t_idx
+  if (anyDuplicated(ut_code) > 0L) {
+    u_cnt <- tabulate(u_idx[!duplicated(ut_code)], nbins = length(u_all))
+  } else {
+    u_cnt <- tabulate(u_idx, nbins = length(u_all))
+  }
+  keep_u <- (u_cnt == n_periods)
+  if (!all(keep_u)) {
+    n_drop_units <- sum(!keep_u)
+    data <- data[keep_u[u_idx], , drop = FALSE]
+    if (nrow(data) == 0L)
+      stop("No complete units remain after balancing the panel.")
+    rem_cohorts <- sort(unique(data[[timing_chr]][!is.na(data[[timing_chr]])]))
+    bal_dropped_cohorts <- setdiff(orig_cohorts, rem_cohorts)
+    if (length(bal_dropped_cohorts) > 0L) {
+      warning(n_drop_units, " unit(s) missing in some periods; converting to ",
+              "balanced panel by dropping them. Cohort(s) ",
+              paste(bal_dropped_cohorts, collapse = ", "),
+              " dropped (excluded from aggregates).",
+              call. = FALSE)
+    } else {
+      warning(n_drop_units, " unit(s) missing in some periods; converting to ",
+              "balanced panel by dropping them.",
+              call. = FALSE)
+    }
+    u_all    <- u_all[keep_u]
+    unit_int <- match(data[[unit_chr]], u_all)
+  } else {
+    bal_dropped_cohorts <- numeric(0L)
+    unit_int <- u_idx
+  }
+
+  # ---- Bookkeeping -----------------------------------------------------------
+  min_t <- min(all_periods)
+  max_t <- max(all_periods)
 
   cohorts <- sort(unique(data[[timing_chr]][!is.na(data[[timing_chr]])]))
   if (length(cohorts) == 0L)
-    stop("No treated units found: all values of '", timing_chr, "' are NA.")
+    stop("No treated units remain after balancing the panel.")
 
   never_units <- unique(data[[unit_chr]][is.na(data[[timing_chr]])])
   n_never     <- length(never_units)
+  n_units     <- length(u_all)
 
   # Cohort sizes: unique units per cohort
   cohort_sizes <- .compute_cohort_sizes(data, timing_chr, unit_chr, cohorts)
@@ -101,8 +161,6 @@
   #     offset so every value is >= 1, freeing 0L as the never-treated
   #     sentinel (a real cohort at time 0 would otherwise be silently
   #     absorbed into the control group).
-  .assert_integerish(data[[time_chr]], time_chr)
-  .assert_integerish(data[[timing_chr]], timing_chr)
 
   # Base period g - 1 - anticipation assumes a consecutive integer time grid.
   base_periods <- cohorts - 1L - anticipation
@@ -120,8 +178,6 @@
             "base period (g - 1 - anticipation) not observed in the sample.",
             call. = FALSE)
   }
-
-  unit_int <- match(data[[unit_chr]], unique(data[[unit_chr]]))
 
   min_val <- min(c(all_periods, cohorts))
   offset  <- if (min_val <= 0) 1L - as.integer(min_val) else 0L
@@ -163,8 +219,8 @@
   # estimated and the cohort silently disappears from the by-cohort and
   # event-study aggregates.  Name those cohorts and expose them to the caller.
   estimated_cohorts <- unique(att_gt$g)
-  dropped_cohorts   <- sort(setdiff(cohorts, estimated_cohorts))
-  dropped_extra     <- setdiff(dropped_cohorts, skipped)  # not already warned
+  dropped_cohorts   <- sort(setdiff(orig_cohorts, estimated_cohorts))
+  dropped_extra     <- setdiff(dropped_cohorts, c(skipped, bal_dropped_cohorts))
   if (length(dropped_extra) > 0L) {
     warning("Cohort(s) ", paste(dropped_extra, collapse = ", "), " dropped: ",
             "base period (g-1) not observed for these cohorts. ",
@@ -223,12 +279,15 @@
   es <- .add_ci_columns(es, conf.level, se_col = "std_error")
 
   list(
-    es           = es,
-    att_gt       = att_gt,
-    cohorts      = cohorts,
-    n_never      = n_never,
-    cohort_sizes = cohort_sizes,
-    control_group = control_group,
+    es              = es,
+    att_gt          = att_gt,
+    cohorts         = cohorts,
+    n_never         = n_never,
+    n_units         = n_units,
+    n_obs           = nrow(data),
+    data            = data,
+    cohort_sizes    = cohort_sizes,
+    control_group   = control_group,
     dropped_cohorts = dropped_cohorts
   )
 }

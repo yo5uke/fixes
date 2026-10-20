@@ -254,6 +254,8 @@ att <- function(
     cs_out     <- .run_cs(data, outcome_chr, timing_chr, time_chr, unit_chr,
                           anticipation, control_group, conf.level)
     agg_df     <- .agg_cs(cs_out, aggregation, conf.level)
+    n_obs      <- cs_out$n_obs
+    n_units    <- cs_out$n_units
     n_treated  <- sum(cs_out$cohort_sizes)
     n_never    <- cs_out$n_never
     extra_attrs <- list(control_group   = control_group,
@@ -264,6 +266,8 @@ att <- function(
     bjs_out    <- .run_bjs(data, outcome_chr, timing_chr, time_chr, unit_chr,
                            clustervars = NULL, conf.level)
     agg_df     <- .agg_bjs(bjs_out, aggregation)
+    n_obs      <- nrow(data)
+    n_units    <- length(unique(data[[unit_chr]]))
     n_treated  <- length(unique(bjs_out$tau_it$unit))
     n_never    <- bjs_out$n_never
     extra_attrs <- list(tau_it       = bjs_out$tau_it,
@@ -275,12 +279,10 @@ att <- function(
   rownames(agg_df) <- NULL
 
   # ---- stamp class and attributes --------------------------------------------
-  n_units <- dplyr::n_distinct(data[[unit_chr]])
-
   attr(agg_df, "aggregation")    <- aggregation
   attr(agg_df, "estimator")      <- estimator
   attr(agg_df, "conf.level")     <- conf.level
-  attr(agg_df, "N")              <- nrow(data)
+  attr(agg_df, "N")              <- n_obs
   attr(agg_df, "N_units")        <- n_units
   attr(agg_df, "N_treated")      <- n_treated
   attr(agg_df, "N_nevertreated") <- n_never
