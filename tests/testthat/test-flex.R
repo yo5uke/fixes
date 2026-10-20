@@ -468,3 +468,46 @@ test_that("flex handles all-treated panel (no never-treated groups)", {
   expect_equal(attr(result, "N_nevertreated"), 0L)
   expect_true(all(is.finite(result$estimate)))
 })
+
+# ---------------------------------------------------------------------------
+# Test 14 — covariates with NAs in treated cells and baseline match pre-filtered sample
+# ---------------------------------------------------------------------------
+test_that("flex covariates: NA covariate rows in treated cells do not wipe out cells and match pre-filtered sample", {
+  d <- make_flex_cov_data(seed = 555L, M = 25L)
+
+  # Inject NAs into both treated cohorts (g = 2 and g = 4) and never-treated,
+  # including at the baseline period (year == 1) and reference group (group_id == 1),
+  # plus an NA in y on a row where x is finite
+  d$x[d$group_id == 1L & d$year == 1L][1L] <- NA_real_  # cohort 2, ref group & excl_t
+  d$x[d$group_id == 2L & d$year == 3L][1L] <- NA_real_  # cohort 2, post-treatment
+  d$x[d$group_id == 4L & d$year == 5L][1L] <- NA_real_  # cohort 4, post-treatment
+  d$x[d$group_id == 7L & d$year == 1L][1L] <- NA_real_  # never-treated, excl_t
+  d$y[d$group_id == 2L & d$year == 4L][1L] <- NA_real_  # cohort 2, y is NA while x is finite
+
+  res_na <- suppressWarnings(event_study(
+    data       = d,
+    outcome    = y,
+    time       = year,
+    timing     = g,
+    group      = group_id,
+    estimator  = "flex",
+    covariates = ~ x
+  ))
+
+  d_clean <- d[!is.na(d$x) & !is.na(d$y), ]
+  res_clean <- suppressWarnings(event_study(
+    data       = d_clean,
+    outcome    = y,
+    time       = year,
+    timing     = g,
+    group      = group_id,
+    estimator  = "flex",
+    covariates = ~ x
+  ))
+
+  tau_gt <- attr(res_na, "tau_gt")
+  expect_true(all(c(2L, 4L) %in% tau_gt$g))
+  expect_equal(attr(res_na, "N"), nrow(d_clean))
+  expect_equal(res_na$estimate,  res_clean$estimate,  tolerance = 1e-10)
+  expect_equal(res_na$std.error, res_clean$std.error, tolerance = 1e-10)
+})

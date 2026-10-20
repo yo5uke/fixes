@@ -310,3 +310,95 @@ test_that("plot_att_gt() works on mpdta cs result", {
   expect_s3_class(p_heat,  "ggplot")
   expect_s3_class(p_facet, "ggplot")
 })
+
+# ---------------------------------------------------------------------------
+# Test 7 — NA outcomes: converts to balanced panel and matches did::att_gt()
+# ---------------------------------------------------------------------------
+
+test_that("cs estimator with NA outcomes balances panel, matches did::att_gt(), and reports estimation sample N", {
+  skip_if_not_installed("did")
+
+  cs_na <- cs_data
+  # Introduce NAs in 3 treated units (across cohorts 1998, 2000, and 2002);
+  # keep all 5 never-treated units intact so did::att_gt()'s >= 5 control-unit
+  # threshold is satisfied.
+  cs_na$y[cs_na$id == 1L  & cs_na$year == 1996L] <- NA_real_
+  cs_na$y[cs_na$id == 2L  & cs_na$year == 2001L] <- NA_real_
+  cs_na$y[cs_na$id == 20L & cs_na$year == 1999L] <- NA_real_
+  cs_na$y[cs_na$id == 35L & cs_na$year == 2003L] <- NA_real_
+
+  ws <- character(0)
+  res <- withCallingHandlers(
+    event_study(
+      data          = cs_na,
+      outcome       = y,
+      time          = year,
+      timing        = g,
+      unit          = id,
+      estimator     = "cs",
+      control_group = "nevertreated"
+    ),
+    warning = function(w) {
+      ws <<- c(ws, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_true(any(grepl("missing|non-finite", ws, ignore.case = TRUE)))
+  expect_true(any(grepl("balanced panel", ws, ignore.case = TRUE)))
+
+  # 50 original units - 4 incomplete treated units = 46 balanced units (46 * 11 = 506 rows)
+  expect_equal(attr(res, "N_units"),        46L)
+  expect_equal(attr(res, "N"),              46L * 11L)
+  expect_equal(attr(res, "N_treated"),      41L)
+  expect_equal(attr(res, "N_nevertreated"), 5L)
+
+  # Compare against did::att_gt() default (panel = TRUE, allow_unbalanced_panel = FALSE)
+  cs_na_did   <- cs_na
+  cs_na_did$g <- as.numeric(cs_na_did$g)
+  cs_na_did$g[is.na(cs_na_did$g)] <- 0
+
+  ref <- suppressWarnings(did::att_gt(
+    yname         = "y",
+    tname         = "year",
+    idname        = "id",
+    gname         = "g",
+    data          = cs_na_did,
+    control_group = "nevertreated",
+    anticipation  = 0L,
+    bstrap        = FALSE,
+    cband         = FALSE
+  ))
+  ref_dyn <- did::aggte(ref, type = "dynamic", na.rm = TRUE)
+
+  post_l   <- res$relative_time[!res$is_baseline & res$relative_time >= 0]
+  common_l <- intersect(post_l, ref_dyn$egt[ref_dyn$egt >= 0])
+  expect_gt(length(common_l), 0L)
+
+  res_aligned <- res[res$relative_time %in% common_l & !res$is_baseline, ]
+  res_aligned <- res_aligned[order(res_aligned$relative_time), ]
+
+  egt_sub     <- ref_dyn$egt[ref_dyn$egt %in% common_l]
+  att_sub     <- ref_dyn$att.egt[ref_dyn$egt %in% common_l]
+  ref_aligned <- att_sub[order(egt_sub)]
+
+  expect_equal(res_aligned$estimate, ref_aligned, tolerance = 1e-6)
+
+  # Bootstrap path also works on the balanced panel
+  res_boot <- suppressWarnings(event_study(
+    data          = cs_na,
+    outcome       = y,
+    time          = year,
+    timing        = g,
+    unit          = id,
+    estimator     = "cs",
+    control_group = "nevertreated",
+    bootstrap     = TRUE,
+    boot_reps     = 99L,
+    boot_seed     = 42L
+  ))
+  expect_true(all(c("conf_low_sim", "conf_high_sim") %in% names(res_boot)))
+  non_base_boot <- res_boot[!res_boot$is_baseline, ]
+  expect_true(all(is.finite(non_base_boot$conf_low_sim)))
+  expect_true(all(is.finite(non_base_boot$conf_high_sim)))
+})

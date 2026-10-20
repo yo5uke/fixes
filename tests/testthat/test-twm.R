@@ -602,3 +602,70 @@ test_that("twm respects explicit lead_range and lag_range", {
   expect_equal(est_full, est_trim, tolerance = 1e-12,
                label = "estimates identical within shared window")
 })
+
+# ---------------------------------------------------------------------------
+# NA covariate rows (including in treated cohorts and at baseline) are dropped
+# cleanly without wiping out treated cohorts, matching fixest and pre-filtered
+# estimation sample
+# ---------------------------------------------------------------------------
+test_that("twm covariates: NA covariate rows in treated cohorts and baseline match fixest and pre-filtered sample", {
+  skip_if_not_installed("fixest")
+  d <- make_twm_data()
+  d$k <- 1L
+  set.seed(7)
+  d$x <- rnorm(nrow(d)) + d$id / 30
+
+  # Put NAs in EVERY treated cohort (1998, 2000, 2002) and never-treated,
+  # including at the baseline period (year == 1997) and post-treatment periods,
+  # plus an NA in y on a row where x is finite (strict estimation-sample centering)
+  d$x[d$id == 1L  & d$year == 1997L] <- NA_real_  # cohort 1998, baseline period
+  d$x[d$id == 2L  & d$year == 2000L] <- NA_real_  # cohort 1998, post-treatment
+  d$x[d$id == 16L & d$year == 2001L] <- NA_real_  # cohort 2000, post-treatment
+  d$x[d$id == 31L & d$year == 2003L] <- NA_real_  # cohort 2002, post-treatment
+  d$x[d$id == 46L & d$year == 1997L] <- NA_real_  # never-treated, baseline period
+  d$y[d$id == 3L  & d$year == 2002L] <- NA_real_  # cohort 1998, y is NA while x is finite
+
+  internal <- fixes:::.run_twm(d, "y", "g", "year", "id",
+                               fe_str = "id + year", covariate_chrs = "x")
+  formula  <- suppressMessages(
+    fixes:::.run_twm(d, "y", "g", "year", "id",
+                     fe_str = "id^k + year", covariate_chrs = "x"))
+
+  # Pre-filtered estimation sample (rows where both y and x are non-NA)
+  d_clean <- d[!is.na(d$x) & !is.na(d$y), ]
+  clean   <- fixes:::.run_twm(d_clean, "y", "g", "year", "id",
+                              fe_str = "id + year", covariate_chrs = "x")
+
+  # All cohorts and post-treatment event times remain estimated
+  expect_true(all(c(1998L, 2000L, 2002L) %in% internal$tau_gt$g))
+  expect_equal(internal$n_obs, nrow(d_clean))
+  expect_equal(internal$es$estimate,  formula$es$estimate,  tolerance = 1e-6)
+  expect_equal(internal$es$std_error, formula$es$std_error, tolerance = 1e-6)
+  expect_equal(internal$es$estimate,  clean$es$estimate,    tolerance = 1e-10)
+  expect_equal(internal$es$std_error, clean$es$std_error,   tolerance = 1e-10)
+})
+
+# ---------------------------------------------------------------------------
+# Singleton rows are excluded from the cohort centering even when no NA exists
+# ---------------------------------------------------------------------------
+test_that("twm covariates: singleton rows do not enter the cohort mean", {
+  d <- make_twm_data()
+  set.seed(11)
+  d$x <- rnorm(nrow(d)) + d$id / 30
+  d$x[d$id == 1L] <- 50
+  d <- d[!(d$id == 1L & d$year != 2001L), ]  # unit 1 observed once
+
+  with_singleton <- fixes:::.run_twm(d, "y", "g", "year", "id",
+                                     fe_str = "id + year", covariate_chrs = "x")
+  without        <- fixes:::.run_twm(d[d$id != 1L, ], "y", "g", "year", "id",
+                                     fe_str = "id + year", covariate_chrs = "x")
+
+  expect_equal(with_singleton$tau_gt$estimate,  without$tau_gt$estimate,
+               tolerance = 1e-10)
+  expect_equal(with_singleton$tau_gt$std_error, without$tau_gt$std_error,
+               tolerance = 1e-10)
+  # Cohort shares count only units in the estimation sample
+  expect_equal(with_singleton$cohort_sizes, without$cohort_sizes)
+  expect_equal(with_singleton$es$estimate,  without$es$estimate,  tolerance = 1e-10)
+  expect_equal(with_singleton$es$std_error, without$es$std_error, tolerance = 1e-10)
+})

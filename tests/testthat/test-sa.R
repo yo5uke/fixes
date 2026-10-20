@@ -162,6 +162,43 @@ test_that("sa cohort-share weights exclude out-of-sample cohorts", {
 })
 
 # ---------------------------------------------------------------------------
+# Cohort shares count only units in the estimation sample (SA 2021, Step 2)
+# ---------------------------------------------------------------------------
+test_that("sa cohort shares exclude units absent from the estimation sample", {
+  sa_na <- sa_data
+  sa_na$y[sa_na$id == 1L] <- NA_real_   # cohort-1998 unit never enters the fit
+
+  res_na    <- fixes:::.run_sa(sa_na, "y", "g", "year", "id", fe_str = "id + year")
+  res_clean <- fixes:::.run_sa(sa_na[sa_na$id != 1L, ], "y", "g", "year", "id",
+                               fe_str = "id + year")
+
+  expect_equal(res_na$cohort_sizes, res_clean$cohort_sizes)
+  expect_equal(res_na$es$estimate,  res_clean$es$estimate,  tolerance = 1e-10)
+  expect_equal(res_na$es$std_error, res_clean$es$std_error, tolerance = 1e-10)
+
+  skip_if_not_installed("fixest")
+  ref_data       <- sa_na
+  ref_data$g_ref <- ifelse(is.na(ref_data$g), Inf, ref_data$g)
+  sunab_fn <- utils::getFromNamespace("sunab", "fixest")
+  ref_fml  <- stats::as.formula("y ~ sunab(g_ref, year) | id + year")
+  fml_env  <- new.env(parent = environment(ref_fml))
+  fml_env$sunab <- sunab_fn
+  environment(ref_fml) <- fml_env
+  ref_model <- fixest::feols(ref_fml, data = ref_data, vcov = "HC1",
+                             notes = FALSE)
+  ref_coef  <- stats::coef(ref_model)   # sunab reports period aggregates
+  ref_rel   <- suppressWarnings(
+    as.integer(gsub(".*::(-?\\d+)$", "\\1", names(ref_coef))))
+  ref_coef  <- ref_coef[!is.na(ref_rel)]
+  ref_rel   <- ref_rel[!is.na(ref_rel)]
+
+  common_l <- intersect(res_na$es$relative_time, ref_rel)
+  expect_gt(length(common_l), 0L)
+  expect_equal(res_na$es$estimate[match(common_l, res_na$es$relative_time)],
+               unname(ref_coef[match(common_l, ref_rel)]), tolerance = 1e-6)
+})
+
+# ---------------------------------------------------------------------------
 # Test 4 — informative error when timing column is missing
 # ---------------------------------------------------------------------------
 test_that("sa estimator errors informatively when timing column is missing", {

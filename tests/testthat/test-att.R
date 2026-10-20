@@ -326,3 +326,60 @@ test_that("calc_att supports multiple conf.level values", {
   expect_true(result$conf_low_90 > result$conf_low_95)
   expect_true(result$conf_high_90 < result$conf_high_95)
 })
+
+# ---------------------------------------------------------------------------
+# Test 7 — CS with NA outcomes balances panel, matches did::aggte(), reports N
+# ---------------------------------------------------------------------------
+
+test_that("att(estimator = 'cs') with NA outcomes matches did::aggte() and reports balanced sample N", {
+  skip_if_not_installed("did")
+
+  att_na <- att_data
+  att_na$y[att_na$id == 1L  & att_na$year == 1996L] <- NA_real_
+  att_na$y[att_na$id == 20L & att_na$year == 2001L] <- NA_real_
+  att_na$y[att_na$id == 35L & att_na$year == 2003L] <- NA_real_
+
+  att_na_did   <- att_na
+  att_na_did$g <- as.numeric(att_na_did$g)
+  att_na_did$g[is.na(att_na_did$g)] <- 0
+
+  ref <- suppressWarnings(did::att_gt(
+    yname         = "y",
+    tname         = "year",
+    idname        = "id",
+    gname         = "g",
+    data          = att_na_did,
+    control_group = "nevertreated",
+    anticipation  = 0L,
+    bstrap        = FALSE,
+    cband         = FALSE
+  ))
+  ref_simple <- did::aggte(ref, type = "simple", na.rm = TRUE)
+  ref_group  <- did::aggte(ref, type = "group",  na.rm = TRUE)
+  ref_cal    <- did::aggte(ref, type = "calendar", na.rm = TRUE)
+
+  res_simple <- suppressWarnings(att(
+    data = att_na, outcome = y, time = year, timing = g, unit = id,
+    estimator = "cs", aggregation = "simple", control_group = "nevertreated"
+  ))
+  res_group <- suppressWarnings(att(
+    data = att_na, outcome = y, time = year, timing = g, unit = id,
+    estimator = "cs", aggregation = "by_cohort", control_group = "nevertreated"
+  ))
+  res_cal <- suppressWarnings(att(
+    data = att_na, outcome = y, time = year, timing = g, unit = id,
+    estimator = "cs", aggregation = "by_time", control_group = "nevertreated"
+  ))
+
+  # 50 - 3 = 47 balanced units (42 treated, 5 never-treated, 47 * 11 = 517 rows)
+  expect_equal(attr(res_simple, "N_units"),        47L)
+  expect_equal(attr(res_simple, "N"),              47L * 11L)
+  expect_equal(attr(res_simple, "N_treated"),      42L)
+  expect_equal(attr(res_simple, "N_nevertreated"), 5L)
+
+  expect_equal(res_simple$estimate, ref_simple$overall.att, tolerance = 1e-6)
+  expect_equal(res_group$estimate[order(res_group$group)],
+               ref_group$att.egt[order(ref_group$egt)], tolerance = 1e-6)
+  expect_equal(res_cal$estimate[order(res_cal$group)],
+               ref_cal$att.egt[order(ref_cal$egt)], tolerance = 1e-6)
+})
