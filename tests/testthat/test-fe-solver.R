@@ -343,3 +343,44 @@ test_that("solve_fe_normal_cpp reproduces the dummy-regression fit", {
   expect_true(z$converged)
   expect_equal(fitted_cpp, fitted_lm, tolerance = 1e-10)
 })
+
+# ---------------------------------------------------------------------------
+# Character keys from the distinct values only
+# ---------------------------------------------------------------------------
+
+test_that(".chr_factor and .chr_lookup match factor(as.character()) and v[as.character()]", {
+  set.seed(12)
+  inputs <- list(
+    sample(c(3, 10, 1.5, 200), 50L, replace = TRUE),
+    sample(c("b", "B", "a10", "a2", "_x"), 50L, replace = TRUE),
+    factor(sample(c("z", "y", "x"), 50L, replace = TRUE), levels = c("z", "x", "y")),
+    sample(1:30, 50L, replace = TRUE)
+  )
+  for (x in inputs) {
+    f <- factor(as.character(x))
+    cf <- fixes:::.chr_factor(x)
+    expect_identical(cf$levels, levels(f))
+    expect_identical(cf$code, as.integer(f))
+
+    cu <- fixes:::.chr_factor(x, sort = FALSE)
+    expect_identical(cu$levels[cu$code], as.character(x))
+
+    v <- stats::setNames(seq_along(levels(f))[-1L] / 3, levels(f)[-1L])
+    expect_identical(fixes:::.chr_lookup(x, v), unname(v[as.character(x)]))
+  }
+})
+
+test_that(".solve_fe_2way returns residuals on the kept rows and NA elsewhere", {
+  df <- data.frame(
+    unit = c("A", "A", "A", "B", "B", "B", "S"),
+    time = c(1, 2, 3, 1, 2, 3, 2),
+    y    = c(1.0, 2.0, 3.0, 1.5, NA, 3.6, 9.0)
+  )
+  s <- fixes:::.solve_fe_2way(df$y, df$unit, df$time)
+  fitted <- unname(s$alpha[df$unit] + s$beta[as.character(df$time)])
+  # S is a singleton unit; without B@2 and S@2, A@2 is a singleton time.
+  kept <- c(TRUE, FALSE, TRUE, TRUE, FALSE, TRUE, FALSE)
+  expect_equal(s$n_kept, sum(kept))
+  expect_equal(s$resid[kept], df$y[kept] - fitted[kept], tolerance = 1e-12)
+  expect_true(all(is.na(s$resid[!kept])))
+})

@@ -15,6 +15,7 @@
 # Returns a list:
 #   alpha     : named numeric, names = as.character(unit) levels kept
 #   beta      : named numeric, names = as.character(time) levels kept
+#   resid     : y - alpha - beta per input row (NA for rows not kept)
 #   n_kept    : rows used in estimation
 #   converged : logical
 .solve_fe_2way <- function(y, unit, time, tol = 1e-12, max_iter = 100000L) {
@@ -36,15 +37,18 @@
     stop("2-way FE solver: no observations remain after removing NA rows ",
          "and singleton fixed-effect levels.")
 
-  fu <- factor(as.character(unit[keep]))
-  ft <- factor(as.character(time[keep]))
+  # The sweeps never sum across unit levels, so their order does not matter;
+  # time levels are kept in sorted order.
+  fu <- .chr_factor(unit[keep], sort = FALSE)
+  ft <- .chr_factor(time[keep])
+  y_kept <- as.numeric(y[keep])
 
   fit <- solve_fe_2way_cpp(
-    y        = as.numeric(y[keep]),
-    unit_id  = as.integer(fu) - 1L,
-    time_id  = as.integer(ft) - 1L,
-    n_unit   = nlevels(fu),
-    n_time   = nlevels(ft),
+    y        = y_kept,
+    unit_id  = fu$code - 1L,
+    time_id  = ft$code - 1L,
+    n_unit   = length(fu$levels),
+    n_time   = length(ft$levels),
     tol      = tol,
     max_iter = as.integer(max_iter)
   )
@@ -56,13 +60,33 @@
 
   alpha <- fit$alpha
   beta  <- fit$beta
-  names(alpha) <- levels(fu)
-  names(beta)  <- levels(ft)
+  resid <- rep(NA_real_, length(y))
+  resid[keep] <- y_kept - alpha[fu$code] - beta[ft$code]
+  names(alpha) <- fu$levels
+  names(beta)  <- ft$levels
 
   list(
     alpha     = alpha,
     beta      = beta,
+    resid     = resid,
     n_kept    = sum(keep),
     converged = fit$converged
   )
+}
+
+# Codes and levels of factor(as.character(x)), converting only the distinct
+# values of x to character. With sort = FALSE the levels keep their order of
+# first appearance.
+.chr_factor <- function(x, sort = TRUE) {
+  ux  <- unique(x)
+  cx  <- as.character(ux)
+  lev <- unique(cx)
+  if (sort) lev <- sort(lev)
+  list(code = match(cx, lev)[match(x, ux)], levels = lev)
+}
+
+# v[as.character(x)] without names, converting only the distinct values of x.
+.chr_lookup <- function(x, v) {
+  ux <- unique(x)
+  unname(v)[match(as.character(ux), names(v))][match(x, ux)]
 }

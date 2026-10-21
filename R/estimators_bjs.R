@@ -117,23 +117,23 @@
   # exactly 1 observation in omega0).  Their FE is closed-form from
   # Theorem 2: alpha_hat_i = Y_{i,t} - beta_hat_t.  We patch those entries
   # before the imputation lookup below.
-  u_keys <- as.character(omega1[[unit_chr]])
-  t_keys <- as.character(omega1[[time_chr]])
+  alpha1 <- .chr_lookup(omega1[[unit_chr]], alpha_hat)
 
-  singleton_u <- unique(u_keys[is.na(alpha_hat[u_keys])])
+  singleton_u <- unique(as.character(omega1[[unit_chr]][is.na(alpha1)]))
   if (length(singleton_u) > 0L) {
-    omega0_u_chr <- as.character(omega0[[unit_chr]])
-    sel <- omega0_u_chr %in% singleton_u
+    sel <- !is.na(.chr_lookup(omega0[[unit_chr]],
+                              stats::setNames(seq_along(singleton_u), singleton_u)))
     if (any(sel)) {
       omega0_t_chr <- as.character(omega0[[time_chr]][sel])
       resid0 <- omega0[[outcome_chr]][sel] - beta_hat[omega0_t_chr]
-      means  <- tapply(resid0, omega0_u_chr[sel], mean, na.rm = TRUE)
+      means  <- tapply(resid0, as.character(omega0[[unit_chr]][sel]), mean,
+                       na.rm = TRUE)
       alpha_hat[names(means)] <- means
+      alpha1 <- .chr_lookup(omega1[[unit_chr]], alpha_hat)
     }
   }
 
-  y_hat0 <- alpha_hat[u_keys] + beta_hat[t_keys]
-  names(y_hat0) <- NULL
+  y_hat0 <- alpha1 + .chr_lookup(omega1[[time_chr]], beta_hat)
 
   n_na <- sum(is.na(y_hat0))
   if (n_na == nrow(omega1))
@@ -189,8 +189,7 @@
     cl1 <- cl_all[length(u0) + seq_along(u1)]
   }
 
-  eps0 <- omega0[[outcome_chr]][ok0] -
-    alpha_hat[as.character(u_raw)] - beta_hat[as.character(t_raw)]
+  eps0 <- step1_fit$resid[ok0]
   eps0[is.na(eps0)] <- 0   # rows absorbed by a singleton fixed effect
 
   # Cohort x horizon cells (eq. 8)
