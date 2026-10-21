@@ -706,32 +706,28 @@ event_study <- function(
     # ---- Multiplier bootstrap (Algorithm 1, CS 2021) -------------------------
     if (isTRUE(bootstrap)) {
       # 1. Unit-level influence functions at the (g,t) level
-      infl <- .compute_influence_cs(
-        data = cs_out$data,
-        att_gt = cs_out$att_gt,
-        control_group = control_group,
-        unit_chr = unit_chr,
-        time_chr = time_chr2,
-        timing_chr = timing_chr,
-        outcome_chr = outcome_chr,
-        att_col = "estimate",
-        anticipation = anticipation
+      psi_gt <- .cs_psi_cols(cs_out$if_ctx, cs_out$att_gt$g, cs_out$att_gt$t)
+      gt_index <- data.frame(
+        col_idx = seq_len(nrow(cs_out$att_gt)),
+        g = cs_out$att_gt$g,
+        t = cs_out$att_gt$t,
+        stringsAsFactors = FALSE
       )
 
-      # 2. Aggregate psi to event-study level using cohort-size weights
-      es_agg <- .aggregate_psi_es(
-        psi_gt = infl$psi,
-        gt_index = infl$gt_index,
-        att_gt = cs_out$att_gt,
-        cohort_sizes = cs_out$cohort_sizes,
-        att_es = cs_out$es[, c("relative_time", "estimate", "std_error")]
+      # 2. Event-study influence functions, already built for the SEs
+      es_idx <- data.frame(
+        col_idx = seq_len(nrow(cs_out$es)),
+        relative_time = cs_out$es$relative_time,
+        estimate = cs_out$es$estimate,
+        std_error = cs_out$es$std_error,
+        stringsAsFactors = FALSE
       )
 
       # 3. Bootstrap at the event-study level → simultaneous CI over all ℓ
       boot_es <- .bootstrap_cs(
-        psi = es_agg$psi_es,
-        att_gt = es_agg$gt_es_idx,
-        gt_index = es_agg$gt_es_idx,
+        psi = cs_out$psi_es,
+        att_gt = es_idx,
+        gt_index = es_idx,
         B = as.integer(B),
         alpha = alpha,
         seed = boot_seed
@@ -770,9 +766,9 @@ event_study <- function(
 
       # 5. Bootstrap at the (g,t) level — stored as attribute
       boot_gt <- .bootstrap_cs(
-        psi = infl$psi,
+        psi = psi_gt,
         att_gt = cs_out$att_gt,
-        gt_index = infl$gt_index,
+        gt_index = gt_index,
         B = as.integer(B),
         alpha = alpha,
         seed = boot_seed

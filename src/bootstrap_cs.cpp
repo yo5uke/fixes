@@ -134,7 +134,10 @@ List bootstrap_cs_cpp(
 //' the per-unit timing vector \code{unit_timing} (NA_real_ for never-treated),
 //' the 1-based column indices \code{col_t} and \code{col_base} into \code{Y_mat}
 //' for each (g, t) pair, and the cohort values \code{gt_g} and calendar times
-//' \code{gt_t}, computes the n_units x n_gt influence matrix \code{psi}.
+//' \code{gt_t}, computes the influence function psi_j of each pair j and adds
+//' \code{weight[j] * psi_j} to column \code{out_col[j]} of the
+//' n_units x n_out result. With unit weights and \code{out_col = 1..n_gt}
+//' the result is the influence matrix itself.
 //'
 //' @noRd
 // [[Rcpp::export]]
@@ -145,11 +148,14 @@ NumericMatrix compute_psi_cs_cpp(
     IntegerVector gt_t,
     IntegerVector col_t,
     IntegerVector col_base,
-    std::string   control_group
+    std::string   control_group,
+    NumericVector weight,
+    IntegerVector out_col,
+    int           n_out
 ) {
     int n_units = Y_mat.nrow();
     int n_gt    = gt_g.size();
-    NumericMatrix psi(n_units, n_gt);
+    NumericMatrix psi(n_units, n_out);
     double* pPsi = psi.begin();
     const double* pY = Y_mat.begin();
     const double* pU = unit_timing.begin();
@@ -204,13 +210,14 @@ NumericMatrix compute_psi_cs_cpp(
         double mean_c = sum_c / n_ct;
         double w_tr   = (double)n_units / n_tr;
         double w_ct   = (double)n_units / n_ct;
+        double w_j    = weight[j];
 
-        double* col_psi = pPsi + (size_t)j * n_units;
+        double* col_psi = pPsi + (size_t)(out_col[j] - 1) * n_units;
         for (int i : idx_tr) {
-            col_psi[i] = w_tr * (dy[i] - mean_g);
+            col_psi[i] += w_j * (w_tr * (dy[i] - mean_g));
         }
         for (int i : idx_ct) {
-            col_psi[i] -= w_ct * (dy[i] - mean_c);
+            col_psi[i] -= w_j * (w_ct * (dy[i] - mean_c));
         }
     }
 

@@ -248,3 +248,27 @@ test_that("compute_psi_cs_cpp matches pure-R influence calculation at 1e-12", {
     expect_equal(psi_cpp, psi_r, tolerance = 1e-12)
   }
 })
+
+# ---------------------------------------------------------------------------
+# Test 7 — weighted sums from compute_psi_cs_cpp match psi %*% w at 1e-12
+# ---------------------------------------------------------------------------
+test_that("compute_psi_cs_cpp weighted sums match psi %*% weights at 1e-12", {
+  boot_data <- make_boot_data(seed = 23L, n_units = 40L)
+
+  for (cg in c("nevertreated", "notyettreated")) {
+    cs  <- fixes:::.run_cs(boot_data, "y", "g", "year", "id",
+                           control_group = cg)
+    ctx <- cs$if_ctx
+    gt  <- cs$att_gt
+    psi <- fixes:::.cs_psi_cols(ctx, gt$g, gt$t)
+
+    set.seed(1)
+    w   <- rnorm(nrow(gt))
+    col <- sample(3L, nrow(gt), replace = TRUE)
+    agg <- fixes:::.cs_psi_cols(ctx, gt$g, gt$t, weight = w, out_col = col,
+                                n_out = 3L)
+    ref <- vapply(1:3, function(j) drop(psi[, col == j, drop = FALSE] %*% w[col == j]),
+                  numeric(nrow(psi)))
+    expect_equal(agg, ref, tolerance = 1e-12)
+  }
+})

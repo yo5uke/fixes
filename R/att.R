@@ -4,66 +4,47 @@
 
 # Aggregate CS att_gt to a summary data.frame.
 # Returns data.frame with columns: group, estimate, std_error.
-# Formula:
-#   simple:    theta = sum_g (n_g/n_treated) * mean_{t>=g} ATT(g,t)
-#              SE^2  = sum_g (n_g/n_treated)^2 * sum_{t>=g} SE^2(g,t) / |T_g|^2
+#   simple:    theta = sum_g (n_g/n_treated) * mean_{t>=g} ATT(g,t), weights
+#              proportional to n_g over the post-treatment (g,t) pairs
 #   by_cohort: theta(g) = mean_{t>=g} ATT(g,t)
-#              SE(g)^2  = sum_{t>=g} SE^2(g,t) / |T_g|^2
 #   by_time:   theta(t) = sum_{g<=t} w(g,t)*ATT(g,t), w(g,t)=n_g/sum_{g'<=t}n_{g'}
-#              SE(t)^2  = sum_{g<=t} w(g,t)^2 * SE^2(ATT(g,t))
-# All three assume independence across cohorts (CS 2021).
+# SEs come from the influence functions of the aggregates (CS 2021, Sec. 4),
+# as in did::aggte().
 .agg_cs <- function(cs_out, aggregation, conf.level) {
   att_gt       <- cs_out$att_gt
   cohort_sizes <- cs_out$cohort_sizes
+  n_units      <- cs_out$n_units
 
-  post <- att_gt[att_gt$t >= att_gt$g, ]   # relative_time >= 0
+  post <- which(att_gt$t >= att_gt$g)   # relative_time >= 0
+  p_of <- function(rows) as.numeric(cohort_sizes[as.character(att_gt$g[rows])]) / n_units
 
   if (aggregation == "simple") {
-    # Weight each (g,t) pair by n_g (cohort size), then normalize.
-    # This gives more weight to cohorts with more post-treatment periods,
-    # matching did::aggte(type="simple") (CS 2021, weighted ATT across groups).
-    w_vec     <- cohort_sizes[as.character(post$g)]
-    total_w   <- sum(w_vec)
-    w_norm    <- w_vec / total_w
-    theta     <- sum(w_norm * post$estimate)
-    var_theta <- sum(w_norm^2 * post$std_error^2)   # independence assumption
-    result_df <- data.frame(
-      group     = NA_real_,
-      estimate  = theta,
-      std_error = sqrt(var_theta),
-      stringsAsFactors = FALSE
-    )
-
-  } else if (aggregation == "by_cohort") {
-    # theta(g) = mean_{t>=g} ATT(g,t); SE(g) = sqrt(sum SE^2) / |T_g|
-    g_lev <- sort(unique(post$g))
-    g_f   <- factor(post$g, levels = g_lev)
-    n_t_g <- tapply(post$std_error, g_f, length)
-    result_df <- data.frame(
-      group     = g_lev,
-      estimate  = as.numeric(tapply(post$estimate, g_f, mean)),
-      std_error = as.numeric(tapply(post$std_error, g_f, function(s) sqrt(sum(s^2)))) /
-                  as.numeric(n_t_g),
-      stringsAsFactors = FALSE
-    )
-
-  } else {  # by_time
-    # theta(t) = sum_{g<=t} w(g,t) ATT(g,t), w(g,t) = n_g / sum_{g'<=t} n_{g'}
-    t_lev     <- sort(unique(post$t))
-    rows_list <- lapply(t_lev, function(t_val) {
-      rows_t <- post[post$t == t_val, ]
-      sz_t   <- cohort_sizes[as.character(rows_t$g)]
-      w_t    <- sz_t / sum(sz_t)
-      data.frame(
-        group     = t_val,
-        estimate  = sum(w_t * rows_t$estimate),
-        std_error = sqrt(sum(w_t^2 * rows_t$std_error^2)),
-        stringsAsFactors = FALSE
-      )
-    })
-    result_df <- do.call(rbind, rows_list)
+    group <- NA_real_
+    sets  <- list(post)
+  } else {
+    key   <- if (aggregation == "by_cohort") att_gt$g[post] else att_gt$t[post]
+    group <- sort(unique(key))
+    sets  <- lapply(group, function(k) post[key == k])
   }
+  specs <- lapply(sets, function(rows) {
+    if (aggregation == "by_cohort") {
+      list(rows = rows, w = rep(1 / length(rows), length(rows)), p = NULL)
+    } else {
+      p <- p_of(rows)
+      list(rows = rows, w = p / sum(p), p = p)
+    }
+  })
 
+  estimate <- vapply(seq_along(specs), function(j)
+    sum(specs[[j]]$w * att_gt$estimate[specs[[j]]$rows]), numeric(1L))
+  psi <- .cs_aggregate_if(cs_out$if_ctx, att_gt, specs)
+
+  result_df <- data.frame(
+    group     = group,
+    estimate  = estimate,
+    std_error = sqrt(colSums(psi^2)) / n_units,
+    stringsAsFactors = FALSE
+  )
   rownames(result_df) <- NULL
   result_df
 }

@@ -26,8 +26,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // compute_psi_cs_cpp
-NumericMatrix compute_psi_cs_cpp(NumericMatrix Y_mat, NumericVector unit_timing, IntegerVector gt_g, IntegerVector gt_t, IntegerVector col_t, IntegerVector col_base, std::string control_group);
-RcppExport SEXP _fixes_compute_psi_cs_cpp(SEXP Y_matSEXP, SEXP unit_timingSEXP, SEXP gt_gSEXP, SEXP gt_tSEXP, SEXP col_tSEXP, SEXP col_baseSEXP, SEXP control_groupSEXP) {
+NumericMatrix compute_psi_cs_cpp(NumericMatrix Y_mat, NumericVector unit_timing, IntegerVector gt_g, IntegerVector gt_t, IntegerVector col_t, IntegerVector col_base, std::string control_group, NumericVector weight, IntegerVector out_col, int n_out);
+RcppExport SEXP _fixes_compute_psi_cs_cpp(SEXP Y_matSEXP, SEXP unit_timingSEXP, SEXP gt_gSEXP, SEXP gt_tSEXP, SEXP col_tSEXP, SEXP col_baseSEXP, SEXP control_groupSEXP, SEXP weightSEXP, SEXP out_colSEXP, SEXP n_outSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -38,7 +38,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< IntegerVector >::type col_t(col_tSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type col_base(col_baseSEXP);
     Rcpp::traits::input_parameter< std::string >::type control_group(control_groupSEXP);
-    rcpp_result_gen = Rcpp::wrap(compute_psi_cs_cpp(Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group));
+    Rcpp::traits::input_parameter< NumericVector >::type weight(weightSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type out_col(out_colSEXP);
+    Rcpp::traits::input_parameter< int >::type n_out(n_outSEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_psi_cs_cpp(Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group, weight, out_col, n_out));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -226,7 +229,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
-    {"_fixes_compute_psi_cs_cpp", (DL_FUNC) &_fixes_compute_psi_cs_cpp, 7},
+    {"_fixes_compute_psi_cs_cpp", (DL_FUNC) &_fixes_compute_psi_cs_cpp, 10},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
     {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 3},
     {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 8},

@@ -167,6 +167,37 @@ test_that("cs ATT(g,t) estimates are numerically close to did::att_gt()", {
   ref_aligned <- att_sub[order(egt_sub)]
 
   expect_equal(res_aligned$estimate, ref_aligned, tolerance = 1e-6)
+
+  # SE from the influence function of the aggregate, as in did::aggte().
+  se_sub <- ref_dyn$se.egt[ref_dyn$egt %in% common_l]
+  expect_equal(res_aligned$std.error, se_sub[order(egt_sub)], tolerance = 1e-6)
+})
+
+test_that("cs event-study SEs match did::aggte() with not-yet-treated controls", {
+  skip_if_not_installed("did")
+
+  cs_data_did   <- cs_data
+  cs_data_did$g <- as.numeric(cs_data_did$g)
+  cs_data_did$g[is.na(cs_data_did$g)] <- 0
+
+  ref <- did::att_gt(
+    yname = "y", tname = "year", idname = "id", gname = "g",
+    data = cs_data_did, control_group = "notyettreated",
+    anticipation = 0L, bstrap = FALSE, cband = FALSE
+  )
+  ref_dyn <- did::aggte(ref, type = "dynamic", na.rm = TRUE)
+
+  result <- run_es(
+    data = cs_data, outcome = y, time = year, timing = g, unit = id,
+    staggered = TRUE, estimator = "cs", control_group = "notyettreated"
+  )
+  result <- result[!result$is_baseline & result$relative_time >= 0, ]
+  result <- result[order(result$relative_time), ]
+  keep   <- ref_dyn$egt >= 0
+  ref_se <- ref_dyn$se.egt[keep][order(ref_dyn$egt[keep])]
+
+  expect_equal(result$relative_time, sort(ref_dyn$egt[keep]))
+  expect_equal(result$std.error, ref_se, tolerance = 1e-6)
 })
 
 # ---------------------------------------------------------------------------
@@ -383,6 +414,8 @@ test_that("cs estimator with NA outcomes balances panel, matches did::att_gt(), 
   ref_aligned <- att_sub[order(egt_sub)]
 
   expect_equal(res_aligned$estimate, ref_aligned, tolerance = 1e-6)
+  se_sub <- ref_dyn$se.egt[ref_dyn$egt %in% common_l]
+  expect_equal(res_aligned$std.error, se_sub[order(egt_sub)], tolerance = 1e-6)
 
   # Bootstrap path also works on the balanced panel
   res_boot <- suppressWarnings(event_study(

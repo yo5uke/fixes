@@ -44,11 +44,14 @@ bootstrap_cs_cpp <- function(psi, B, alpha, B_pilot) {
 #' the per-unit timing vector \code{unit_timing} (NA_real_ for never-treated),
 #' the 1-based column indices \code{col_t} and \code{col_base} into \code{Y_mat}
 #' for each (g, t) pair, and the cohort values \code{gt_g} and calendar times
-#' \code{gt_t}, computes the n_units x n_gt influence matrix \code{psi}.
+#' \code{gt_t}, computes the influence function psi_j of each pair j and adds
+#' \code{weight[j] * psi_j} to column \code{out_col[j]} of the
+#' n_units x n_out result. With unit weights and \code{out_col = 1..n_gt}
+#' the result is the influence matrix itself.
 #'
 #' @noRd
-compute_psi_cs_cpp <- function(Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group) {
-    .Call(`_fixes_compute_psi_cs_cpp`, Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group)
+compute_psi_cs_cpp <- function(Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group, weight, out_col, n_out) {
+    .Call(`_fixes_compute_psi_cs_cpp`, Y_mat, unit_timing, gt_g, gt_t, col_t, col_base, control_group, weight, out_col, n_out)
 }
 
 compute_att_gt_cpp <- function(unit_id, time_id, outcome, cohort, cohorts, all_times, control_group, anticipation = 0L) {

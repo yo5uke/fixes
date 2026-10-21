@@ -131,12 +131,10 @@ test_that("calc_att CS simple matches did::aggte(type='simple')", {
   )
 
   # Point estimate matches did::aggte at 1e-4 (ATT(g,t) estimates agree at 1e-6;
-  # aggregation uses the same exposure-weighted formula).
-  # SE is NOT compared: our formula assumes independence across (g,t) pairs,
-  # while did uses influence-function SEs that account for within-cohort
-  # correlation. The two methods yield systematically different SEs.
+  # aggregation uses the same exposure-weighted formula). The SE is built from
+  # the influence function, including the estimated cohort weights.
   expect_equal(result$estimate, ref_simple$overall.att, tolerance = 1e-4)
-  expect_true(result$std.error > 0)
+  expect_equal(result$std.error, ref_simple$overall.se, tolerance = 1e-6)
 })
 
 test_that("calc_att CS by_cohort matches did::aggte(type='group')", {
@@ -167,9 +165,7 @@ test_that("calc_att CS by_cohort matches did::aggte(type='group')", {
   ref_sub_se  <- ref_sub_se[order(ref_group$egt[ref_group$egt %in% common_g])]
 
   expect_equal(res_sub$estimate, ref_sub_att, tolerance = 1e-4)
-  # SE not compared: did uses influence-function variance (accounts for
-  # within-cohort correlation); we assume independence across (g,t) pairs.
-  expect_true(all(res_sub$std.error > 0))
+  expect_equal(res_sub$std.error, ref_sub_se, tolerance = 1e-6)
 })
 
 test_that("calc_att CS by_time matches did::aggte(type='calendar')", {
@@ -200,8 +196,7 @@ test_that("calc_att CS by_time matches did::aggte(type='calendar')", {
   ref_sub_se  <- ref_sub_se[order(ref_cal$egt[ref_cal$egt %in% common_t])]
 
   expect_equal(res_sub$estimate, ref_sub_att, tolerance = 1e-4)
-  # SE not compared: did uses influence-function variance; we use independence.
-  expect_true(all(res_sub$std.error >= 0))
+  expect_equal(res_sub$std.error, ref_sub_se, tolerance = 1e-6)
 })
 
 # ---------------------------------------------------------------------------
@@ -382,4 +377,10 @@ test_that("att(estimator = 'cs') with NA outcomes matches did::aggte() and repor
                ref_group$att.egt[order(ref_group$egt)], tolerance = 1e-6)
   expect_equal(res_cal$estimate[order(res_cal$group)],
                ref_cal$att.egt[order(ref_cal$egt)], tolerance = 1e-6)
+
+  expect_equal(res_simple$std.error, ref_simple$overall.se, tolerance = 1e-6)
+  expect_equal(res_group$std.error[order(res_group$group)],
+               ref_group$se.egt[order(ref_group$egt)], tolerance = 1e-6)
+  expect_equal(res_cal$std.error[order(res_cal$group)],
+               ref_cal$se.egt[order(ref_cal$egt)], tolerance = 1e-6)
 })

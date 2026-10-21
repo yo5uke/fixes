@@ -21,10 +21,12 @@
 #' with cohort-size weights
 #' \eqn{w_{es}(g,\ell) = n_g \big/ \sum_{g':\,g'+\ell \in \text{sample}} n_{g'}}.
 #'
-#' Standard errors use the delta-method variance:
-#' \eqn{SE^2(ATT(g,t)) = s^2_g/n_g + s^2_C/n_C} (two-sample DiD),
-#' and \eqn{SE^2(\theta_{es}(\ell)) = \sum_g w(g,\ell)^2 \cdot SE^2(ATT(g,g+\ell))}
-#' (independence across cohorts).
+#' \eqn{SE^2(ATT(g,t)) = s^2_g/n_g + s^2_C/n_C} (two-sample DiD). The SE of an
+#' aggregate is the root sum of squares of its unit-level influence function
+#' divided by \eqn{n}. The influence function carries the covariance across
+#' \eqn{(g,t)} pairs (shared units and shared controls) and the estimation of
+#' the cohort weights (Callaway and Sant'Anna 2021, Sec. 4; the same
+#' influence function as \code{did::aggte()}).
 #'
 #' @param data data.frame with one row per unit-period (balanced panel).
 #' @param outcome_chr Column name (character) for the outcome variable.
@@ -54,6 +56,9 @@
 #'   \item{\code{dropped_cohorts}}{Numeric vector of cohorts for which no
 #'     ATT(g,t) could be estimated (base period g-1 not observed), excluded
 #'     from all aggregates.}
+#'   \item{\code{if_ctx}}{Inputs of \code{.cs_aggregate_if()}.}
+#'   \item{\code{psi_es}}{Influence functions of the rows of \code{es}
+#'     (n_units x nrow(es)).}
 #' }
 #' @noRd
 .run_cs <- function(data,
@@ -233,11 +238,11 @@
   # theta_es(l) = sum_{g: g+l in [min_t, max_t]} ATT(g, g+l) * w(g, l)
   # w(g, l)     = n_g / sum_{g': g'+l in [min_t, max_t]} n_{g'}
   #
-  # Var(theta_es(l)) = sum_g w(g,l)^2 * Var(ATT(g, g+l))
-  #   (cohorts are asymptotically independent under CS identification)
+  # SE: influence function of theta_es(l) (see .cs_aggregate_if()).
 
   event_times <- sort(unique(att_gt$relative_time))
   es_rows     <- list()
+  es_specs    <- list()
   key_gt      <- paste(att_gt$g, att_gt$t, sep = "\r")  # O(1) (g,t) row lookup
 
   for (l in event_times) {
@@ -257,19 +262,25 @@
     if (total == 0L) next
     w <- sz / total
 
-    theta  <- sum(w * att_gt$estimate[idx])
-    vtheta <- sum(w^2 * att_gt$std_error[idx]^2)
-
     es_rows[[length(es_rows) + 1L]] <- data.frame(
       relative_time = l,
-      estimate      = theta,
-      std_error     = sqrt(vtheta),
+      estimate      = sum(w * att_gt$estimate[idx]),
+      std_error     = NA_real_,
       stringsAsFactors = FALSE
+    )
+    es_specs[[length(es_specs) + 1L]] <- list(
+      rows = idx, w = as.numeric(w), p = as.numeric(sz) / n_units
     )
   }
 
   if (length(es_rows) == 0L)
     stop("Event-study aggregation produced no estimates.")
+
+  if_ctx <- .cs_influence_context(data, control_group, unit_chr, time_chr,
+                                  timing_chr, outcome_chr, anticipation)
+  psi_es <- .cs_aggregate_if(if_ctx, att_gt, es_specs)
+  se_es  <- sqrt(colSums(psi_es^2)) / n_units
+  for (j in seq_along(es_rows)) es_rows[[j]]$std_error <- se_es[j]
 
   es           <- do.call(rbind, es_rows)
   es           <- es[order(es$relative_time), ]
@@ -289,6 +300,8 @@
     data            = data,
     cohort_sizes    = cohort_sizes,
     control_group   = control_group,
-    dropped_cohorts = dropped_cohorts
+    dropped_cohorts = dropped_cohorts,
+    if_ctx          = if_ctx,
+    psi_es          = psi_es
   )
 }

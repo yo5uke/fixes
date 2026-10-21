@@ -6,7 +6,7 @@
 # Public helpers (noRd, used internally by run_es):
 #   .mammen_weights(n)
 #   .compute_influence_cs(data, att_gt, ...)
-#   .aggregate_psi_es(psi_gt, gt_index, att_gt, cohort_sizes)
+#   .cs_aggregate_if(ctx, att_gt, specs)
 #   .bootstrap_cs(psi, att_gt, gt_index, B, alpha, seed)
 # ============================================================================
 
@@ -23,6 +23,71 @@
   kappa <- (sqrt(5) + 1) / 2 # golden ratio ≈ 1.618
   p1 <- kappa / sqrt(5) # P(V = 1 - kappa) ≈ 0.7236
   ifelse(stats::runif(n) < p1, 1 - kappa, kappa)
+}
+
+# ---------------------------------------------------------------------------
+# Shared inputs of the (g,t)-level influence functions: the unit x period
+# outcome matrix and each unit's cohort (NA = never treated). Rows follow
+# sort(unique(data[[unit_chr]])).
+# ---------------------------------------------------------------------------
+#' @noRd
+.cs_influence_context <- function(
+  data,
+  control_group,
+  unit_chr,
+  time_chr,
+  timing_chr,
+  outcome_chr,
+  anticipation
+) {
+  all_units <- sort(unique(data[[unit_chr]]))
+  n_units <- length(all_units)
+
+  all_times <- sort(unique(data[[time_chr]]))
+  n_times <- length(all_times)
+
+  unit_pos <- match(data[[unit_chr]], all_units)
+  time_pos <- match(data[[time_chr]], all_times)
+
+  Y_mat <- matrix(NA_real_, nrow = n_units, ncol = n_times)
+  Y_mat[cbind(unit_pos, time_pos)] <- data[[outcome_chr]]
+
+  # With duplicated positions the last row wins.
+  timing_vals <- data[[timing_chr]]
+  unit_timing <- rep(NA_real_, n_units)
+  ok <- !is.na(timing_vals)
+  unit_timing[unit_pos[ok]] <- timing_vals[ok]
+
+  list(
+    Y_mat         = Y_mat,
+    unit_timing   = unit_timing,
+    time_to_col   = setNames(seq_len(n_times), as.character(all_times)),
+    control_group = control_group,
+    anticipation  = as.integer(anticipation),
+    n_units       = n_units
+  )
+}
+
+# psi_hat(i; g, t) for the (g, t) pairs given, as an n_units x length(g)
+# matrix. With `weight` and `out_col`, column j of the n_units x n_out result
+# is instead sum_{k: out_col[k] = j} weight[k] * psi_hat(i; g_k, t_k).
+#' @noRd
+.cs_psi_cols <- function(ctx, g, t, weight = rep(1, length(g)),
+                         out_col = seq_along(g), n_out = length(g)) {
+  col_t    <- unname(ctx$time_to_col[as.character(t)])
+  col_base <- unname(ctx$time_to_col[as.character(g - 1L - ctx$anticipation)])
+  compute_psi_cs_cpp(
+    Y_mat         = ctx$Y_mat,
+    unit_timing   = as.numeric(ctx$unit_timing),
+    gt_g          = as.integer(g),
+    gt_t          = as.integer(t),
+    col_t         = as.integer(col_t),
+    col_base      = as.integer(col_base),
+    control_group = ctx$control_group,
+    weight        = as.numeric(weight),
+    out_col       = as.integer(out_col),
+    n_out         = as.integer(n_out)
+  )
 }
 
 #' Influence Functions for the Callaway-Sant'Anna (2021) Multiplier Bootstrap
@@ -110,36 +175,11 @@
     att_col <- fallback[1L]
   }
 
-  # ---- bookkeeping ----------------------------------------------------------
-  all_units <- sort(unique(data[[unit_chr]]))
-  n_units <- length(all_units)
+  ctx <- .cs_influence_context(
+    data, control_group, unit_chr, time_chr, timing_chr, outcome_chr,
+    anticipation
+  )
 
-  all_times <- sort(unique(data[[time_chr]]))
-  n_times <- length(all_times)
-
-  # row-to-position maps (integer index into all_units / all_times)
-  unit_pos <- match(data[[unit_chr]], all_units) # length nrow(data)
-  time_pos <- match(data[[time_chr]], all_times) # length nrow(data)
-
-  # ---- outcome matrix [unit_pos x time_pos] ---------------------------------
-  Y_mat <- matrix(NA_real_, nrow = n_units, ncol = n_times)
-  Y_mat[cbind(unit_pos, time_pos)] <- data[[outcome_chr]]
-
-  # time value -> column index (for O(1) lookup)
-  time_to_col <- setNames(seq_len(n_times), as.character(all_times))
-
-  # ---- per-unit timing (one timing value per unit, or NA) ------------------
-  # Collapse: for each unit, pick the unique non-NA timing value.
-  timing_vals <- data[[timing_chr]]
-  # Build unit_timing[k] = timing for the k-th position in all_units
-  # (vectorised; with duplicated positions the last row wins, matching the
-  # original loop)
-  unit_timing <- rep(NA_real_, n_units)
-  ok <- !is.na(timing_vals)
-  unit_timing[unit_pos[ok]] <- timing_vals[ok]
-  # unit_timing is now length n_units; NA = never-treated
-
-  # ---- initialise output matrix ---------------------------------------------
   n_gt <- nrow(att_gt)
   gt_index <- data.frame(
     col_idx = seq_len(n_gt),
@@ -148,78 +188,52 @@
     stringsAsFactors = FALSE
   )
 
-  col_t    <- unname(time_to_col[as.character(att_gt$t)])
-  col_base <- unname(time_to_col[as.character(att_gt$g - 1L - anticipation)])
-
-  psi <- compute_psi_cs_cpp(
-    Y_mat         = Y_mat,
-    unit_timing   = as.numeric(unit_timing),
-    gt_g          = as.integer(att_gt$g),
-    gt_t          = as.integer(att_gt$t),
-    col_t         = as.integer(col_t),
-    col_base      = as.integer(col_base),
-    control_group = control_group
-  )
+  psi <- .cs_psi_cols(ctx, att_gt$g, att_gt$t)
 
   list(psi = psi, gt_index = gt_index)
 }
 
 # ---------------------------------------------------------------------------
-# Aggregate (g,t)-level influence functions to event-study (relative time)
-# level, using the same cohort-size weights as .run_cs().
+# Influence functions of aggregated parameters theta = sum_k w_k ATT(g_k, t_k).
 #
-# For each relative time ell, the event-study aggregate is:
-#   theta_es(ell) = sum_{g: g+ell valid} w(g,ell) * ATT(g, g+ell)
-# where w(g,ell) = n_g / sum_{g'} n_{g'}.  The corresponding influence
-# function column is:
-#   psi_es[i, ell] = sum_{g} w(g,ell) * psi_gt[i, idx(g, g+ell)]
+# Each spec is list(rows, w, p):
+#   rows : rows of att_gt entering the aggregate
+#   w    : their weights
+#   p    : NULL when the weights are known constants; otherwise the
+#          unnormalised cohort shares p_k = n_{g_k} / n with w = p / sum(p).
+# The influence function is sum_k w_k psi_k plus, when `p` is given, the
+# term for the estimated weights (CS 2021, Sec. 4; did::aggte's `wif`):
+#   sum_k ATT_k * d w_k = [(A_i - S) / P] - (M_i - P) * S / P^2,
+# with P = sum(p), S = sum(ATT_k p_k), A_i = sum of ATT_k over the k in
+# unit i's cohort and M_i the number of such k.
 #
-# @param psi_gt     matrix (n_units x n_gt) from .compute_influence_cs()
-# @param gt_index   data.frame (col_idx, g, t) from .compute_influence_cs()
-# @param att_gt     data.frame with g, t, relative_time from .run_cs()
-# @param cohort_sizes named integer vector (cohort label -> n_units in cohort)
-# @return list(psi_es = matrix n_units x n_rel_times,
-#              gt_es_index = data.frame(col_idx, relative_time, estimate, std_error))
+# SE(theta) = sqrt(sum_i IF_i^2) / n.
+#
+# @return n_units x length(specs) matrix of influence functions.
 # @noRd
-.aggregate_psi_es <- function(psi_gt, gt_index, att_gt, cohort_sizes, att_es) {
-  event_times <- att_es$relative_time # already sorted by .run_cs()
-  n_units <- nrow(psi_gt)
-  n_es <- length(event_times)
-
-  psi_es <- matrix(0.0, nrow = n_units, ncol = n_es)
-  gt_es_idx <- data.frame(
-    col_idx = seq_len(n_es),
-    relative_time = event_times,
-    estimate = att_es$estimate,
-    std_error = att_es$std_error,
-    stringsAsFactors = FALSE
+.cs_aggregate_if <- function(ctx, att_gt, specs) {
+  rows <- unlist(lapply(specs, `[[`, "rows"))
+  out  <- .cs_psi_cols(
+    ctx, att_gt$g[rows], att_gt$t[rows],
+    weight  = unlist(lapply(specs, `[[`, "w")),
+    out_col = rep(seq_along(specs), lengths(lapply(specs, `[[`, "rows"))),
+    n_out   = length(specs)
   )
-
-  key_gt <- paste(gt_index$g, gt_index$t, sep = "\r")
-  for (j in seq_len(n_es)) {
-    ell <- event_times[j]
-    # rows of att_gt with this relative time
-    rows_ell <- which(att_gt$relative_time == ell)
-    if (length(rows_ell) == 0L) {
-      next
-    }
-    eligible_g <- att_gt$g[rows_ell]
-
-    sz <- cohort_sizes[as.character(eligible_g)]
-    total <- sum(sz, na.rm = TRUE)
-    if (total == 0L) {
-      next
-    }
-    w <- as.numeric(sz) / total
-
-    cols <- gt_index$col_idx[match(paste(eligible_g, eligible_g + ell, sep = "\r"), key_gt)]
-    ok   <- !is.na(cols)
-    if (any(ok)) {
-      psi_es[, j] <- drop(psi_gt[, cols[ok], drop = FALSE] %*% w[ok])
-    }
+  # The weight term depends on the unit only through its cohort.
+  cohorts <- sort(unique(att_gt$g))
+  i_g <- match(ctx$unit_timing, cohorts, nomatch = length(cohorts) + 1L)
+  for (j in seq_along(specs)) {
+    sp <- specs[[j]]
+    if (is.null(sp$p)) next
+    att <- att_gt$estimate[sp$rows]
+    pos <- match(att_gt$g[sp$rows], cohorts)
+    P   <- sum(sp$p)
+    S   <- sum(att * sp$p)
+    A_g <- c(vapply(seq_along(cohorts), function(c) sum(att[pos == c]), numeric(1L)), 0)
+    M_g <- c(tabulate(pos, length(cohorts)), 0)
+    out[, j] <- out[, j] + ((A_g - S) / P - (M_g - P) * S / P^2)[i_g]
   }
-
-  list(psi_es = psi_es, gt_es_idx = gt_es_idx)
+  out
 }
 
 # ---------------------------------------------------------------------------
@@ -227,7 +241,7 @@
 # Callaway & Sant'Anna (2021).
 #
 # Works at any aggregation level: pass psi for ATT(g,t)-level bands or
-# the event-study aggregated psi (from .aggregate_psi_es) for simultaneous
+# the event-study aggregated psi (from .cs_aggregate_if) for simultaneous
 # bands over the event-study curve.
 #
 # Implementation:
