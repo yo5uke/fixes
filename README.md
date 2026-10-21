@@ -12,8 +12,10 @@ status](https://www.r-pkg.org/badges/version/fixes)](https://CRAN.R-project.org/
 
 ## Overview
 
-`fixes` is an R package for **difference-in-differences estimation** in
-panel data. It covers the three stages of a modern DiD workflow:
+`fixes` is an R package for **event studies and inference in
+difference-in-differences designs** with panel data. It runs the classic
+two-way fixed-effects (TWFE) event study as well as estimators for
+staggered adoption, and covers four stages of a DiD workflow:
 
 | Stage | Function | What it does |
 |----|----|----|
