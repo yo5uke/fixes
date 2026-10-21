@@ -51,8 +51,8 @@
 
 ## 既知の制約
 
-- 約 100 万行のパネル(50,000 ユニット × 20 期)では、classic event-study の経路が同じ設計の `fixest::feols` より約 1.7 倍遅い(fixest は 8 スレッド)。残っている差の内訳は、まだプロファイルしていない。
-- `att()` の BJS 集計は cluster-robust ではなく、独立を仮定した素朴な SE。
+- 約 100 万行のパネル(50,000 ユニット × 20 期、fixest は 8 スレッド)で同じ設計の `fixest::feols` と比べると、classic event-study は HC1 では同程度(1.1 秒対 1.2 秒)、一元クラスタでは約 1.4 倍遅い(1.0 秒対 0.7 秒)。classic 経路の差の内訳は、まだプロファイルしていない。`did()` は約 3 倍遅い(0.17 秒対 0.06 秒)。時間は FE の反復デミーンと FE の整数コード化に分散していて、単独で大きい箇所はない。
+- `estimator = "twm"` に共変量を足すと回帰の列が増え(3 コホート × 20 期、共変量 1 つで 57 列から 133 列)、N·p² の交差積と VCOV の meat が支配的になる。100 万行で共変量なしの約 3.5 倍かかる。
 - CS はバランスパネルに揃えてから推定する(NA の行を落とし、全期間そろわないユニットを落とす。`did::att_gt()` の既定と同じ)。`timing` が `±Inf` の行も欠損として落ちるため、never-treated を `Inf` で表すデータでは対照群が消える(未対応)。
 - `honest_sensitivity()` は ARP-conditional のみ。FLCI/hybrid は未実装。`es_vcov` を持つのは `estimator = "twfe"` だけで、他の推定量では `betahat`/`sigma` を明示する。
 - Synthetic DiD とベイズ event study は未実装。
