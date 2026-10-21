@@ -316,3 +316,30 @@ test_that("bjs end-to-end matches the v0.11 pipeline on mpdta", {
 
   expect_equal(post$estimate, as.numeric(ref), tolerance = 1e-6)
 })
+
+# ---------------------------------------------------------------------------
+# solve_fe_normal_cpp: (A'A) z = A'u has A z equal to the fitted values of u
+# on the unit and time dummies.
+# ---------------------------------------------------------------------------
+
+test_that("solve_fe_normal_cpp reproduces the dummy-regression fit", {
+  set.seed(11)
+  df <- expand.grid(unit = 1:40, time = 1:8)
+  df <- df[runif(nrow(df)) > 0.2, ]
+  df$u <- rnorm(nrow(df))
+
+  u_code <- as.integer(factor(df$unit)) - 1L
+  t_code <- as.integer(factor(df$time)) - 1L
+  n_u <- max(u_code) + 1L
+  n_t <- max(t_code) + 1L
+  c_unit <- as.numeric(rowsum(df$u, u_code))
+  c_time <- as.numeric(rowsum(df$u, t_code))
+
+  z <- fixes:::solve_fe_normal_cpp(u_code, t_code, c_unit, c_time,
+                                   n_u, n_t, 1e-12, 100000L)
+  fitted_cpp <- z$z_unit[u_code + 1L] + z$z_time[t_code + 1L]
+  fitted_lm  <- unname(fitted(lm(u ~ factor(unit) + factor(time), data = df)))
+
+  expect_true(z$converged)
+  expect_equal(fitted_cpp, fitted_lm, tolerance = 1e-10)
+})

@@ -192,6 +192,38 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// solve_fe_normal_cpp
+List solve_fe_normal_cpp(IntegerVector unit_id, IntegerVector time_id, NumericVector c_unit, NumericVector c_time, int n_unit, int n_time, double tol, int max_iter);
+RcppExport SEXP _fixes_solve_fe_normal_cpp(SEXP unit_idSEXP, SEXP time_idSEXP, SEXP c_unitSEXP, SEXP c_timeSEXP, SEXP n_unitSEXP, SEXP n_timeSEXP, SEXP tolSEXP, SEXP max_iterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type unit_id(unit_idSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type time_id(time_idSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type c_unit(c_unitSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type c_time(c_timeSEXP);
+    Rcpp::traits::input_parameter< int >::type n_unit(n_unitSEXP);
+    Rcpp::traits::input_parameter< int >::type n_time(n_timeSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
+    rcpp_result_gen = Rcpp::wrap(solve_fe_normal_cpp(unit_id, time_id, c_unit, c_time, n_unit, n_time, tol, max_iter));
+    return rcpp_result_gen;
+END_RCPP
+}
+// fe_schur_cpp
+NumericMatrix fe_schur_cpp(IntegerVector elim_id, IntegerVector keep_id, int n_elim, int n_keep);
+RcppExport SEXP _fixes_fe_schur_cpp(SEXP elim_idSEXP, SEXP keep_idSEXP, SEXP n_elimSEXP, SEXP n_keepSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type elim_id(elim_idSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type keep_id(keep_idSEXP);
+    Rcpp::traits::input_parameter< int >::type n_elim(n_elimSEXP);
+    Rcpp::traits::input_parameter< int >::type n_keep(n_keepSEXP);
+    rcpp_result_gen = Rcpp::wrap(fe_schur_cpp(elim_id, keep_id, n_elim, n_keep));
+    return rcpp_result_gen;
+END_RCPP
+}
 // build_indicator_matrix_cpp
 IntegerMatrix build_indicator_matrix_cpp(IntegerVector cohort_id, IntegerVector time_id, IntegerVector gs_g, IntegerVector gs_s);
 RcppExport SEXP _fixes_build_indicator_matrix_cpp(SEXP cohort_idSEXP, SEXP time_idSEXP, SEXP gs_gSEXP, SEXP gs_sSEXP) {
@@ -226,6 +258,34 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sum_by_code_cpp
+NumericVector sum_by_code_cpp(IntegerVector code, NumericVector x, int n);
+RcppExport SEXP _fixes_sum_by_code_cpp(SEXP codeSEXP, SEXP xSEXP, SEXP nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type code(codeSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    rcpp_result_gen = Rcpp::wrap(sum_by_code_cpp(code, x, n));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sum_rows_by_code_cpp
+NumericMatrix sum_rows_by_code_cpp(IntegerVector to, IntegerVector from, NumericMatrix X, int n, Nullable<NumericVector> wt);
+RcppExport SEXP _fixes_sum_rows_by_code_cpp(SEXP toSEXP, SEXP fromSEXP, SEXP XSEXP, SEXP nSEXP, SEXP wtSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type to(toSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type X(XSEXP);
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericVector> >::type wt(wtSEXP);
+    rcpp_result_gen = Rcpp::wrap(sum_rows_by_code_cpp(to, from, X, n, wt));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
@@ -240,8 +300,12 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fixes_fe_ols_meat_cpp", (DL_FUNC) &_fixes_fe_ols_meat_cpp, 7},
     {"_fixes_build_twfe_design_cpp", (DL_FUNC) &_fixes_build_twfe_design_cpp, 3},
     {"_fixes_solve_fe_2way_cpp", (DL_FUNC) &_fixes_solve_fe_2way_cpp, 7},
+    {"_fixes_solve_fe_normal_cpp", (DL_FUNC) &_fixes_solve_fe_normal_cpp, 8},
+    {"_fixes_fe_schur_cpp", (DL_FUNC) &_fixes_fe_schur_cpp, 4},
     {"_fixes_build_indicator_matrix_cpp", (DL_FUNC) &_fixes_build_indicator_matrix_cpp, 4},
     {"_fixes_aggregate_iw_cpp", (DL_FUNC) &_fixes_aggregate_iw_cpp, 10},
+    {"_fixes_sum_by_code_cpp", (DL_FUNC) &_fixes_sum_by_code_cpp, 3},
+    {"_fixes_sum_rows_by_code_cpp", (DL_FUNC) &_fixes_sum_rows_by_code_cpp, 5},
     {NULL, NULL, 0}
 };
 

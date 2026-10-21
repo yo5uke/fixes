@@ -266,3 +266,151 @@ test_that("bjs and cs produce similar estimates under homogeneous treatment effe
 
   expect_equal(bjs_est, cs_est, tolerance = 0.1)
 })
+
+# ---------------------------------------------------------------------------
+# Test — standard errors (Theorem 3, eqs. 7-8) agree with didimputation
+# ---------------------------------------------------------------------------
+# The SE includes the projection of the treated weights on the Step 1 fixed
+# effects; didimputation computes the same weights by a sparse solve.
+
+bjs_ref_data <- function(df) {
+  df$g <- as.numeric(df$g)
+  df$g[is.na(df$g)] <- 0
+  df
+}
+
+test_that("bjs event-study SEs match didimputation::did_imputation()", {
+  skip_if_not_installed("didimputation")
+
+  ref <- didimputation::did_imputation(
+    data = bjs_ref_data(bjs_data), yname = "y", idname = "id",
+    tname = "year", gname = "g", horizon = TRUE
+  )
+  result <- event_study(
+    y ~ 1 | id + year, data = bjs_data, time = year, timing = g,
+    estimator = "bjs"
+  )
+  result <- result[!result$is_baseline & result$relative_time >= 0, ]
+  result <- result[order(result$relative_time), ]
+  ref    <- ref[order(as.integer(ref$term)), ]
+
+  expect_equal(result$relative_time, as.integer(ref$term))
+  expect_equal(result$estimate, ref$estimate, tolerance = 1e-6)
+  expect_equal(result$std.error, ref$std.error, tolerance = 1e-6)
+})
+
+test_that("bjs SEs match didimputation with a coarser cluster variable", {
+  skip_if_not_installed("didimputation")
+
+  df <- bjs_data
+  df$st <- df$id %% 7L
+
+  ref <- didimputation::did_imputation(
+    data = bjs_ref_data(df), yname = "y", idname = "id", tname = "year",
+    gname = "g", horizon = TRUE, cluster_var = "st"
+  )
+  result <- event_study(
+    y ~ 1 | id + year, data = df, time = year, timing = g,
+    estimator = "bjs", cluster = "st"
+  )
+  result <- result[!result$is_baseline & result$relative_time >= 0, ]
+  result <- result[order(result$relative_time), ]
+  ref    <- ref[order(as.integer(ref$term)), ]
+
+  expect_equal(result$std.error, ref$std.error, tolerance = 1e-6)
+})
+
+test_that("bjs SEs match didimputation on an unbalanced panel", {
+  skip_if_not_installed("didimputation")
+
+  set.seed(7)
+  df <- bjs_data[sample(nrow(bjs_data), round(0.9 * nrow(bjs_data))), ]
+  df <- df[order(df$id, df$year), ]
+
+  ref <- suppressWarnings(didimputation::did_imputation(
+    data = bjs_ref_data(df), yname = "y", idname = "id", tname = "year",
+    gname = "g", horizon = TRUE
+  ))
+  result <- suppressWarnings(event_study(
+    y ~ 1 | id + year, data = df, time = year, timing = g,
+    estimator = "bjs"
+  ))
+  result <- result[!result$is_baseline & result$relative_time >= 0, ]
+  result <- result[order(result$relative_time), ]
+  ref    <- ref[order(as.integer(ref$term)), ]
+
+  expect_equal(result$relative_time, as.integer(ref$term))
+  expect_equal(result$std.error, ref$std.error, tolerance = 1e-6)
+})
+
+test_that("att(estimator = 'bjs') SEs match didimputation for every aggregation", {
+  skip_if_not_installed("didimputation")
+
+  ref_df <- bjs_ref_data(bjs_data)
+  ref_df$D <- as.integer(ref_df$g > 0 & ref_df$year >= ref_df$g)
+
+  simple <- att(y ~ 1 | id + year, data = bjs_data, time = year, timing = g,
+                estimator = "bjs", aggregation = "simple")
+  ref <- didimputation::did_imputation(
+    data = ref_df, yname = "y", idname = "id", tname = "year", gname = "g"
+  )
+  expect_equal(simple$estimate, ref$estimate, tolerance = 1e-6)
+  expect_equal(simple$std.error, ref$std.error, tolerance = 1e-6)
+
+  for (agg in c("by_cohort", "by_time")) {
+    res <- att(y ~ 1 | id + year, data = bjs_data, time = year, timing = g,
+               estimator = "bjs", aggregation = agg)
+    key <- if (agg == "by_cohort") "g" else "year"
+    wtr <- paste0("w", res$group)
+    for (k in seq_along(wtr))
+      ref_df[[wtr[k]]] <- as.numeric(ref_df$D == 1 & ref_df[[key]] == res$group[k])
+    ref <- suppressWarnings(didimputation::did_imputation(
+      data = ref_df, yname = "y", idname = "id", tname = "year",
+      gname = "g", wtr = wtr
+    ))
+    ref <- ref[match(wtr, ref$term), ]
+    expect_equal(res$estimate, ref$estimate, tolerance = 1e-6)
+    expect_equal(res$std.error, ref$std.error, tolerance = 1e-6)
+  }
+})
+
+test_that("bjs SEs exceed the SE without the projection term", {
+  # With homoskedastic noise the projection term adds variance, so the full
+  # SE is above the cluster sandwich on the treated residuals alone.
+  result <- event_study(
+    y ~ 1 | id + year, data = bjs_data, time = year, timing = g,
+    estimator = "bjs"
+  )
+  tau <- attr(result, "tau_it")
+  rows <- result[!result$is_baseline & result$relative_time >= 0, ]
+  for (h in rows$relative_time) {
+    d <- tau[tau$relative_time == h, ]
+    cell <- ave(d$tau_hat, d$cohort)
+    s <- tapply((d$tau_hat - cell) / nrow(d), d$unit, sum)
+    expect_gt(rows$std.error[rows$relative_time == h], sqrt(sum(s^2)))
+  }
+})
+
+test_that(".bjs_se gives the same SEs for either eliminated side and by iteration", {
+  # Few units, many periods: the unit side is the smaller one.
+  set.seed(3)
+  n_u <- 8L
+  g <- c(rep(c(6L, 9L), each = 3L), NA, NA)
+  df <- expand.grid(id = seq_len(n_u), year = 1:14)
+  df$g <- g[df$id]
+  df$y <- rnorm(n_u)[df$id] + 0.1 * df$year + rnorm(nrow(df)) +
+    ifelse(!is.na(df$g) & df$year >= df$g, 1, 0)
+
+  out <- fixes:::.run_bjs(df, "y", "g", "year", "id", NULL, 0.95)
+  ctx <- out$vcov_ctx
+  tau <- out$tau_it
+  wts <- lapply(sort(unique(tau$relative_time)), function(h) {
+    i <- which(tau$relative_time == h)
+    list(idx = i, w = rep(1 / length(i), length(i)))
+  })
+
+  dense <- fixes:::.bjs_se(ctx, wts)
+  iter  <- fixes:::.bjs_se(ctx, wts, dense_max = 0L)
+  expect_equal(iter, dense, tolerance = 1e-8)
+  expect_equal(out$es$std_error, dense, tolerance = 1e-12)
+})

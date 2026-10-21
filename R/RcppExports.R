@@ -298,6 +298,40 @@ solve_fe_2way_cpp <- function(y, unit_id, time_id, n_unit, n_time, tol, max_iter
     .Call(`_fixes_solve_fe_2way_cpp`, y, unit_id, time_id, n_unit, n_time, tol, max_iter)
 }
 
+#' Normal-equations solver for a two-way fixed-effects design
+#'
+#' Solves \eqn{(A'A) z = c} for the unit/time dummy matrix \eqn{A} of the
+#' given rows, by the same Gauss-Seidel sweeps with Irons-Tuck acceleration
+#' as \code{solve_fe_2way_cpp()}. \code{c_unit}/\code{c_time} are the unit and
+#' time blocks of \eqn{c}. \eqn{A z} is unique; \code{z} itself is not.
+#'
+#' @param unit_id,time_id 0-based unit and time index per row.
+#' @param c_unit,c_time Right-hand side blocks (length n_unit, n_time).
+#' @param n_unit,n_time Number of unit and time levels.
+#' @param tol Relative convergence tolerance on the time block.
+#' @param max_iter Maximum number of sweeps.
+#'
+#' @return A list with \code{z_unit}, \code{z_time}, \code{converged}.
+#'
+#' @noRd
+solve_fe_normal_cpp <- function(unit_id, time_id, c_unit, c_time, n_unit, n_time, tol, max_iter) {
+    .Call(`_fixes_solve_fe_normal_cpp`, unit_id, time_id, c_unit, c_time, n_unit, n_time, tol, max_iter)
+}
+
+#' Schur complement of a two-way dummy design after eliminating one side
+#'
+#' For the dummy matrix \eqn{A = [A_e, A_k]} of the given rows, returns
+#' \eqn{A_k'A_k - A_k'A_e (A_e'A_e)^{-1} A_e'A_k}, an
+#' \code{n_keep} x \code{n_keep} matrix.
+#'
+#' @param elim_id,keep_id 0-based indices of the eliminated and kept levels.
+#' @param n_elim,n_keep Number of levels on each side.
+#'
+#' @noRd
+fe_schur_cpp <- function(elim_id, keep_id, n_elim, n_keep) {
+    .Call(`_fixes_fe_schur_cpp`, elim_id, keep_id, n_elim, n_keep)
+}
+
 #' Build cohort-by-calendar-time indicator matrix
 #'
 #' For each (g, s) pair, fills column k of the output matrix with 1 for rows
@@ -354,5 +388,37 @@ build_indicator_matrix_cpp <- function(cohort_id, time_id, gs_g, gs_s) {
 #' @noRd
 aggregate_iw_cpp <- function(estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t) {
     .Call(`_fixes_aggregate_iw_cpp`, estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t)
+}
+
+#' Sums of a vector by 1-based integer group code
+#'
+#' @param code Integer codes in 1..n.
+#' @param x Numeric vector of the same length.
+#' @param n Number of groups.
+#'
+#' @return Numeric vector of length n.
+#'
+#' @noRd
+sum_by_code_cpp <- function(code, x, n) {
+    .Call(`_fixes_sum_by_code_cpp`, code, x, n)
+}
+
+#' Sums of gathered matrix rows by 1-based integer group code
+#'
+#' Row \code{to[k]} of the result accumulates \code{wt[k] * X[from[k], ]}
+#' for every k, i.e. \eqn{A_{to}' \mathrm{diag}(wt) A_{from} X} for the
+#' dummy matrices of the two codes.
+#'
+#' @param to,from Integer codes (same length); \code{from} indexes the rows
+#'   of \code{X}, \code{to} takes values in 1..n.
+#' @param X Numeric matrix.
+#' @param n Number of rows of the result.
+#' @param wt Row weights (same length as \code{to}), or \code{NULL} for 1.
+#'
+#' @return Numeric matrix, n x ncol(X).
+#'
+#' @noRd
+sum_rows_by_code_cpp <- function(to, from, X, n, wt = NULL) {
+    .Call(`_fixes_sum_rows_by_code_cpp`, to, from, X, n, wt)
 }
 

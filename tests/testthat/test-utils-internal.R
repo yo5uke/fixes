@@ -58,3 +58,27 @@ test_that(".build_es_vcov orders by relative time and labels dimnames", {
   # terms not in V are dropped
   expect_null(fixes:::.build_es_vcov(V, "zzz", 1L))
 })
+
+test_that("sum_by_code_cpp matches rowsum()", {
+  set.seed(5)
+  code <- sample(7L, 100L, replace = TRUE)
+  x <- rnorm(100L)
+  expect_equal(fixes:::sum_by_code_cpp(code, x, 7L),
+               as.numeric(rowsum(x, code)), tolerance = 1e-12)
+  expect_equal(fixes:::sum_by_code_cpp(code, x, 9L)[8:9], c(0, 0))
+})
+
+test_that("sum_rows_by_code_cpp matches rowsum() of the gathered rows", {
+  set.seed(6)
+  X <- matrix(rnorm(15L * 4L), 15L)
+  from <- sample(15L, 200L, replace = TRUE)
+  to <- sample(9L, 200L, replace = TRUE)
+  wt <- rnorm(200L)
+  ref <- matrix(0, 9L, 4L)
+  ref[sort(unique(to)), ] <- rowsum(wt * X[from, ], to)
+  expect_equal(fixes:::sum_rows_by_code_cpp(to, from, X, 9L, wt), ref,
+               tolerance = 1e-12)
+  ref[sort(unique(to)), ] <- rowsum(X[from, ], to)
+  expect_equal(fixes:::sum_rows_by_code_cpp(to, from, X, 9L), ref,
+               tolerance = 1e-12)
+})

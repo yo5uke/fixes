@@ -49,38 +49,29 @@
   result_df
 }
 
-# Aggregate BJS tau_it to a summary data.frame.
-# SEs are approximate (naive sample SE of the unit-time effects).
+# Aggregate BJS tau_it to a summary data.frame. Each aggregate is the mean of
+# tau_hat over a set of treated observations; its SE is the cluster-robust
+# SE of BJS (2024, Theorem 3), clustered by unit.
 .agg_bjs <- function(bjs_out, aggregation) {
   tau_it <- bjs_out$tau_it   # all treated (i,t) obs; tau_hat = Y_it - Y_hat_it(0)
 
-  # Naive sample SE of a cell of unit-time effects: sd/sqrt(n) (0 if singleton).
-  .cell_se <- function(x) {
-    n <- length(x)
-    if (n > 1L) stats::sd(x) / sqrt(n) else 0
-  }
-
   if (aggregation == "simple") {
-    tau <- tau_it$tau_hat
-    result_df <- data.frame(
-      group     = NA_real_,
-      estimate  = mean(tau),
-      std_error = .cell_se(tau),
-      stringsAsFactors = FALSE
-    )
-
+    key <- rep(1L, nrow(tau_it))
+    lev <- 1L
   } else {  # by_cohort or by_time: group by cohort or calendar time
-    key   <- if (aggregation == "by_cohort") tau_it$cohort else tau_it$time
-    lev   <- sort(unique(key))
-    key_f <- factor(key, levels = lev)
-    result_df <- data.frame(
-      group     = lev,
-      estimate  = as.numeric(tapply(tau_it$tau_hat, key_f, mean)),
-      std_error = as.numeric(tapply(tau_it$tau_hat, key_f, .cell_se)),
-      stringsAsFactors = FALSE
-    )
+    key <- if (aggregation == "by_cohort") tau_it$cohort else tau_it$time
+    lev <- sort(unique(key))
   }
 
+  sets <- lapply(lev, function(l) which(key == l))
+  wts  <- lapply(sets, function(i) list(idx = i, w = rep(1 / length(i), length(i))))
+
+  result_df <- data.frame(
+    group     = if (aggregation == "simple") NA_real_ else lev,
+    estimate  = vapply(sets, function(i) mean(tau_it$tau_hat[i]), numeric(1L)),
+    std_error = .bjs_se(bjs_out$vcov_ctx, wts),
+    stringsAsFactors = FALSE
+  )
   rownames(result_df) <- NULL
   result_df
 }
