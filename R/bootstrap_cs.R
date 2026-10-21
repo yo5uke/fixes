@@ -250,9 +250,6 @@
 #   Main  (B draws)  — compute t-stat = max |R*(g,t)| / Sigma^{1/2}(g,t)
 #   per draw; the (1-alpha) quantile is the simultaneous critical value.
 #
-# Vectorised: all B draws use a single matrix multiply (V %*% psi), so the
-# per-draw cost is dominated by BLAS, not R loop overhead.
-#
 #' @param psi      Numeric matrix (n_units x n_params).  Columns are the
 #'   unit-level influence functions, one per parameter (g,t) or relative time.
 #' @param att_gt   data.frame of point estimates with columns \code{estimate}

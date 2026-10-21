@@ -1,7 +1,7 @@
-#include <RcppArmadillo.h>
-// [[Rcpp::depends(RcppArmadillo)]]
+#include <Rcpp.h>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 using namespace Rcpp;
 
 //' Core of the Callaway-Sant'Anna (2021) multiplier bootstrap (Algorithm 1)
@@ -16,9 +16,10 @@ using namespace Rcpp;
 //'     critical value.
 //' }
 //'
-//' Uses \code{R::runif(0,1)} for Mammen weight generation, so the output is
-//' identical to the pure-R implementation when the same \code{set.seed()} is
-//' applied before calling either version.
+//' Uses \code{R::runif(0,1)} for Mammen weight generation, so the weights are
+//' identical to the pure-R implementation's when the same \code{set.seed()} is
+//' applied before calling either version. The \eqn{n \times B} weight matrix
+//' is never stored.
 //'
 //' @param psi     Numeric matrix (n_units × n_gt) of unit-level influence
 //'   functions (output of \code{.compute_influence_cs()}).
@@ -54,26 +55,53 @@ List bootstrap_cs_cpp(
     double iqr_normal = R::qnorm(0.75, 0.0, 1.0, 1, 0) -
                         R::qnorm(0.25, 0.0, 1.0, 1, 0);  // ≈ 1.3490
 
-    // View psi as arma matrix (no copy)
-    arma::mat PSI(psi.begin(), n, m, false);
+    // psi transposed (m x n), so that each unit's values are contiguous, and
+    // its column sums.
+    std::vector<double> psi_t((size_t)m * n);
+    std::vector<double> col_sum(m, 0.0);
+    for (int j = 0; j < m; j++) {
+        const double* pj = psi.begin() + (size_t)j * n;
+        for (int i = 0; i < n; i++) {
+            psi_t[(size_t)i * m + j] = pj[i];
+            col_sum[j] += pj[i];
+        }
+    }
+
+    // R(b, j) = sum_i V(b, i) psi(i, j) / sqrt(n) for n_draws draws, stored
+    // row-major. With V(b, i) in {w_lo, w_hi},
+    //   sum_i V(b, i) psi(i, j) = w_lo * sum_i psi(i, j)
+    //                           + (w_hi - w_lo) * sum_{i: V(b, i) = w_hi} psi(i, j).
+    // Weights are drawn unit by unit (b fast, i slow), the fill order of R's
+    // matrix(values, nrow = n_draws, ncol = n), so that the same set.seed()
+    // produces identical Mammen weights to the pure-R path.
+    auto draw_sums = [&](int n_draws) {
+        std::vector<double> R_out((size_t)n_draws * m, 0.0);
+        for (int i = 0; i < n; i++) {
+            const double* p = &psi_t[(size_t)i * m];
+            for (int b = 0; b < n_draws; b++) {
+                if (R::runif(0.0, 1.0) >= p1) {
+                    double* r = &R_out[(size_t)b * m];
+                    for (int j = 0; j < m; j++) r[j] += p[j];
+                }
+            }
+        }
+        for (int b = 0; b < n_draws; b++)
+            for (int j = 0; j < m; j++) {
+                double& r = R_out[(size_t)b * m + j];
+                r = (w_lo * col_sum[j] + (w_hi - w_lo) * r) / sqrt_n;
+            }
+        return R_out;
+    };
 
     // ---- Pilot stage -------------------------------------------------------
-    // Fill order: column-major (i fast → b slow, matching
-    // R's matrix(values, nrow=B_pilot, ncol=n) fill order) so that the
-    // same set.seed() produces identical Mammen weights to the pure-R path.
-    arma::mat V_pilot(B_pilot, n);
-    for (int i = 0; i < n; i++)
-        for (int b = 0; b < B_pilot; b++)
-            V_pilot(b, i) = (R::runif(0.0, 1.0) < p1) ? w_lo : w_hi;
-
-    arma::mat R_pilot = (V_pilot * PSI) / sqrt_n;   // B_pilot x m
+    std::vector<double> R_pilot = draw_sums(B_pilot);   // B_pilot x m
 
     // Estimate sigma_half per column via normalised IQR
-    arma::vec sigma_half(m);
+    std::vector<double> sigma_half(m);
     {
         std::vector<double> col_buf(B_pilot);
         for (int j = 0; j < m; j++) {
-            for (int b = 0; b < B_pilot; b++) col_buf[b] = R_pilot(b, j);
+            for (int b = 0; b < B_pilot; b++) col_buf[b] = R_pilot[(size_t)b * m + j];
             std::sort(col_buf.begin(), col_buf.end());
             // Type-7 quantile (linear interpolation) at p=0.25 and p=0.75
             auto q7 = [&](double p) -> double {
@@ -84,24 +112,19 @@ List bootstrap_cs_cpp(
                 return col_buf[lo] + (h - lo) * (col_buf[hi] - col_buf[lo]);
             };
             double iqr = q7(0.75) - q7(0.25);
-            sigma_half(j) = std::max(iqr / iqr_normal, 1e-10);
+            sigma_half[j] = std::max(iqr / iqr_normal, 1e-10);
         }
     }
 
     // ---- Main stage --------------------------------------------------------
-    arma::mat V_main(B, n);
-    for (int i = 0; i < n; i++)                       // column-major fill
-        for (int b = 0; b < B; b++)
-            V_main(b, i) = (R::runif(0.0, 1.0) < p1) ? w_lo : w_hi;
-
-    arma::mat R_main = (V_main * PSI) / sqrt_n;   // B x m
+    std::vector<double> R_main = draw_sums(B);   // B x m
 
     // Max studentised t-stat per draw
     std::vector<double> t_stats(B);
     for (int b = 0; b < B; b++) {
         double mx = 0.0;
         for (int j = 0; j < m; j++) {
-            double t = std::abs(R_main(b, j)) / sigma_half(j);
+            double t = std::abs(R_main[(size_t)b * m + j]) / sigma_half[j];
             if (t > mx) mx = t;
         }
         t_stats[b] = mx;
@@ -119,7 +142,8 @@ List bootstrap_cs_cpp(
     double c_hat = q7_ts(1.0 - alpha);
 
     // Per-parameter CI half-widths
-    arma::vec margin = c_hat * sigma_half / sqrt_n;
+    std::vector<double> margin(m);
+    for (int j = 0; j < m; j++) margin[j] = c_hat * sigma_half[j] / sqrt_n;
 
     return List::create(
         _["c_hat"]      = c_hat,

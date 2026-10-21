@@ -6,7 +6,8 @@
 # Key correctness anchor: with the same set.seed(), bootstrap_cs_cpp() must
 # generate the same Mammen weights as the pure-R .mammen_weights() because
 # both draw from R's RNG stream via R::runif().  Therefore c_hat and margin
-# agree to floating-point precision (up to BLAS rounding in the mat-mul).
+# agree to floating-point precision (up to rounding: the Rcpp version sums
+# psi over the units drawn at kappa instead of forming the weight matrix).
 
 library(testthat)
 library(fixes)

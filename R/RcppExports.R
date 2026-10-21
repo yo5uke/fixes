@@ -13,9 +13,10 @@
 #'     critical value.
 #' }
 #'
-#' Uses \code{R::runif(0,1)} for Mammen weight generation, so the output is
-#' identical to the pure-R implementation when the same \code{set.seed()} is
-#' applied before calling either version.
+#' Uses \code{R::runif(0,1)} for Mammen weight generation, so the weights are
+#' identical to the pure-R implementation's when the same \code{set.seed()} is
+#' applied before calling either version. The \eqn{n \times B} weight matrix
+#' is never stored.
 #'
 #' @param psi     Numeric matrix (n_units × n_gt) of unit-level influence
 #'   functions (output of \code{.compute_influence_cs()}).
