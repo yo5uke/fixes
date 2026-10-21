@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`fixes` は、staggered DiD の推定と可視化を行う R パッケージ。
+`fixes` は、DiD のイベントスタディと推論(TWFE から staggered 対応の推定量まで)を行い、結果を可視化する R パッケージ。
 
 ## 設計と API 契約
 
