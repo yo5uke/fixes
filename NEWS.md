@@ -1,103 +1,4 @@
-# fixes (development version)
-
-## Behaviour changes
-
-- **CS (`estimator = "cs"` in `event_study()` and `att()`) now balances the
-  panel, as `did::att_gt()` does by default.** Rows with a missing or
-  non-finite outcome, time, or unit are dropped, then every unit not
-  observed in all periods is dropped; both steps warn. Previously a single
-  missing outcome turned every ATT(g, t) that touched it — and with it the
-  whole event-study curve — into `NA`, and units missing some periods were
-  kept wherever both periods of a comparison were observed. Estimates now
-  match `did::att_gt()` on panels with missing values, and `N`, `N_units`,
-  `N_treated` and `N_nevertreated` describe the balanced sample. Panels that
-  are already balanced and complete give the same results as before.
-- **`timing` must be constant within each unit.** `event_study()` with
-  `estimator = "cs"`, `"sa"`, `"bjs"` or `"twm"`, `att()`, and
-  `contamination_weights()` now stop with an error naming the offending
-  units when a unit carries more than one timing value, including a mix of
-  `NA` and a date. Such data previously ran, with cohort membership taken
-  from whichever row came first, so results depended on the row order.
-
-## Bug fixes
-
-- **SA and TWM cohort shares counted units outside the estimation sample.**
-  The event-study aggregation weights cohort-specific effects by cohort
-  size; units dropped from the fit (all outcomes missing, or a single
-  observation) were still counted. Shares now count only units in the
-  estimation sample (Sun and Abraham 2021, Section 4.1), so SA matches
-  `fixest::sunab()` in that case too.
-- **TWM and FLEX covariates with missing values.** A missing covariate value
-  in a treated cohort made that cohort's centring mean `NA`, which silently
-  removed all of the cohort's post-treatment cells (or stopped estimation
-  when every cohort had one). Rows with missing covariates are now dropped
-  as `fixest::feols()` drops them, including rows in the reference period,
-  which used to be kept. Covariates are centred on the estimation sample,
-  so results equal those from the same data with those rows removed.
-- `contamination_weights()` returned `NA` weights when only one TWFE
-  event-time coefficient was estimated; they are now computed.
-
-## Performance
-
-- Faster internal FE-OLS engine: the residual and VCOV "meat" computations,
-  the weighted rescaling, and the `[y | X]` assembly run in C++ without
-  intermediate copies, and the singleton and NA checks skip work on complete
-  data. Timings on one machine (20 periods, never-treated plus three
-  cohorts), before → after:
-
-  | Case | Before | After |
-  |---|---|---|
-  | Classic TWFE event study, 1,000,000 rows | 1.58 s | 1.14 s |
-  | `estimator = "sa"`, 100,000 rows | 0.42 s | 0.28 s |
-  | `contamination_weights()`, 30,000 rows | 2.03 s | 0.07 s |
-  | `"sa"` / `"twm"` / `"bjs"`, 300,000 rows (row order shuffled) | 1.40 / 1.30 / 0.94 s | 1.00 / 0.98 / 0.38 s |
-  | `"cs"`, 300,000 rows, without / with bootstrap | 0.44 / 1.61 s | 0.12 / 1.30 s |
-
-- `contamination_weights()` solves all auxiliary regressions in one pass
-  over the demeaned design instead of one regression per cohort-period cell.
-- CS: ATT(g, t) and the bootstrap influence functions are computed on a
-  dense unit × period grid in C++.
-
-## Plot defaults
-
-- Event-study plots now draw **error bars by default**; `type = "ribbon"`
-  gives the previous line-and-band display.
-- New default palette across every `plot()` method. Error bars and point
-  ranges (`plot.es_result()`, `plot.att_result()`) are black; ribbon
-  displays (`type = "ribbon"`, the interactive plot, the `"facet"` display
-  of `plot.att_gt_result()`) use a muted steel blue with a lighter band.
-  `color`, `fill` and `alpha` default to `NULL` and resolve from that
-  palette, so passing them explicitly works exactly as before.
-- `plot.es_result(type = "errorbar")` gains `errorbar_color`, which colours
-  the bars on their own; it follows `color` unless given.
-- Error bars are drawn thinner, and points are now drawn last so neither the
-  bars nor the ribbon cover them — visible as soon as the point and interval
-  colours differ.
-- The dashed vertical reference line now marks relative time -1, the last
-  period before treatment, instead of relative time 0, where the effect is
-  usually already present. `vline_val` still overrides it.
-
-## Event-study plots
-
-- `plot()` / `autoplot()` on an `es_result` gain `time_axis`. The default
-  `"relative"` keeps the event-time axis; `"calendar"` plots the original
-  time values instead (e.g. `2010`, or a `Date`), labels the axis with the
-  `time` column's name, and moves the dashed reference line with it. Available whenever every treated unit adopts in the same period
-  (universal timing, or a single-cohort staggered design); with several
-  cohorts one relative period maps to several calendar periods, so it errors
-  with an explanation. `es_result` objects carry the new `ref_time`,
-  `time_var`, `time_levels` and `time_transform` attributes that back it.
-- `ci_level` now errors when the result was not estimated at that confidence
-  level, naming the levels that are available. Previously the plot silently
-  fell back to the 95% band, or failed with an opaque error when no 95% band
-  existed.
-- The interactive plot's dashed vertical line now spans the full plotted
-  range. It was scaled from the CI bounds, so it came out too short (or
-  inverted) whenever the bounds did not straddle zero.
-- `alpha` is now honoured by the ribbons of `show_simultaneous = TRUE`
-  plots, which previously used hard-coded opacities.
-
-# fixes 1.0.0 (2026-07-16)
+# fixes 1.0.0 (2026-10-21)
 
 Major release: the package API is reborn with modern noun-style function
 names, base `plot()` methods for every result class, and a fixest-optional
@@ -141,6 +42,45 @@ warning) and return numerically identical results.
   the previous Unicode superscripts rendered as garbled glyphs on the
   Windows graphics devices.
 
+## Plot defaults
+
+- Event-study plots now draw **error bars by default**; `type = "ribbon"`
+  gives the previous line-and-band display.
+- New default palette across every `plot()` method. Error bars and point
+  ranges (`plot.es_result()`, `plot.att_result()`) are black; ribbon
+  displays (`type = "ribbon"`, the interactive plot, the `"facet"` display
+  of `plot.att_gt_result()`) use a muted steel blue with a lighter band.
+  `color`, `fill` and `alpha` default to `NULL` and resolve from that
+  palette, so passing them explicitly works exactly as before.
+- `plot.es_result(type = "errorbar")` gains `errorbar_color`, which colours
+  the bars on their own; it follows `color` unless given.
+- Error bars are drawn thinner, and points are now drawn last so neither the
+  bars nor the ribbon cover them — visible as soon as the point and interval
+  colours differ.
+- The dashed vertical reference line now marks relative time -1, the last
+  period before treatment, instead of relative time 0, where the effect is
+  usually already present. `vline_val` still overrides it.
+
+## Event-study plots
+
+- `plot()` / `autoplot()` on an `es_result` gain `time_axis`. The default
+  `"relative"` keeps the event-time axis; `"calendar"` plots the original
+  time values instead (e.g. `2010`, or a `Date`), labels the axis with the
+  `time` column's name, and moves the dashed reference line with it. Available whenever every treated unit adopts in the same period
+  (universal timing, or a single-cohort staggered design); with several
+  cohorts one relative period maps to several calendar periods, so it errors
+  with an explanation. `es_result` objects carry the new `ref_time`,
+  `time_var`, `time_levels` and `time_transform` attributes that back it.
+- `ci_level` now errors when the result was not estimated at that confidence
+  level, naming the levels that are available. Previously the plot silently
+  fell back to the 95% band, or failed with an opaque error when no 95% band
+  existed.
+- The interactive plot's dashed vertical line now spans the full plotted
+  range. It was scaled from the CI bounds, so it came out too short (or
+  inverted) whenever the bounds did not straddle zero.
+- `alpha` is now honoured by the ribbons of `show_simultaneous = TRUE`
+  plots, which previously used hard-coded opacities.
+
 ## fixest is now optional (Suggests)
 
 - The classic TWFE event-study path and `did()` now run on the package's
@@ -157,8 +97,60 @@ warning) and return numerically identical results.
 - Performance: at typical panel sizes (tens of thousands of rows) the
   internal engine matches the previous fixest pipeline; `did()` is on par
   or faster. On very large panels (~1M rows) the classic event-study path
-  currently runs within ~2.5x of fixest; closing this gap with a fused
-  demeaning/cross-product kernel is planned.
+  is still slower than `fixest::feols()` with the same design (about 1.1 s
+  against 0.7 s for 50,000 units over 20 periods, fixest on 8 threads).
+
+## Behaviour changes
+
+- **CS (`estimator = "cs"` in `event_study()` and `att()`) now balances the
+  panel, as `did::att_gt()` does by default.** Rows with a missing or
+  non-finite outcome, time, or unit are dropped, then every unit not
+  observed in all periods is dropped; both steps warn. Previously a single
+  missing outcome turned every ATT(g, t) that touched it — and with it the
+  whole event-study curve — into `NA`, and units missing some periods were
+  kept wherever both periods of a comparison were observed. Estimates now
+  match `did::att_gt()` on panels with missing values, and `N`, `N_units`,
+  `N_treated` and `N_nevertreated` describe the balanced sample. Panels that
+  are already balanced and complete give the same results as before.
+- **`timing` must be constant within each unit.** `event_study()` with
+  `estimator = "cs"`, `"sa"`, `"bjs"` or `"twm"`, `att()`, and
+  `contamination_weights()` now stop with an error naming the offending
+  units when a unit carries more than one timing value, including a mix of
+  `NA` and a date. Such data previously ran, with cohort membership taken
+  from whichever row came first, so results depended on the row order.
+
+## Bug fixes
+
+- **SA and TWM cohort shares counted units outside the estimation sample.**
+  The event-study aggregation weights cohort-specific effects by cohort
+  size; units dropped from the fit (all outcomes missing, or a single
+  observation) were still counted. Shares now count only units in the
+  estimation sample (Sun and Abraham 2021, Section 4.1), so SA matches
+  `fixest::sunab()` in that case too.
+- **TWM and FLEX covariates with missing values.** A missing covariate value
+  in a treated cohort made that cohort's centring mean `NA`, which silently
+  removed all of the cohort's post-treatment cells (or stopped estimation
+  when every cohort had one). Rows with missing covariates are now dropped
+  as `fixest::feols()` drops them, including rows in the reference period,
+  which used to be kept. Covariates are centred on the estimation sample,
+  so results equal those from the same data with those rows removed.
+- `contamination_weights()` returned `NA` weights when only one TWFE
+  event-time coefficient was estimated; they are now computed.
+
+## Performance
+
+- The internal FE-OLS engine assembles `[y | X]`, residuals and the VCOV
+  "meat" in C++ without intermediate copies, and skips its NA and singleton
+  checks on complete data. On one machine (20 periods, never-treated units
+  plus three cohorts): classic event study on 1,000,000 rows about 1.1 s;
+  `estimator = "sa"` on 100,000 rows 0.3 s; `"sa"`, `"twm"` and `"bjs"` on
+  300,000 rows (row order shuffled) 1.0, 1.0 and 0.4 s; `"cs"` on 300,000
+  rows 0.1 s without and 1.3 s with the bootstrap.
+- `contamination_weights()` solves all auxiliary regressions in one pass
+  over the demeaned design instead of one regression per cohort-period cell
+  (30,000 rows in 0.07 s).
+- CS: ATT(g, t) and the bootstrap influence functions are computed on a
+  dense unit × period grid in C++.
 
 ## Breaking changes
 
@@ -798,7 +790,6 @@ much closer).
 
 ## Compatibility
 - Backward compatible with previous versions.
-
 
 # fixes 0.3.1 (May 18, 2025)
 
