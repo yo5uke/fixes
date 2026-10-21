@@ -125,10 +125,16 @@ the panel is balanced by dropping units not observed in every period, as
 \code{N_treated} and \code{N_nevertreated} describe the balanced sample.
 }
 
-\section{Standard errors (BJS estimator)}{
+\section{Standard errors}{
 
-BJS SEs are approximate (naive sample variance of unit-time effects).
-Cluster-robust SEs for BJS aggregations are planned for a future release.
+For \code{"cs"}, the SE of each aggregate is computed from its unit-level
+influence function, which carries the covariance across the ATT(g,t)
+it averages and the estimation of the cohort weights (the same SEs as
+\code{\link[did:aggte]{did::aggte()}}).
+
+For \code{"bjs"}, the SE is the conservative cluster-robust SE of Borusyak et
+al. (2024, Theorem 3), clustered by unit, including the uncertainty from
+the imputation regression. It matches \code{didimputation::did_imputation()}.
 }
 
 \examples{

@@ -196,6 +196,22 @@ warning) and return numerically identical results.
   `NA` when no unit identifier is available.
 - `tests/testthat.R` was missing, so `R CMD check` (and the R-CMD-check CI
   jobs) never ran the test suite; it now does.
+- **CS standard errors of aggregates ignored the covariance between
+  ATT(g,t).** `event_study(estimator = "cs")` and `att(estimator = "cs")`
+  summed the squared SEs of ATT(g,t) as if they were independent. They now
+  use the influence function of each aggregate, including the estimation of
+  the cohort weights, and match `did::aggte()`. `att()` SEs were up to half
+  as large as `did`'s (overstating significance), and event-study SEs up to
+  22% larger. Point estimates are unchanged.
+- **BJS standard errors omitted the imputation step's uncertainty.** The SE
+  of `event_study(estimator = "bjs")` left out the projection of the treated
+  weights on the fixed effects (Borusyak et al. 2024, Theorem 3), so it was
+  20-30% too small; `att(estimator = "bjs")` used the naive spread of the
+  unit-time effects and was less than half of the correct value. Both now
+  match `didimputation::did_imputation()`, clustered by unit (or by
+  `cluster` in `event_study()`). Point estimates are unchanged.
+- With `bootstrap = TRUE`, the simultaneous bands for the CS event study use
+  the same influence functions as the analytic SEs.
 
 ## Performance
 
@@ -204,13 +220,17 @@ warning) and return numerically identical results.
   checks on complete data. On one machine (20 periods, never-treated units
   plus three cohorts): classic event study on 1,000,000 rows about 1.1 s;
   `estimator = "sa"` on 100,000 rows 0.3 s; `"sa"`, `"twm"` and `"bjs"` on
-  300,000 rows (row order shuffled) 1.0, 1.0 and 0.4 s; `"cs"` on 300,000
-  rows 0.1 s without and 1.3 s with the bootstrap.
+  300,000 rows (row order shuffled) 1.0, 1.0 and 0.2 s; `"cs"` on 300,000
+  rows 0.1 s without and 0.7 s with the bootstrap.
 - `contamination_weights()` solves all auxiliary regressions in one pass
   over the demeaned design instead of one regression per cohort-period cell
   (30,000 rows in 0.07 s).
 - CS: ATT(g, t) and the bootstrap influence functions are computed on a
-  dense unit × period grid in C++.
+  dense unit × period grid in C++. The multiplier bootstrap no longer stores
+  the units × draws matrix of Mammen weights (about 400 MB for 50,000 units
+  and B = 999); the bands are unchanged for a given seed.
+- BJS: Step 1 converts only the distinct unit and time values to character
+  keys, and the standard errors of all horizons share one projection.
 
 ## Breaking changes
 

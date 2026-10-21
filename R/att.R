@@ -132,9 +132,15 @@
 #' [did::att_gt()] does by default; both steps warn, and `N`, `N_units`,
 #' `N_treated` and `N_nevertreated` describe the balanced sample.
 #'
-#' @section Standard errors (BJS estimator):
-#' BJS SEs are approximate (naive sample variance of unit-time effects).
-#' Cluster-robust SEs for BJS aggregations are planned for a future release.
+#' @section Standard errors:
+#' For `"cs"`, the SE of each aggregate is computed from its unit-level
+#' influence function, which carries the covariance across the ATT(g,t)
+#' it averages and the estimation of the cohort weights (the same SEs as
+#' [did::aggte()]).
+#'
+#' For `"bjs"`, the SE is the conservative cluster-robust SE of Borusyak et
+#' al. (2024, Theorem 3), clustered by unit, including the uncertainty from
+#' the imputation regression. It matches `didimputation::did_imputation()`.
 #'
 #' @param formula A model formula `outcome ~ treatment | fixed effects`
 #'   (see [event_study()]). The fixed effects only serve to name the unit:

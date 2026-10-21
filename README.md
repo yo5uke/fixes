@@ -393,8 +393,8 @@ print(att_simple)
     ## N = 950 obs | 95 units | 45 treated
     ## Panel: unit = id | time = year
     ## 
-    ##   group estimate std.error statistic  p.value conf_low_95 conf_high_95
-    ## 1    NA   -0.755     0.226     -3.35 0.000813        -1.2       -0.313
+    ##   group estimate std.error statistic p.value conf_low_95 conf_high_95
+    ## 1    NA   -0.755     0.679     -1.11   0.266       -2.09        0.576
 
 ``` r
 # Per-cohort ATT
