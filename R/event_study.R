@@ -1297,17 +1297,16 @@ event_study <- function(
   }
 
   # metadata
-  N_units <- if (!is.null(unit_chr)) {
-    length(unique(data[[unit_chr]]))
+  # A unit counts as treated when it has treatment = 1 on a row with a known
+  # event time; staggered units with timing = NA are controls.
+  treated_row <- ..k_known & !is.na(tx) & tx == 1L
+  if (!is.null(unit_chr)) {
+    uv <- data[[unit_chr]]
+    N_units <- length(unique(uv))
+    N_treat <- length(unique(uv[treated_row]))
+    N_never <- length(setdiff(unique(uv), unique(uv[treated_row])))
   } else {
-    NA_integer_
-  }
-  N_treat <- sum(..k_known)
-  N_never <- if (!is.na(N_units) && !is.null(unit_chr)) {
-    length(setdiff(unique(data[[unit_chr]]),
-                   unique(data[[unit_chr]][..k_known])))
-  } else {
-    NA_integer_
+    N_units <- N_treat <- N_never <- NA_integer_
   }
 
   attr(tidy, "lead_range") <- lead_range

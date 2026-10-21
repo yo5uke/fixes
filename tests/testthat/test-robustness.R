@@ -77,11 +77,30 @@ test_that("classic staggered TWFE keeps never-treated rows in the sample", {
 
   expect_equal(attr(res, "N"), nrow(df))
   # metadata still reflects the original NA pattern
-  expect_equal(attr(res, "N_treated"), sum(!is.na(df$timing)))
+  expect_equal(attr(res, "N_treated"),
+               length(unique(df$id[!is.na(df$timing)])))
   expect_equal(
     attr(res, "N_nevertreated"),
     length(unique(df$id[is.na(df$timing)]))
   )
+})
+
+test_that("classic TWFE counts treated and never-treated units", {
+  df <- make_robust_panel()
+  df$treated_univ <- as.integer(df$id %% 2L == 0L)
+
+  res <- event_study(df, outcome = y, treatment = treated_univ, time = year,
+                     timing = 2005, fe = ~ id + year, unit = id)
+  expect_equal(attr(res, "N_treated"),
+               length(unique(df$id[df$treated_univ == 1L])))
+  expect_equal(attr(res, "N_nevertreated"),
+               length(unique(df$id[df$treated_univ == 0L])))
+
+  # without a unit identifier there are no units to count
+  res <- event_study(df, outcome = y, treatment = treated_univ, time = year,
+                     timing = 2005, fe = ~ id + year)
+  expect_true(is.na(attr(res, "N_treated")))
+  expect_true(is.na(attr(res, "N_nevertreated")))
 })
 
 test_that("sunab keeps never-treated rows and matches fixest base_stagg convention", {
