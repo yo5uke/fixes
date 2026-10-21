@@ -25,49 +25,46 @@
 #'
 #' @description
 #' Estimates a classic difference-in-differences model of the form
-#' `outcome ~ D_it | fe` on the package's internal fixed-effects OLS engine
-#' (numerically equivalent to `fixest::feols()`).
+#' `outcome ~ D + covariates | fixed effects` on the package's internal
+#' fixed-effects OLS engine (numerically equivalent to `fixest::feols()`).
+#' The formula is the one used by [event_study()] and [att()]: swap the
+#' function to get effects by event time or aggregated staggered ATTs.
 #'
 #' `did()` supersedes [run_did()] as of fixes 1.0.0.
 #'
-#' There are two ways to supply the treatment indicator:
+#' Treatment is given in one of three ways, as in [event_study()]:
 #'
-#' **Option A — pre-built `D_it`** (maximum flexibility):
 #' ```r
-#' df$D <- as.integer(df$treated & df$year >= 2006)
-#' did(df, outcome = y, treatment = D, fe = ~ id + year)
-#' ```
+#' # D: 1 for treated units in post-treatment periods
+#' did(y ~ D | id + year, data = df)
 #'
-#' **Option B — timing-based construction** (convenience; consistent with
-#' `event_study()` and `att()`):
-#' ```r
-#' did(df, outcome = y, treatment = treated, time = year, timing = 2006,
-#'     fe = ~ id + year)
-#' ```
-#' Here `treatment` is a binary group indicator (1 = treated unit, 0 = control),
-#' `time` is the calendar-time variable, and `timing` is the scalar treatment
-#' onset period.  Internally `D_it = treatment * (time >= timing)` is constructed
-#' automatically.  For staggered-adoption settings use [att()]; for dynamic
-#' event-study estimates use [event_study()].
+#' # each unit's first treated period (NA = never treated)
+#' did(y ~ 1 | id + year, data = df, time = year, timing = g)
 #'
-#' @param data A data.frame (panel format).
-#' @param outcome Unquoted outcome variable or expression (e.g., `log(y)`).
-#' @param treatment Unquoted column name.  When `timing = NULL` (default): a
-#'   pre-built binary `D_it` indicator (1 = treated unit-time, 0 = otherwise).
-#'   When `timing` is provided: a binary group indicator (1 = treated unit,
-#'   0 = control unit; constant within units).
-#' @param timing Numeric scalar.  When provided, `D_it` is constructed as
-#'   `treatment * (time >= timing)`.  Requires `time` to be specified.
-#'   Default `NULL` (user supplies pre-built `D_it` via `treatment`).
-#' @param fe One-sided formula specifying fixed effects, e.g. `~ id + year`.
-#'   If `NULL` and both `unit` and `time` are supplied, `fe` is auto-inferred
-#'   as `~ unit + time`.  If `NULL` and neither is supplied, a pooled OLS model
-#'   is estimated (with a message).
-#' @param unit Unquoted unit identifier column (for metadata and `fe`
-#'   auto-inference).
-#' @param time Unquoted time variable column.  Used for (a) `fe` auto-inference
-#'   and (b) `D_it` construction when `timing` is provided.
-#' @param covariates One-sided formula of additional controls, e.g. `~ x1 + x2`.
+#' # a treated-group dummy and one treatment date
+#' did(y ~ treated | id + year, data = df, time = year, timing = 2006)
+#' ```
+#' With `timing`, `D = treatment * (time >= timing)` is built internally.
+#' For staggered-adoption settings see [att()]; for dynamic effects see
+#' [event_study()].
+#'
+#' @param formula A model formula
+#'   `outcome ~ treatment + covariates | fixed effects`. The left-hand side
+#'   may be an expression (e.g. `log(y)`); without `|` the model has no
+#'   fixed effects. The first right-hand-side term is D without `timing`,
+#'   the treated-group dummy with a single `timing` date, and absent with a
+#'   timing column (see **Description**). All variables must be columns of
+#'   `data`.
+#' @param data A data.frame (panel format). `formula` and `data` may come in
+#'   either order.
+#' @param time Unquoted time variable. Required with `timing`; with plain
+#'   fixed effects such as `| id + year` it also lets `did()` report the
+#'   unit (see [event_study()], **Panel identifiers**).
+#' @param timing Treatment timing: an unquoted column giving each unit's
+#'   first treatment period (`NA` = never treated), or a single numeric
+#'   treatment date. Default `NULL`: the formula holds D.
+#' @param unit Unquoted unit identifier column (for metadata). Taken from
+#'   the fixed effects when possible.
 #' @param cluster Clustering specification: a one-sided formula (`~ id`),
 #'   a single character column name, or a numeric vector of length `nrow(data)`.
 #'   When `cluster` is specified and `vcov` is the default `"HC1"`, cluster-robust
@@ -80,6 +77,15 @@
 #'   `vcov` is left at its default `"HC1"`.
 #' @param vcov_args Named list of additional arguments forwarded to
 #'   `fixest::vcov()`.
+#' @param outcome,treatment,fe,covariates `r lifecycle::badge("deprecated")`
+#'   The model arguments of the older interface: the unquoted outcome, the
+#'   treatment column (D, or the treated-group dummy when `timing` is
+#'   given), a one-sided fixed-effects formula (`NULL` with both `unit` and
+#'   `time` gives `~ unit + time`), and a one-sided covariate formula. They
+#'   still work in fixes 1.x, with a deprecation warning that shows the
+#'   equivalent formula call; fixes 2.0.0 is planned to accept only
+#'   `formula`. Name them when you use them: the second argument is now
+#'   `data`.
 #'
 #' @return A `did_result` object (named list) with elements:
 #'   \describe{
@@ -96,23 +102,20 @@
 #'   }
 #'   Attributes: `call`, `formula_str`, `outcome`, `treatment`, `timing`,
 #'   `fe`, `vcov_type`, `cluster_vars`, `conf.level`, `N`, `N_units`,
-#'   `N_treated`, `unit`, `time`.  `N`, `N_units`, and `N_treated` describe the
-#'   *estimation* sample (after rows with missing values are dropped),
-#'   matching `broom::glance()`, not `nrow(data)`.
+#'   `N_treated`, `unit`, `time` (and `timing_var` with a timing column).
+#'   `N`, `N_units`, and `N_treated` describe the *estimation* sample (after
+#'   rows with missing values are dropped), matching `broom::glance()`, not
+#'   `nrow(data)`.
 #'
 #' @examples
 #' \dontrun{
-#' # Option A: pre-built D_it
-#' df$D <- as.integer(df$treated & df$year >= 2006)
-#' res <- did(df, outcome = y, treatment = D, fe = ~ id + year)
+#' res <- did(y ~ D | id + year, data = df)
 #'
-#' # Option B: timing-based construction
-#' res <- did(df, outcome = y, treatment = treated, time = year,
-#'            timing = 2006, fe = ~ id + year)
+#' # Built from a treated-group dummy and the treatment date
+#' res <- did(y ~ treated | id + year, data = df, time = year, timing = 2006)
 #'
-#' # Cluster-robust SE
-#' res <- did(df, outcome = y, treatment = D, fe = ~ id + year,
-#'            cluster = ~ id)
+#' # Covariates and cluster-robust SE
+#' res <- did(y ~ D + x1 | id + year, data = df, cluster = ~ id)
 #'
 #' print(res)
 #' broom::tidy(res)
@@ -128,6 +131,82 @@
 #' @importFrom stats qnorm nobs as.formula vcov
 #' @export
 did <- function(
+  formula,
+  data,
+  time       = NULL,
+  timing     = NULL,
+  unit       = NULL,
+  cluster    = NULL,
+  weights    = NULL,
+  conf_level = 0.95,
+  vcov       = "HC1",
+  vcov_args  = list(),
+  outcome,
+  treatment,
+  fe         = NULL,
+  covariates = NULL
+) {
+  cl  <- match.call()
+  env <- parent.frame()
+  fd  <- .formula_and_data(rlang::enquo(formula), rlang::enquo(data), "did")
+  model_args <- c("outcome", "treatment", "fe", "covariates")
+
+  if (is.null(fd$formula)) {
+    names(cl)[names(cl) == "formula"] <- "data"
+    .deprecate_model_args(
+      "did", "`outcome`, `treatment`, `fe` and `covariates`",
+      .legacy_formula_call("did", cl, fd$data, env), env
+    )
+    return(.eval_impl(cl, "did", .did_impl, env))
+  }
+  if (any(model_args %in% names(cl))) {
+    stop("Give the model either as `formula` or through `outcome`, ",
+         "`treatment`, `fe` and `covariates`, not both.", call. = FALSE)
+  }
+
+  data <- fd$data
+  p <- .parse_model_formula(fd$formula, data, "did")
+  timing_s <- .timing_spec(cl$timing, data, env)
+  time_chr <- .col_arg(cl$time, data)
+  if (timing_s$kind != "none") .require_time(time_chr)
+  panel <- .resolve_panel(time_chr, .col_arg(cl$unit, data), p$fe,
+                          need_unit = FALSE)
+
+  tr <- .formula_treatment(p, timing_s, FALSE, data, panel$unit, time_chr,
+                           "did", derive_cohort = FALSE)
+  treatment_chr <- tr$term
+  timing_arg    <- if (tr$mode == "value") timing_s$value
+  if (tr$mode == "cohort") {
+    treatment_chr <- .fresh_col(data, ".did_D_it")
+    g <- data[[timing_s$name]]
+    data[[treatment_chr]] <- as.integer(!is.na(g) & data[[time_chr]] >= g)
+  }
+
+  new <- cl[!names(cl) %in% c("formula", model_args, "time", "timing", "unit")]
+  new$outcome    <- p$lhs
+  new$treatment  <- treatment_chr
+  new$timing     <- timing_arg
+  new$fe         <- p$fe
+  new$unit       <- panel$unit
+  new$time       <- time_chr
+  new$covariates <- .covariate_formula(tr$covariates, p$env)
+  new$.auto_fe   <- FALSE
+
+  res <- .eval_impl(new, "did", .did_impl, env, data = data)
+  if (tr$mode == "cohort") {
+    res$estimates$term <- timing_s$name
+    attr(res, "treatment")  <- timing_s$name
+    attr(res, "timing_var") <- timing_s$name
+  }
+  attr(res, "call") <- .user_call(cl, fd$swapped)
+  res
+}
+
+# The estimation behind did(), with the argument interface of run_did();
+# run_did() and the legacy did() arguments call it directly. `.auto_fe`
+# builds `~ unit + time` when `fe` is NULL (off for formulas, where no `|`
+# means no fixed effects).
+.did_impl <- function(
   data,
   outcome,
   treatment,
@@ -140,7 +219,8 @@ did <- function(
   weights     = NULL,
   conf_level  = 0.95,
   vcov        = "HC1",
-  vcov_args   = list()
+  vcov_args   = list(),
+  .auto_fe    = TRUE
 ) {
   # ---- input validation -------------------------------------------------------
   if (!is.data.frame(data)) stop("`data` must be a data.frame.")
@@ -220,12 +300,12 @@ did <- function(
       stop("`fe` must be a one-sided formula (no LHS). Use e.g., ~ id + year.")
     }
     fe_rhs_text <- rlang::expr_text(rlang::f_rhs(fe))
-  } else if (!is.null(unit_chr) && !is.null(time_chr)) {
+  } else if (.auto_fe && !is.null(unit_chr) && !is.null(time_chr)) {
     fe_rhs_text <- paste(unit_chr, time_chr, sep = " + ")
-  } else if (!is.null(unit_chr) || !is.null(time_chr)) {
+  } else if (.auto_fe && (!is.null(unit_chr) || !is.null(time_chr))) {
     stop("Both `unit` and `time` must be provided to auto-construct `fe`.")
   } else {
-    message("No `fe` specified; estimating pooled OLS.")
+    if (.auto_fe) message("No `fe` specified; estimating pooled OLS.")
     fe_rhs_text <- ""
   }
 
@@ -397,9 +477,18 @@ print.did_result <- function(x, digits = 3L, ...) {
   } else {
     cat(sprintf("N = %d obs | %d treated obs\n", N, N_treat))
   }
+  unit_v <- attr(x, "unit")
+  time_v <- attr(x, "time")
+  if (!is.null(unit_v) || !is.null(time_v)) {
+    cat(sprintf("Panel: unit = %s | time = %s\n",
+                if (is.null(unit_v)) "-" else unit_v,
+                if (is.null(time_v)) "-" else time_v))
+  }
   if (!is.null(timing)) {
     cat(sprintf("Timing: %s (post = time >= %.10g)\n",
                 attr(x, "treatment"), timing))
+  } else if (!is.null(attr(x, "timing_var"))) {
+    cat(sprintf("Timing: post = %s >= %s\n", time_v, attr(x, "timing_var")))
   }
   cat("FE:", if (nzchar(fe)) fe else "(none)", "\n")
   cat("VCOV:", vc, "| Cluster:",

@@ -101,10 +101,13 @@ run_es <- function(
     # run_es defaulted to a universal design; suppress event_study()'s
     # column-name inference unless the caller set `staggered` explicitly.
     cl$staggered <- staggered
-    cl[[1L]] <- quote(fixes::event_study)
   }
 
-  out <- eval(cl, parent.frame())
+  out <- if (use_sunab) {
+    eval(cl, parent.frame())
+  } else {
+    .eval_impl(cl, "event_study", .event_study_impl, parent.frame())
+  }
   attr(out, "call") <- match.call()
   out
 }
@@ -163,8 +166,7 @@ calc_att <- function(
     cl[[a]] <- NULL
   }
   names(cl)[names(cl) == "conf.level"] <- "conf_level"
-  cl[[1L]] <- quote(fixes::att)
-  eval(cl, parent.frame())
+  .eval_impl(cl, "att", .att_impl, parent.frame())
 }
 
 #' Deprecated: run a basic TWFE DiD model
@@ -200,8 +202,7 @@ run_did <- function(
   lifecycle::deprecate_warn("1.0.0", "run_did()", "did()")
   cl <- match.call()
   names(cl)[names(cl) == "conf.level"] <- "conf_level"
-  cl[[1L]] <- quote(fixes::did)
-  out <- eval(cl, parent.frame())
+  out <- .eval_impl(cl, "did", .did_impl, parent.frame())
   attr(out, "call") <- match.call()
   out
 }

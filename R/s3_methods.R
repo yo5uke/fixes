@@ -9,6 +9,11 @@ print.es_result <- function(x, ...) {
 
   cat("  N:", n, " | Units:", nu,
       " | Treated units:", nt, " | Never-treated:", nn, "\n")
+  uv <- attr(x, "unit_var"); tv <- attr(x, "time_var")
+  cat("  Panel: ",
+      if (identical(attr(x, "estimator"), "flex")) "group" else "unit",
+      " = ", if (is.null(uv)) "-" else uv,
+      " | time = ", if (is.null(tv)) "-" else tv, "\n", sep = "")
   cat("  FE: ", fe, "\n", sep = "")
   cat("  VCOV:", vc, " | Cluster:", paste(if (is.null(cl)) "-" else cl, collapse = " + "), "\n")
   es <- attr(x, "estimator")

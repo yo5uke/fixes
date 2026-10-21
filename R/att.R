@@ -132,7 +132,14 @@
 #' This function complements [event_study()]: use `event_study()` when you
 #' want a full event-study curve (dynamic effects by relative time), and
 #' `att()` when you want aggregated ATT estimates that collapse the time
-#' dimension.
+#' dimension. Both take the same formula, and treatment is given in the same
+#' three ways (see [event_study()], **Specifying treatment**):
+#'
+#' ```r
+#' att(y ~ D | id + year, data = df, time = year)                 # D column
+#' att(y ~ 1 | id + year, data = df, time = year, timing = g)     # timing column
+#' att(y ~ treated | id + year, data = df, time = year, timing = 2005)
+#' ```
 #'
 #' The result has `broom::tidy()` and `broom::glance()` methods, so it can be
 #' passed to `modelsummary::modelsummary()` (rendered with `tinytable`) to build
@@ -157,13 +164,20 @@
 #' BJS SEs are approximate (naive sample variance of unit-time effects).
 #' Cluster-robust SEs for BJS aggregations are planned for a future release.
 #'
-#' @param data A data.frame containing panel data.
-#' @param outcome Unquoted outcome variable (name or expression, e.g., `log(y)`).
+#' @param formula A model formula `outcome ~ treatment | fixed effects`
+#'   (see [event_study()]). The fixed effects only serve to name the unit:
+#'   both estimators absorb unit and time effects themselves, and neither
+#'   takes covariates.
+#' @param data A data.frame containing panel data. `formula` and `data` may
+#'   come in either order.
 #' @param time Unquoted calendar time variable (numeric).
-#' @param timing Unquoted column giving each unit's first treatment period
-#'   (`NA` = never treated). The value must be the same on every row of a
-#'   unit; otherwise `att()` stops with an error naming the offending units.
-#' @param unit Unquoted unit identifier (required).
+#' @param timing Treatment timing: an unquoted column giving each unit's
+#'   first treatment period (`NA` = never treated), or a single treatment
+#'   date. Omit it when the formula holds a D column. A timing column must
+#'   have the same value on every row of a unit; otherwise `att()` stops
+#'   with an error naming the offending units.
+#' @param unit Unquoted unit identifier; taken from the fixed effects when
+#'   they are `time` plus one other column.
 #' @param estimator Estimation strategy: `"cs"` (Callaway-Sant'Anna 2021,
 #'   default) or `"bjs"` (Borusyak-Jaravel-Spiess 2024).
 #' @param aggregation Aggregation type: `"simple"` (overall ATT, default),
@@ -177,7 +191,13 @@
 #'   levels are supported, e.g., `c(0.90, 0.95)`.
 #' @param interval Numeric time spacing (default `1`; informational only).
 #' @param time_transform Logical; if `TRUE`, creates consecutive integer time
-#'   within unit via `dplyr::dense_rank()`. Requires `unit`.
+#'   within unit via `dplyr::dense_rank()`. A timing column or value is then
+#'   read as an index; a D column needs no adjustment.
+#' @param outcome `r lifecycle::badge("deprecated")` The unquoted outcome of
+#'   the older interface. Still works in fixes 1.x, with a deprecation
+#'   warning that shows the equivalent formula call; fixes 2.0.0 is planned
+#'   to accept only `formula`. Name it when you use it: the second argument
+#'   is now `data`.
 #'
 #' @return A `data.frame` of class `"att_result"` with columns:
 #' \describe{
@@ -190,16 +210,17 @@
 #' }
 #'
 #' Attributes: `aggregation`, `estimator`, `conf.level`, `N`, `N_units`,
-#' `N_treated`, `N_nevertreated`, `control_group` (CS only), `att_gt` (CS
-#' raw ATT(g,t) table), `tau_it` (BJS unit-time effects table).
+#' `N_treated`, `N_nevertreated`, `unit_var`, `time_var`, `control_group`
+#' (CS only), `att_gt` (CS raw ATT(g,t) table), `tau_it` (BJS unit-time
+#' effects table).
 #'
 #' @seealso [event_study()] for event-study (dynamic) estimates, and
 #'   [calc_att()] for the deprecated verb-style predecessor.
 #'
 #' @examples
 #' \dontrun{
-#' att(df, outcome = y, time = year, timing = g, unit = id)
-#' att(df, outcome = y, time = year, timing = g, unit = id,
+#' att(y ~ 1 | id + year, data = df, time = year, timing = g)
+#' att(y ~ D | id + year, data = df, time = year,
 #'     estimator = "bjs", aggregation = "by_cohort")
 #' }
 #'
@@ -208,6 +229,70 @@
 #' @importFrom rlang .data
 #' @export
 att <- function(
+  formula,
+  data,
+  time,
+  timing        = NULL,
+  unit          = NULL,
+  estimator     = c("cs", "bjs"),
+  aggregation   = c("simple", "by_cohort", "by_time"),
+  control_group = c("nevertreated", "notyettreated"),
+  anticipation  = 0L,
+  conf_level    = 0.95,
+  interval      = 1,
+  time_transform = FALSE,
+  outcome
+) {
+  estimator <- match.arg(estimator)
+  cl  <- match.call()
+  env <- parent.frame()
+  fd  <- .formula_and_data(rlang::enquo(formula), rlang::enquo(data), "att")
+
+  if (is.null(fd$formula)) {
+    names(cl)[names(cl) == "formula"] <- "data"
+    .deprecate_model_args(
+      "att", "`outcome`",
+      .legacy_formula_call("att", cl, fd$data, env, estimator), env
+    )
+    return(.eval_impl(cl, "att", .att_impl, env))
+  }
+  if ("outcome" %in% names(cl)) {
+    stop("Give the model either as `formula` or through `outcome`, not both.",
+         call. = FALSE)
+  }
+
+  data <- fd$data
+  p <- .parse_model_formula(fd$formula, data, "att")
+  timing_s <- .timing_spec(cl$timing, data, env)
+  .require_time(cl$time)
+  time_chr <- .resolve_col(cl$time, data)
+  panel <- .resolve_panel(time_chr, .col_arg(cl$unit, data), p$fe,
+                          need_unit = TRUE)
+
+  tr <- .formula_treatment(p, timing_s, FALSE, data, panel$unit, time_chr,
+                           "att", time_transform = time_transform)
+  data <- tr$data
+  .formula_covariates(tr$covariates, estimator, p$env)
+  .formula_fe(p$fe, estimator, keep = c(panel$unit, time_chr))
+
+  timing_arg <- if (tr$mode == "cohort") timing_s$name else {
+    col <- .fresh_col(data, ".fixes_timing")
+    data[[col]] <- tr$cohort
+    col
+  }
+
+  new <- cl[!names(cl) %in% c("formula", "time", "timing", "unit", "estimator")]
+  new$outcome   <- p$lhs
+  new$time      <- time_chr
+  new$timing    <- timing_arg
+  new$unit      <- panel$unit
+  new$estimator <- estimator
+  .eval_impl(new, "att", .att_impl, env, data = data)
+}
+
+# The estimation behind att(), with the argument interface of calc_att();
+# calc_att() and the legacy att() arguments call it directly.
+.att_impl <- function(
   data,
   outcome,
   time,
@@ -238,6 +323,7 @@ att <- function(
 
   outcome_chr <- resolve_column(rlang::enexpr(outcome), data, allow_call = TRUE)
   time_chr    <- resolve_column(rlang::enexpr(time),    data)
+  time_var    <- time_chr
   timing_chr  <- resolve_column(rlang::enexpr(timing),  data)
 
   unit_expr <- rlang::enexpr(unit)
@@ -292,6 +378,8 @@ att <- function(
   attr(agg_df, "N_units")        <- n_units
   attr(agg_df, "N_treated")      <- n_treated
   attr(agg_df, "N_nevertreated") <- n_never
+  attr(agg_df, "unit_var")       <- unit_chr
+  attr(agg_df, "time_var")       <- time_var
   for (nm in names(extra_attrs)) attr(agg_df, nm) <- extra_attrs[[nm]]
 
   class(agg_df) <- c("att_result", "data.frame")
@@ -315,7 +403,10 @@ print.att_result <- function(x, digits = 3L, ...) {
     "ATT Estimation  [estimator: %s | aggregation: %s]\n",
     toupper(estimator), agg_label
   ))
-  cat(sprintf("N = %d obs | %d units | %d treated\n\n", N, N_units, N_treated))
+  cat(sprintf("N = %d obs | %d units | %d treated\n", N, N_units, N_treated))
+  cat(sprintf("Panel: unit = %s | time = %s\n\n",
+              if (is.null(attr(x, "unit_var"))) "-" else attr(x, "unit_var"),
+              if (is.null(attr(x, "time_var"))) "-" else attr(x, "time_var")))
 
   display <- as.data.frame(x)
   print(display, digits = digits, ...)
@@ -343,7 +434,7 @@ print.att_result <- function(x, digits = 3L, ...) {
 #'
 #' @examples
 #' \dontrun{
-#' res <- att(df, outcome = y, time = year, timing = g, unit = id,
+#' res <- att(y ~ 1 | id + year, data = df, time = year, timing = g,
 #'            aggregation = "by_cohort")
 #' plot(res)
 #' }

@@ -131,7 +131,54 @@
 #' Estimation runs on the package's internal fixed-effects OLS engine;
 #' results are returned as a tidy table with rich metadata.
 #'
+#' The model is a formula, `outcome ~ treatment + covariates | fixed effects`,
+#' as in `fixest::feols()`; the same formula works in [did()] and [att()].
+#'
 #' `event_study()` supersedes [run_es()] as of fixes 1.0.0.
+#'
+#' @section Specifying treatment:
+#' Describe treatment in whichever way matches your data:
+#'
+#' \tabular{ll}{
+#'   \strong{Your data has} \tab \strong{Write} \cr
+#'   D (1 for treated units in post-treatment periods) \tab `y ~ D + x | id + year, time = year` \cr
+#'   each unit's first treated period (`NA` = never treated) \tab `y ~ x | id + year, time = year, timing = g` \cr
+#'   a treated-group dummy and one treatment date \tab `y ~ treated + x | id + year, time = year, timing = 2005` \cr
+#' }
+#'
+#' - **D column** (no `timing`): the first right-hand-side term is D. A
+#'   unit's treatment starts in the first period with `D = 1` and must stay
+#'   on from then on (staggered adoption). Rows with a missing D are dropped.
+#'   A single start date across units gives the classic universal design,
+#'   several give the staggered one. With `time_transform = TRUE` the start
+#'   is read on the time index, so no index arithmetic is needed.
+#' - **Timing column** (`timing = g`): `g` defines treatment, so the
+#'   right-hand side holds only covariates (write `y ~ 1 | id + year` when
+#'   there are none). D or the treated-group dummy must not appear in the
+#'   formula.
+#' - **Treated-group dummy and a date** (`timing = 2005`): the first term is
+#'   the treated-group dummy (constant within units), and treatment starts at
+#'   `timing` for every treated unit.
+#'
+#' A pre-built event-time column goes in `rel_time`, with the treated-group
+#' dummy as the first term: `y ~ treated | id + year, time = year,
+#' rel_time = ttt`.
+#'
+#' @section Panel identifiers:
+#' `time` is required. `unit` is taken from the fixed effects when they are
+#' plain columns made of `time` and exactly one other column (`| id + year`
+#' with `time = year`, in either order); a message then reports the unit and
+#' time used. Otherwise pass `unit`: it is needed for a D column and for
+#' `estimator = "cs"`, `"sa"`, `"bjs"` and `"twm"`. `print()` shows the
+#' identifiers of every result.
+#'
+#' @section Fixed effects and covariates by estimator:
+#' `"twfe"`, `"sa"` and `"twm"` use the fixed effects as written. `"cs"`,
+#' `"bjs"` and `"flex"` absorb the unit (group) and time effects themselves:
+#' those fixed effects are accepted silently, any others are ignored with a
+#' warning. Covariates are supported by `"twfe"`, `"twm"` and `"flex"`, and
+#' may be expressions such as `log(x)` or `factor(region)`; `"cs"`, `"sa"`
+#' and `"bjs"` stop with an error when the formula contains covariates.
 #'
 #' @details
 #' **How relative (event) time is defined.** `event_study()` can build the
@@ -141,7 +188,7 @@
 #'
 #' \tabular{lll}{
 #'   \strong{Method} \tab \strong{Definition} \tab \strong{How to invoke} \cr
-#'   Calendar difference (default) \tab `(time - timing) / interval` \tab `staggered = TRUE` (or scalar `timing`) \cr
+#'   Calendar difference (default) \tab `(time - timing) / interval` \tab a timing column, a scalar `timing`, or a D column \cr
 #'   Within-unit rank \tab `dense_rank(time)` within each unit \tab `time_transform = TRUE` \cr
 #'   Pre-built event time \tab supplied column, used verbatim \tab `rel_time = <col>` \cr
 #' }
@@ -154,6 +201,8 @@
 #' on such a grid, pass that grid's event-time column via `rel_time` so the
 #' design matches `fixest::feols(y ~ i(rel_time, treatment, ref) | fe)` exactly.
 #' `att()` uses the same calendar-difference convention as the default here.
+#' With a D column, a unit's start is the first period in which D = 1 is
+#' observed.
 #'
 #' **Missing values and unbalanced panels.** With `estimator = "cs"`, rows
 #' with a missing or non-finite outcome, time, or unit are dropped, and the
@@ -167,49 +216,61 @@
 #' sample (Sun and Abraham 2021, Section 4.1).
 #'
 #' @section Key Features:
-#' - One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
+#' - One formula for the model (outcome, treatment, covariates, fixed
+#'   effects), shared with [did()] and [att()].
 #' - Six estimators behind one interface: `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`.
 #' - Flexible clustering, weights, and VCOV choices (e.g., `vcov = "HC1" | "iid" | "hetero" ...`).
 #' - Automatic lead/lag window detection and customizable baseline period.
 #' - Returns an `"es_result"` object compatible with `plot()`, `print()`, and `autoplot()`.
 #'
-#' @param data A data.frame containing panel data.
-#' @param outcome Unquoted outcome (name or expression, e.g., `log(y)`).
-#' @param treatment Unquoted treatment indicator (0/1 or logical). Used only when `estimator = "twfe"`.
+#' @param formula A model formula
+#'   `outcome ~ treatment + covariates | fixed effects`. The left-hand side
+#'   may be an expression (e.g. `log(y)`); the part after `|` is optional.
+#'   What the first right-hand-side term means depends on `timing`; see
+#'   **Specifying treatment**. Fixed effects such as `id^year` require the
+#'   optional \{fixest\} package. All variables must be columns of `data`.
+#' @param data A data.frame containing panel data. `formula` and `data` may
+#'   come in either order, so `df |> event_study(y ~ D | id + year, time =
+#'   year)` works.
 #' @param time Unquoted time variable (numeric or Date).
-#' @param timing For `estimator = "twfe"`: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see `staggered`). For the staggered estimators (`"cs"`, `"sa"`, `"bjs"`, `"twm"`, `"flex"`): unquoted column giving each unit's first treatment period (`NA` = never treated). The value must be the same on every row of a unit; `"cs"`, `"sa"`, `"bjs"` and `"twm"` stop with an error naming the offending units otherwise.
-#'   **Convention for staggered designs (cs, sa, bjs, twm, flex, twfe with staggered timing):**
-#'   `NA` in the `timing` column means the unit is *never treated* and will be used as a
-#'   control. This follows the same convention as `did::att_gt()`, `fixest::sunab()`, and
-#'   `didimputation`. If `NA` instead represents *missing* treatment timing for an otherwise
-#'   treated unit, those observations will be silently absorbed into the control group, which
-#'   is almost certainly wrong. For `estimator = "twfe"` with staggered timing, a warning
-#'   is emitted when units with `treatment = 1` also have `timing = NA`.
-#' @param fe One-sided fixed-effects formula, e.g., `~ id + year`. Can be `NULL` for no fixed effects. Ignored when `estimator = "cs"`.
+#' @param timing Treatment timing; see **Specifying treatment**. Either an
+#'   unquoted column giving each unit's first treatment period (`NA` = never
+#'   treated) or a single treatment date (numeric or Date). Omit it when the
+#'   formula holds a D column. A timing column must have the same value on
+#'   every row of a unit; `"cs"`, `"sa"`, `"bjs"` and `"twm"` stop with an
+#'   error naming the offending units otherwise.
+#'   **`NA` means never treated:** this follows `did::att_gt()`,
+#'   `fixest::sunab()`, and `didimputation`. If `NA` instead represents
+#'   *missing* treatment timing for an otherwise treated unit, those
+#'   observations are silently absorbed into the control group, which is
+#'   almost certainly wrong. A D column avoids the coding question.
+#' @param unit Unquoted unit identifier. Taken from the fixed effects when
+#'   possible; see **Panel identifiers**.
 #' @param lead_range,lag_range Integers for pre/post windows. If `NULL`, determined automatically.
-#' @param covariates One-sided formula of additional controls, e.g., `~ x1 + log(x2)`.
 #' @param cluster Cluster specification (one-sided formula like `~ id + year`, a single character column name, or a vector of length `nrow(data)`).
 #' @param weights Observation weights (a name/one-sided formula or a numeric vector of length `nrow(data)`).
 #' @param baseline Integer baseline period (default `-1`); the reference period excluded from the estimation results.
 #' @param interval Numeric spacing of the time variable (default `1`; ignored internally for Dates).
-#' @param time_transform Logical; if `TRUE`, creates consecutive integer time within unit.
+#' @param time_transform Logical; if `TRUE`, creates consecutive integer time
+#'   within unit. A timing column or value is then read as an index; a D
+#'   column needs no adjustment.
 #' @param rel_time Optional unquoted column holding a **pre-built event time**
 #'   (time relative to treatment), e.g. the `Time_to_Treatment` produced by
 #'   `paneltools`/`fect`'s `get.cohort()`.  When supplied, `event_study()` uses
 #'   this column verbatim as the event-study factor — `i(rel_time, treatment,
 #'   ref = baseline)` — instead of computing relative time internally from
-#'   `time` and `timing`.  Never-treated / control rows should be `NA`.
-#'   Requires `estimator = "twfe"`; cannot be combined with
-#'   `staggered = TRUE` or `time_transform = TRUE`.  This normalises the older
-#'   `time = event_time, timing = 0` idiom.  See **Details** for how this
-#'   differs from the calendar-difference and `time_transform` conventions.
-#' @param unit Unit identifier variable (required when `estimator = "cs"` or `time_transform = TRUE`); also used for metadata when supplied.
+#'   `time` and `timing`; the first right-hand-side term is then the
+#'   treated-group dummy.  Never-treated / control rows should be `NA`.
+#'   Requires `estimator = "twfe"`; cannot be combined with `timing`,
+#'   `staggered = TRUE` or `time_transform = TRUE`.  See **Details** for how
+#'   this differs from the calendar-difference and `time_transform`
+#'   conventions.
 #' @param staggered Logical or `NULL` (default). Only consulted by
-#'   `estimator = "twfe"`: `TRUE` means `timing` is a column of unit-specific
-#'   adoption times; `FALSE` means `timing` is a single universal value. With
-#'   the default `NULL` the design is inferred — when `timing` names a column
-#'   of `data` the design is staggered, otherwise it is universal. Pass an
-#'   explicit value to override the inference.
+#'   `estimator = "twfe"`: `TRUE` means a staggered design, `FALSE` a single
+#'   universal treatment date. With the default `NULL` the design follows
+#'   from how treatment is given (a timing column is staggered, a single
+#'   date is universal, a D column is universal when every unit starts in
+#'   the same period). Pass an explicit value to override the inference.
 #' @param estimator Estimation strategy: `"twfe"` (default) for the classic
 #'   TWFE event study, `"cs"` (Callaway-Sant'Anna 2021), `"sa"` (Sun-Abraham
 #'   2021 interaction-weighted), `"bjs"` (Borusyak-Jaravel-Spiess 2024
@@ -241,13 +302,21 @@
 #'   Identifies which treatment group (cohort) each observation belongs to in a
 #'   repeated cross-section design (\eqn{R_{ig}} in Deb et al. 2024).  Each
 #'   group must map to exactly one value of `timing` (or `NA` for
-#'   never-treated groups).  Not used by other estimators.
+#'   never-treated groups).  With a D column, each group's start is the first
+#'   period with `D = 1`.  Not used by other estimators.
 #' @param trends Logical; for `estimator = "twm"` only.  When `TRUE`,
 #'   adds cohort-specific linear trend regressors \eqn{d_g \cdot t} to the
 #'   Procedure 5.1 regression (Wooldridge 2025, Section 8), allowing each
 #'   cohort's counterfactual trend to deviate linearly from the common time
 #'   trend.  Requires at least 2 pre-treatment periods per cohort.
 #'   Default `FALSE`.
+#' @param outcome,treatment,fe,covariates `r lifecycle::badge("deprecated")`
+#'   The model arguments of the older interface: the unquoted outcome, the
+#'   treated-group dummy (used only by `estimator = "twfe"`), a one-sided
+#'   fixed-effects formula, and a one-sided covariate formula. They still
+#'   work in fixes 1.x, with a deprecation warning that shows the equivalent
+#'   formula call; fixes 2.0.0 is planned to accept only `formula`. Name them
+#'   when you use them: the second argument is now `data`.
 #'
 #' @return A `data.frame` of class `"es_result"` with columns:
 #' - `term`, `estimate`, `std.error`, `statistic`, `p.value`
@@ -255,21 +324,25 @@
 #' - `relative_time` (integer; 0 = event), `is_baseline` (logical; marks the reference period)
 #'
 #' Attributes include: `lead_range`, `lag_range`, `baseline`, `interval`, `call`, `model_formula`, `conf.level`,
-#' `N`, `N_units`, `N_treated`, `N_nevertreated`, `fe`, `vcov_type`, `cluster_vars`, `staggered`, `sunab_used`.
+#' `N`, `N_units`, `N_treated`, `N_nevertreated`, `fe`, `vcov_type`, `cluster_vars`, `staggered`, `sunab_used`,
+#' `unit_var`, `time_var`.
 #'
 #' @seealso [plot.es_result()] for visualization, [att()] for aggregated ATT
 #'   estimation, and [run_es()] for the deprecated verb-style predecessor.
 #'
 #' @examples
 #' \dontrun{
-#' # Staggered adoption, Callaway-Sant'Anna
-#' res <- event_study(df, outcome = y, time = year, timing = g, unit = id,
-#'                    estimator = "cs")
+#' # D column: 1 for treated units in post-treatment periods
+#' res <- event_study(y ~ D | id + year, data = df, time = year)
 #' plot(res)
 #'
-#' # Classic TWFE with universal timing (timing inferred as universal)
-#' res <- event_study(df, outcome = y, treatment = treated, time = year,
-#'                    timing = 2005, fe = ~ id + year, cluster = ~ id)
+#' # Timing column (NA = never treated), Callaway-Sant'Anna
+#' res <- event_study(y ~ 1 | id + year, data = df, time = year, timing = g,
+#'                    estimator = "cs")
+#'
+#' # Treated-group dummy and a single treatment date, clustered by unit
+#' res <- event_study(y ~ treated + x1 | id + year, data = df, time = year,
+#'                    timing = 2005, cluster = ~ id)
 #' }
 #'
 #' @importFrom stats as.formula qnorm setNames vcov
@@ -278,6 +351,148 @@
 #' @importFrom utils getFromNamespace
 #' @export
 event_study <- function(
+  formula,
+  data,
+  time,
+  timing = NULL,
+  unit = NULL,
+  estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
+  cluster = NULL,
+  weights = NULL,
+  baseline = -1L,
+  lead_range = NULL,
+  lag_range = NULL,
+  conf_level = 0.95,
+  vcov = "HC1",
+  vcov_args = list(),
+  control_group = c("nevertreated", "notyettreated"),
+  anticipation = 0L,
+  bootstrap = FALSE,
+  boot_reps = 999L,
+  boot_alpha = 0.05,
+  boot_seed = NULL,
+  group = NULL,
+  trends = FALSE,
+  interval = 1,
+  time_transform = FALSE,
+  rel_time = NULL,
+  staggered = NULL,
+  outcome,
+  treatment = NULL,
+  fe = NULL,
+  covariates = NULL
+) {
+  estimator <- match.arg(estimator)
+  cl  <- match.call()
+  env <- parent.frame()
+  fd  <- .formula_and_data(rlang::enquo(formula), rlang::enquo(data),
+                           "event_study")
+  model_args <- c("outcome", "treatment", "fe", "covariates")
+
+  if (is.null(fd$formula)) {
+    names(cl)[names(cl) == "formula"] <- "data"
+    .deprecate_model_args(
+      "event_study", "`outcome`, `treatment`, `fe` and `covariates`",
+      .legacy_formula_call("event_study", cl, fd$data, env, estimator), env
+    )
+    return(.eval_impl(cl, "event_study", .event_study_impl, env))
+  }
+  if (any(model_args %in% names(cl))) {
+    stop("Give the model either as `formula` or through `outcome`, ",
+         "`treatment`, `fe` and `covariates`, not both.", call. = FALSE)
+  }
+
+  data <- fd$data
+  p <- .parse_model_formula(fd$formula, data, "event_study")
+  timing_s <- .timing_spec(cl$timing, data, env)
+  has_rel  <- !is.null(cl$rel_time) && !identical(cl$rel_time, quote(NULL))
+  if (has_rel && timing_s$kind != "none") {
+    stop("`rel_time` already encodes event time relative to treatment; ",
+         "drop `timing`.", call. = FALSE)
+  }
+  mode_d <- timing_s$kind == "none" && !has_rel
+
+  .require_time(cl$time)
+  time_chr  <- .resolve_col(cl$time, data)
+  group_chr <- .col_arg(cl$group, data)
+  is_flex   <- estimator == "flex"
+  panel <- if (is_flex) {
+    list(unit = .col_arg(cl$unit, data), time = time_chr)
+  } else {
+    .resolve_panel(time_chr, .col_arg(cl$unit, data), p$fe,
+                   need_unit = mode_d ||
+                     estimator %in% c("cs", "sa", "bjs", "twm"))
+  }
+  id_chr <- if (is_flex) group_chr else panel$unit
+  if (is_flex && is.null(group_chr)) {
+    stop("`group` is required when `estimator = 'flex'`.", call. = FALSE)
+  }
+
+  tr <- .formula_treatment(
+    p, timing_s, has_rel, data, id_chr, time_chr, "event_study",
+    derive_cohort = !(estimator == "twfe" && timing_s$kind == "value"),
+    time_transform = time_transform
+  )
+  data <- tr$data
+  covariates <- if (estimator == "twfe") {
+    .covariate_formula(tr$covariates, p$env)
+  } else {
+    .formula_covariates(tr$covariates, estimator, p$env)
+  }
+  fe <- .formula_fe(p$fe, estimator,
+                    keep = c(if (is_flex) group_chr else panel$unit, time_chr))
+
+  treatment_chr <- NULL
+  timing_arg    <- NULL
+  if (estimator == "twfe" && tr$mode %in% c("rel_time", "value")) {
+    treatment_chr <- tr$term
+    if (tr$mode == "value") timing_arg <- timing_s$value
+  } else if (estimator == "twfe") {
+    treatment_chr <- .fresh_col(data, ".fixes_treated")
+    data[[treatment_chr]] <- as.integer(!is.na(tr$cohort))
+    starts <- unique(tr$cohort[!is.na(tr$cohort)])
+    if (tr$mode == "cohort") {
+      timing_arg <- timing_s$name
+    } else if (length(starts) == 1L && !isTRUE(staggered)) {
+      timing_arg <- starts
+      staggered  <- FALSE
+    } else {
+      if (isFALSE(staggered)) {
+        stop("`", tr$term, "` starts in ", length(starts), " different ",
+             "periods; `staggered = FALSE` needs a single treatment date.",
+             call. = FALSE)
+      }
+      timing_arg <- .fresh_col(data, ".fixes_timing")
+      data[[timing_arg]] <- tr$cohort
+      staggered <- TRUE
+    }
+  } else if (tr$mode == "cohort") {
+    timing_arg <- timing_s$name
+  } else if (tr$mode != "rel_time") {
+    timing_arg <- .fresh_col(data, ".fixes_timing")
+    data[[timing_arg]] <- tr$cohort
+  }
+
+  new <- cl[!names(cl) %in% c("formula", model_args, "time", "timing", "unit",
+                              "staggered", "estimator")]
+  new$outcome    <- p$lhs
+  new$treatment  <- treatment_chr
+  new$time       <- time_chr
+  new$timing     <- timing_arg
+  new$unit       <- panel$unit
+  new$fe         <- fe
+  new$covariates <- covariates
+  new$staggered  <- staggered
+  new$estimator  <- estimator
+
+  res <- .eval_impl(new, "event_study", .event_study_impl, env, data = data)
+  attr(res, "call") <- .user_call(cl, fd$swapped)
+  res
+}
+
+# The estimation behind event_study(), with the argument interface of
+# run_es(); run_es() and the legacy event_study() arguments call it directly.
+.event_study_impl <- function(
   data,
   outcome,
   treatment = NULL,
@@ -469,6 +684,7 @@ event_study <- function(
         ref_time = .es_ref_time(cs_out$data[[timing_chr]]),
         time_levels = sort(unique(cs_out$data[[time_chr]])),
         time_var = time_var,
+        unit_var = unit_chr,
         time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = "cs",
@@ -619,6 +835,7 @@ event_study <- function(
         ref_time = .es_ref_time(data[[timing_chr]]),
         time_levels = sort(unique(data[[time_chr]])),
         time_var = time_var,
+        unit_var = unit_chr,
         time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = sa_out$formula_str,
@@ -683,6 +900,7 @@ event_study <- function(
         ref_time = .es_ref_time(data[[timing_chr]]),
         time_levels = sort(unique(data[[time_chr]])),
         time_var = time_var,
+        unit_var = unit_chr,
         time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = "bjs",
@@ -758,6 +976,7 @@ event_study <- function(
         ref_time = .es_ref_time(data[[timing_chr]]),
         time_levels = sort(unique(data[[time_chr]])),
         time_var = time_var,
+        unit_var = unit_chr,
         time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = twm_out$formula_str,
@@ -833,6 +1052,7 @@ event_study <- function(
         ref_time = .es_ref_time(data[[timing_chr]]),
         time_levels = sort(unique(data[[time_chr]])),
         time_var = time_var,
+        unit_var = group_chr,
         time_transform = isTRUE(time_transform),
         call = match.call(),
         model_formula = flex_out$formula_str,
@@ -1103,6 +1323,7 @@ event_study <- function(
   }
   attr(tidy, "time_levels") <- sort(unique(data[[time_chr]]))
   attr(tidy, "time_var") <- time_var
+  attr(tidy, "unit_var") <- unit_chr
   attr(tidy, "time_transform") <- isTRUE(time_transform)
   attr(tidy, "call") <- match.call()
   attr(tidy, "model_formula") <- formula_string
@@ -1123,6 +1344,7 @@ event_study <- function(
   attr(tidy, "es_vcov") <- es_vcov
   attr(tidy, "estimator") <- estimator
 
+  rownames(tidy) <- NULL
   class(tidy) <- c("es_result", "data.frame")
   tidy
 }
