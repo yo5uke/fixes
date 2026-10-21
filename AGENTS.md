@@ -5,11 +5,19 @@
 ## 設計と API 契約
 
 - 動的効果は `event_study()`、集計 ATT は `att()`、単一の DiD 係数は `did()`。推定量は `estimator = "twfe"|"cs"|"sa"|"bjs"|"twm"|"flex"` で選ぶ。
-- `event_study()` のシグネチャは変更しない。
+- 3 関数とも `f(formula, data, time, timing, unit, ...)` の形で、モデルは `outcome ~ treatment + covariates | fe` の式で受ける。このシグネチャは 2.0.0 まで変更しない。`formula` と `data` は順序が逆でも受け付ける。
+- 処置の指定は 3 通りで、`timing` の形で決まる(`R/formula_interface.R`)。
+  - `timing` なし: 右辺の先頭は D(処置群かつ処置後 = 1)。ユニットごとの開始時点は D から求める。
+  - `timing` が列: 右辺は共変量だけ。
+  - `timing` が値: 右辺の先頭は処置群ダミー。
+  取り違え(処置群ダミーを D として渡す、`timing` 列の横に D を書く、など)は完全一致の検査でエラーにする。
+- `time` は必須。`unit` は、FE が単純な列で `time` ともう 1 列だけのときに FE から推定し、使った unit/time を `message()` で表示する。結果の `print()` にも毎回出す。
+- 旧引数(`outcome`/`treatment`/`fe`/`covariates`)は末尾に置き、`deprecate_soft` で案内する(2.0.0 で削除予定)。案内には書き換えた formula の呼び出しを出す。位置指定の旧呼び出しは使えない。
+- 公開関数は薄い窓口で、推定は `.event_study_impl()`/`.did_impl()`/`.att_impl()` が担う(旧引数のインターフェースのまま)。`run_es()` などの旧 API と旧引数はここを直接呼ぶ。impl の挙動は変えない。推定量ごとの FE と共変量の検査は、formula 経路だけで行う。
 - `R/deprecated.R` の旧 API は廃止予定だが、後継と数値的・契約的に同一のまま残す。削除も挙動変更も不可(`tests/testthat/test-deprecated.R` が検証)。
 - `es_result` の構造は全推定量で揃え、`plot.es_result()` はどの推定量の結果も受け付ける。
 - `did_result` は生のモデルオブジェクトを持たない。`$coeftable`、`$vcov`、`$fit_stats`、`$df.t` を使う。
-- 新 API の引数は snake_case。`staggered = NULL` は `timing`(列名なら staggered、スカラーなら一括)から推定し、明示指定を優先する。
+- 新 API の引数は snake_case。`staggered = NULL` は処置の与え方(列なら staggered、値なら一括、D 列なら開始時点が 1 つのとき一括)から推定し、明示指定を優先する。
 
 ## 依存関係
 
@@ -22,7 +30,7 @@
 - 推定量は参照実装との数値一致で担保する。許容誤差は `1e-6`(エンジン単体のオラクルは `1e-8`)。
   TWFE/`did()` は `fixest::feols`、CS は `did::att_gt()`、SA は `fixest::sunab()`、BJS は `didimputation` と比べる。
 - **新しい推定量はテストを先に書く。** 既存テストを壊さない。
-- 新旧 API の同値性は、`call` 属性を除いて `expect_identical` で検証する。
+- 新旧 API の同値性は、`call` 属性を除いて `expect_identical` で検証する。formula と旧引数の同値性も同じ(`tests/testthat/test-formula.R`)。例外は、twfe で `timing` 列を使う場合。内部で作る処置群列の名前が `model_formula` に入るため、この属性も除いて比べる。
 - Rcpp 関数には R 実装との一致テストを付ける(浮動小数は `1e-12`、整数は `expect_identical`)。
 
 ## 推定量を触るとき
@@ -52,7 +60,7 @@
 ## 規約と落とし穴
 
 - 固定効果の式は片側(`~ id + year`)。baseline は `[-lead_range, lag_range]` の範囲内。
-- 不規則な時間軸は `time_transform = TRUE` + `unit`(このとき `timing` は元の時間値ではなくインデックス)。`staggered = TRUE` とは併用不可。
+- 不規則な時間軸は `time_transform = TRUE` + `unit`(このとき `timing` は元の時間値ではなくインデックス。D 列なら開始時点をインデックス上で求めるので調整不要)。`staggered = TRUE` とは併用不可。
 - データ列名に `unit` を使わない(ggplot2 と衝突する)。
 - ウェイトが 0/NA の行はエンジンが黙って落とし、負のウェイトはエラー。
 - 既定の vcov は HC1。cluster 指定かつ既定 vcov なら CRV1 に切り替わる。p 値は Student-t(df = N − K_full、一元クラスタなら G − 1)。

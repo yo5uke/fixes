@@ -1,13 +1,13 @@
 #' Tidy a `did_result` object
 #'
 #' @description
-#' Returns a tidy data frame of model coefficients from a [run_did()] result:
+#' Returns a tidy data frame of model coefficients from a [did()] result:
 #' all regressors (treatment and covariates), in the format expected by
 #' `modelsummary::modelsummary()`. The table is read from the fit stored at
-#' estimation time; the VCOV type chosen in [run_did()] (`vcov` / `cluster`)
+#' estimation time; the VCOV type chosen in [did()] (`vcov` / `cluster`)
 #' is already reflected in the standard errors.
 #'
-#' @param x A `did_result` object returned by [run_did()].
+#' @param x A `did_result` object returned by [did()].
 #' @param conf.int Logical; add `conf.low`/`conf.high` columns? Default `FALSE`.
 #' @param conf.level Confidence level for `conf.int`. Default `0.95`.
 #'   Intervals use Student-t quantiles with the fit's degrees of freedom,
@@ -19,7 +19,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+#' res <- did(y ~ D | id + year, data = df)
 #' broom::tidy(res)
 #' broom::tidy(res, conf.int = TRUE)
 #' }
@@ -42,12 +42,12 @@ tidy.did_result <- function(x, conf.int = FALSE, conf.level = 0.95, ...) {
 #' Glance at a `did_result` object
 #'
 #' @description
-#' Returns a single-row summary of model-level statistics from a [run_did()]
+#' Returns a single-row summary of model-level statistics from a [did()]
 #' result: `r.squared`, `adj.r.squared`, `within.r.squared`, `sigma`,
 #' `nobs`, `AIC`, `BIC`, and `logLik`, in the column layout of
 #' [broom::glance()] on a `fixest` model.
 #'
-#' @param x A `did_result` object returned by [run_did()].
+#' @param x A `did_result` object returned by [did()].
 #' @param ... Unused; kept for compatibility with the [broom::glance()]
 #'   generic.
 #'
@@ -55,7 +55,7 @@ tidy.did_result <- function(x, conf.int = FALSE, conf.level = 0.95, ...) {
 #'
 #' @examples
 #' \dontrun{
-#' res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+#' res <- did(y ~ D | id + year, data = df)
 #' broom::glance(res)
 #' }
 #'

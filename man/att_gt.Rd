@@ -24,8 +24,8 @@ keep working.
 }
 \examples{
 \dontrun{
-res <- event_study(df, outcome = y, time = year, timing = g,
-                   unit = id, estimator = "cs")
+res <- event_study(y ~ 1 | id + year, data = df, time = year, timing = g,
+                   estimator = "cs")
 gt <- att_gt(res)
 plot(gt)                  # heatmap
 plot(gt, type = "facet")  # one panel per cohort

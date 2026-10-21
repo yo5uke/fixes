@@ -5,89 +5,65 @@
 \title{Event study estimation for panel data}
 \usage{
 event_study(
+  formula,
   data,
-  outcome,
-  treatment = NULL,
   time,
-  timing,
-  fe = NULL,
-  lead_range = NULL,
-  lag_range = NULL,
-  covariates = NULL,
+  timing = NULL,
+  unit = NULL,
+  estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
   cluster = NULL,
   weights = NULL,
   baseline = -1L,
-  interval = 1,
-  time_transform = FALSE,
-  rel_time = NULL,
-  unit = NULL,
-  staggered = NULL,
-  estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
-  control_group = c("nevertreated", "notyettreated"),
-  anticipation = 0L,
+  lead_range = NULL,
+  lag_range = NULL,
   conf_level = 0.95,
   vcov = "HC1",
   vcov_args = list(),
+  control_group = c("nevertreated", "notyettreated"),
+  anticipation = 0L,
   bootstrap = FALSE,
   boot_reps = 999L,
   boot_alpha = 0.05,
   boot_seed = NULL,
   group = NULL,
-  trends = FALSE
+  trends = FALSE,
+  interval = 1,
+  time_transform = FALSE,
+  rel_time = NULL,
+  staggered = NULL,
+  outcome,
+  treatment = NULL,
+  fe = NULL,
+  covariates = NULL
 )
 }
 \arguments{
-\item{data}{A data.frame containing panel data.}
+\item{formula}{A model formula
+\verb{outcome ~ treatment + covariates | fixed effects}. The left-hand side
+may be an expression (e.g. \code{log(y)}); the part after \code{|} is optional.
+What the first right-hand-side term means depends on \code{timing}; see
+\strong{Specifying treatment}. Fixed effects such as \code{id^year} require the
+optional \{fixest\} package. All variables must be columns of \code{data}.}
 
-\item{outcome}{Unquoted outcome (name or expression, e.g., \code{log(y)}).}
-
-\item{treatment}{Unquoted treatment indicator (0/1 or logical). Used only when \code{estimator = "twfe"}.}
+\item{data}{A data.frame containing panel data. \code{formula} and \code{data} may
+come in either order, so \code{df |> event_study(y ~ D | id + year, time = year)} works.}
 
 \item{time}{Unquoted time variable (numeric or Date).}
 
-\item{timing}{For \code{estimator = "twfe"}: a numeric/Date scalar (universal timing) or an unquoted column with unit-specific adoption times (staggered; detected automatically, see \code{staggered}). For the staggered estimators (\code{"cs"}, \code{"sa"}, \code{"bjs"}, \code{"twm"}, \code{"flex"}): unquoted column giving each unit's first treatment period (\code{NA} = never treated). The value must be the same on every row of a unit; \code{"cs"}, \code{"sa"}, \code{"bjs"} and \code{"twm"} stop with an error naming the offending units otherwise.
-\strong{Convention for staggered designs (cs, sa, bjs, twm, flex, twfe with staggered timing):}
-\code{NA} in the \code{timing} column means the unit is \emph{never treated} and will be used as a
-control. This follows the same convention as \code{did::att_gt()}, \code{fixest::sunab()}, and
-\code{didimputation}. If \code{NA} instead represents \emph{missing} treatment timing for an otherwise
-treated unit, those observations will be silently absorbed into the control group, which
-is almost certainly wrong. For \code{estimator = "twfe"} with staggered timing, a warning
-is emitted when units with \code{treatment = 1} also have \code{timing = NA}.}
+\item{timing}{Treatment timing; see \strong{Specifying treatment}. Either an
+unquoted column giving each unit's first treatment period (\code{NA} = never
+treated) or a single treatment date (numeric or Date). Omit it when the
+formula holds a D column. A timing column must have the same value on
+every row of a unit; \code{"cs"}, \code{"sa"}, \code{"bjs"} and \code{"twm"} stop with an
+error naming the offending units otherwise.
+\strong{\code{NA} means never treated:} this follows \code{did::att_gt()},
+\code{fixest::sunab()}, and \code{didimputation}. If \code{NA} instead represents
+\emph{missing} treatment timing for an otherwise treated unit, those
+observations are silently absorbed into the control group, which is
+almost certainly wrong. A D column avoids the coding question.}
 
-\item{fe}{One-sided fixed-effects formula, e.g., \code{~ id + year}. Can be \code{NULL} for no fixed effects. Ignored when \code{estimator = "cs"}.}
-
-\item{lead_range, lag_range}{Integers for pre/post windows. If \code{NULL}, determined automatically.}
-
-\item{covariates}{One-sided formula of additional controls, e.g., \code{~ x1 + log(x2)}.}
-
-\item{cluster}{Cluster specification (one-sided formula like \code{~ id + year}, a single character column name, or a vector of length \code{nrow(data)}).}
-
-\item{weights}{Observation weights (a name/one-sided formula or a numeric vector of length \code{nrow(data)}).}
-
-\item{baseline}{Integer baseline period (default \code{-1}); the reference period excluded from the estimation results.}
-
-\item{interval}{Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).}
-
-\item{time_transform}{Logical; if \code{TRUE}, creates consecutive integer time within unit.}
-
-\item{rel_time}{Optional unquoted column holding a \strong{pre-built event time}
-(time relative to treatment), e.g. the \code{Time_to_Treatment} produced by
-\code{paneltools}/\code{fect}'s \code{get.cohort()}.  When supplied, \code{event_study()} uses
-this column verbatim as the event-study factor — \code{i(rel_time, treatment, ref = baseline)} — instead of computing relative time internally from
-\code{time} and \code{timing}.  Never-treated / control rows should be \code{NA}.
-Requires \code{estimator = "twfe"}; cannot be combined with
-\code{staggered = TRUE} or \code{time_transform = TRUE}.  This normalises the older
-\verb{time = event_time, timing = 0} idiom.  See \strong{Details} for how this
-differs from the calendar-difference and \code{time_transform} conventions.}
-
-\item{unit}{Unit identifier variable (required when \code{estimator = "cs"} or \code{time_transform = TRUE}); also used for metadata when supplied.}
-
-\item{staggered}{Logical or \code{NULL} (default). Only consulted by
-\code{estimator = "twfe"}: \code{TRUE} means \code{timing} is a column of unit-specific
-adoption times; \code{FALSE} means \code{timing} is a single universal value. With
-the default \code{NULL} the design is inferred — when \code{timing} names a column
-of \code{data} the design is staggered, otherwise it is universal. Pass an
-explicit value to override the inference.}
+\item{unit}{Unquoted unit identifier. Taken from the fixed effects when
+possible; see \strong{Panel identifiers}.}
 
 \item{estimator}{Estimation strategy: \code{"twfe"} (default) for the classic
 TWFE event study, \code{"cs"} (Callaway-Sant'Anna 2021), \code{"sa"} (Sun-Abraham
@@ -95,11 +71,13 @@ TWFE event study, \code{"cs"} (Callaway-Sant'Anna 2021), \code{"sa"} (Sun-Abraha
 imputation), \code{"twm"} (Wooldridge two-way Mundlak), or \code{"flex"}
 (Deb et al. 2024, repeated cross-sections).}
 
-\item{control_group}{For \code{estimator = "cs"}: comparison group, either
-\code{"nevertreated"} (default) or \code{"notyettreated"}.}
+\item{cluster}{Cluster specification (one-sided formula like \code{~ id + year}, a single character column name, or a vector of length \code{nrow(data)}).}
 
-\item{anticipation}{For \code{estimator = "cs"}: number of anticipation periods
-before treatment (non-negative integer, default \code{0L}).}
+\item{weights}{Observation weights (a name/one-sided formula or a numeric vector of length \code{nrow(data)}).}
+
+\item{baseline}{Integer baseline period (default \code{-1}); the reference period excluded from the estimation results.}
+
+\item{lead_range, lag_range}{Integers for pre/post windows. If \code{NULL}, determined automatically.}
 
 \item{conf_level}{Numeric vector of confidence levels (default \code{0.95}).}
 
@@ -109,6 +87,12 @@ optional \{fixest\} package is installed.}
 
 \item{vcov_args}{List of additional arguments forwarded to \code{fixest::vcov()}
 (requires \{fixest\}).}
+
+\item{control_group}{For \code{estimator = "cs"}: comparison group, either
+\code{"nevertreated"} (default) or \code{"notyettreated"}.}
+
+\item{anticipation}{For \code{estimator = "cs"}: number of anticipation periods
+before treatment (non-negative integer, default \code{0L}).}
 
 \item{bootstrap}{Logical; if \code{TRUE} and \code{estimator = "cs"}, compute
 simultaneous confidence bands via the multiplier bootstrap (Algorithm 1,
@@ -130,7 +114,8 @@ does not set a seed.  Pass an integer for reproducible results.}
 Identifies which treatment group (cohort) each observation belongs to in a
 repeated cross-section design (\eqn{R_{ig}} in Deb et al. 2024).  Each
 group must map to exactly one value of \code{timing} (or \code{NA} for
-never-treated groups).  Not used by other estimators.}
+never-treated groups).  With a D column, each group's start is the first
+period with \code{D = 1}.  Not used by other estimators.}
 
 \item{trends}{Logical; for \code{estimator = "twm"} only.  When \code{TRUE},
 adds cohort-specific linear trend regressors \eqn{d_g \cdot t} to the
@@ -138,6 +123,38 @@ Procedure 5.1 regression (Wooldridge 2025, Section 8), allowing each
 cohort's counterfactual trend to deviate linearly from the common time
 trend.  Requires at least 2 pre-treatment periods per cohort.
 Default \code{FALSE}.}
+
+\item{interval}{Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).}
+
+\item{time_transform}{Logical; if \code{TRUE}, creates consecutive integer time
+within unit. A timing column or value is then read as an index; a D
+column needs no adjustment.}
+
+\item{rel_time}{Optional unquoted column holding a \strong{pre-built event time}
+(time relative to treatment), e.g. the \code{Time_to_Treatment} produced by
+\code{paneltools}/\code{fect}'s \code{get.cohort()}.  When supplied, \code{event_study()} uses
+this column verbatim as the event-study factor — \code{i(rel_time, treatment, ref = baseline)} — instead of computing relative time internally from
+\code{time} and \code{timing}; the first right-hand-side term is then the
+treated-group dummy.  Never-treated / control rows should be \code{NA}.
+Requires \code{estimator = "twfe"}; cannot be combined with \code{timing},
+\code{staggered = TRUE} or \code{time_transform = TRUE}.  See \strong{Details} for how
+this differs from the calendar-difference and \code{time_transform}
+conventions.}
+
+\item{staggered}{Logical or \code{NULL} (default). Only consulted by
+\code{estimator = "twfe"}: \code{TRUE} means a staggered design, \code{FALSE} a single
+universal treatment date. With the default \code{NULL} the design follows
+from how treatment is given (a timing column is staggered, a single
+date is universal, a D column is universal when every unit starts in
+the same period). Pass an explicit value to override the inference.}
+
+\item{outcome, treatment, fe, covariates}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+The model arguments of the older interface: the unquoted outcome, the
+treated-group dummy (used only by \code{estimator = "twfe"}), a one-sided
+fixed-effects formula, and a one-sided covariate formula. They still
+work in fixes 1.x, with a deprecation warning that shows the equivalent
+formula call; fixes 2.0.0 is planned to accept only \code{formula}. Name them
+when you use them: the second argument is now \code{data}.}
 }
 \value{
 A \code{data.frame} of class \code{"es_result"} with columns:
@@ -148,7 +165,8 @@ A \code{data.frame} of class \code{"es_result"} with columns:
 }
 
 Attributes include: \code{lead_range}, \code{lag_range}, \code{baseline}, \code{interval}, \code{call}, \code{model_formula}, \code{conf.level},
-\code{N}, \code{N_units}, \code{N_treated}, \code{N_nevertreated}, \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{staggered}, \code{sunab_used}.
+\code{N}, \code{N_units}, \code{N_treated}, \code{N_nevertreated}, \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{staggered}, \code{sunab_used},
+\code{unit_var}, \code{time_var}.
 }
 \description{
 Estimates dynamic treatment effects by relative time (an event-study
@@ -160,6 +178,9 @@ Estimation runs on the package's internal fixed-effects OLS engine;
 results are returned as a tidy table with rich metadata.
 }
 \details{
+The model is a formula, \verb{outcome ~ treatment + covariates | fixed effects},
+as in \code{fixest::feols()}; the same formula works in \code{\link[=did]{did()}} and \code{\link[=att]{att()}}.
+
 \code{event_study()} supersedes \code{\link[=run_es]{run_es()}} as of fixes 1.0.0.
 
 \strong{How relative (event) time is defined.} \code{event_study()} can build the
@@ -169,7 +190,7 @@ coincide:
 
 \tabular{lll}{
 \strong{Method} \tab \strong{Definition} \tab \strong{How to invoke} \cr
-Calendar difference (default) \tab \code{(time - timing) / interval} \tab \code{staggered = TRUE} (or scalar \code{timing}) \cr
+Calendar difference (default) \tab \code{(time - timing) / interval} \tab a timing column, a scalar \code{timing}, or a D column \cr
 Within-unit rank \tab \code{dense_rank(time)} within each unit \tab \code{time_transform = TRUE} \cr
 Pre-built event time \tab supplied column, used verbatim \tab \verb{rel_time = <col>} \cr
 }
@@ -182,6 +203,8 @@ it two observed waves before treatment (\code{-2}).  To reproduce an analysis bu
 on such a grid, pass that grid's event-time column via \code{rel_time} so the
 design matches \code{fixest::feols(y ~ i(rel_time, treatment, ref) | fe)} exactly.
 \code{att()} uses the same calendar-difference convention as the default here.
+With a D column, a unit's start is the first period in which D = 1 is
+observed.
 
 \strong{Missing values and unbalanced panels.} With \code{estimator = "cs"}, rows
 with a missing or non-finite outcome, time, or unit are dropped, and the
@@ -194,10 +217,61 @@ with missing values from the fit as \code{fixest::feols()} does; with
 cohort-specific effects count only units that remain in the estimation
 sample (Sun and Abraham 2021, Section 4.1).
 }
+\section{Specifying treatment}{
+
+Describe treatment in whichever way matches your data:
+
+\tabular{ll}{
+\strong{Your data has} \tab \strong{Write} \cr
+D (1 for treated units in post-treatment periods) \tab \verb{y ~ D + x | id + year, time = year} \cr
+each unit's first treated period (\code{NA} = never treated) \tab \verb{y ~ x | id + year, time = year, timing = g} \cr
+a treated-group dummy and one treatment date \tab \verb{y ~ treated + x | id + year, time = year, timing = 2005} \cr
+}
+\itemize{
+\item \strong{D column} (no \code{timing}): the first right-hand-side term is D. A
+unit's treatment starts in the first period with \code{D = 1} and must stay
+on from then on (staggered adoption). Rows with a missing D are dropped.
+A single start date across units gives the classic universal design,
+several give the staggered one. With \code{time_transform = TRUE} the start
+is read on the time index, so no index arithmetic is needed.
+\item \strong{Timing column} (\code{timing = g}): \code{g} defines treatment, so the
+right-hand side holds only covariates (write \code{y ~ 1 | id + year} when
+there are none). D or the treated-group dummy must not appear in the
+formula.
+\item \strong{Treated-group dummy and a date} (\code{timing = 2005}): the first term is
+the treated-group dummy (constant within units), and treatment starts at
+\code{timing} for every treated unit.
+}
+
+A pre-built event-time column goes in \code{rel_time}, with the treated-group
+dummy as the first term: \verb{y ~ treated | id + year, time = year, rel_time = ttt}.
+}
+
+\section{Panel identifiers}{
+
+\code{time} is required. \code{unit} is taken from the fixed effects when they are
+plain columns made of \code{time} and exactly one other column (\verb{| id + year}
+with \code{time = year}, in either order); a message then reports the unit and
+time used. Otherwise pass \code{unit}: it is needed for a D column and for
+\code{estimator = "cs"}, \code{"sa"}, \code{"bjs"} and \code{"twm"}. \code{print()} shows the
+identifiers of every result.
+}
+
+\section{Fixed effects and covariates by estimator}{
+
+\code{"twfe"}, \code{"sa"} and \code{"twm"} use the fixed effects as written. \code{"cs"},
+\code{"bjs"} and \code{"flex"} absorb the unit (group) and time effects themselves:
+those fixed effects are accepted silently, any others are ignored with a
+warning. Covariates are supported by \code{"twfe"}, \code{"twm"} and \code{"flex"}, and
+may be expressions such as \code{log(x)} or \code{factor(region)}; \code{"cs"}, \code{"sa"}
+and \code{"bjs"} stop with an error when the formula contains covariates.
+}
+
 \section{Key Features}{
 
 \itemize{
-\item One-step event study: specify outcome, treatment, time, timing, fixed effects, and (optionally) covariates.
+\item One formula for the model (outcome, treatment, covariates, fixed
+effects), shared with \code{\link[=did]{did()}} and \code{\link[=att]{att()}}.
 \item Six estimators behind one interface: \code{"twfe"}, \code{"cs"}, \code{"sa"}, \code{"bjs"}, \code{"twm"}, \code{"flex"}.
 \item Flexible clustering, weights, and VCOV choices (e.g., \verb{vcov = "HC1" | "iid" | "hetero" ...}).
 \item Automatic lead/lag window detection and customizable baseline period.
@@ -207,14 +281,17 @@ sample (Sun and Abraham 2021, Section 4.1).
 
 \examples{
 \dontrun{
-# Staggered adoption, Callaway-Sant'Anna
-res <- event_study(df, outcome = y, time = year, timing = g, unit = id,
-                   estimator = "cs")
+# D column: 1 for treated units in post-treatment periods
+res <- event_study(y ~ D | id + year, data = df, time = year)
 plot(res)
 
-# Classic TWFE with universal timing (timing inferred as universal)
-res <- event_study(df, outcome = y, treatment = treated, time = year,
-                   timing = 2005, fe = ~ id + year, cluster = ~ id)
+# Timing column (NA = never treated), Callaway-Sant'Anna
+res <- event_study(y ~ 1 | id + year, data = df, time = year, timing = g,
+                   estimator = "cs")
+
+# Treated-group dummy and a single treatment date, clustered by unit
+res <- event_study(y ~ treated + x1 | id + year, data = df, time = year,
+                   timing = 2005, cluster = ~ id)
 }
 
 }

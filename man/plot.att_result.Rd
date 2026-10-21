@@ -44,7 +44,7 @@ for \code{"by_cohort"}, and one per calendar period for \code{"by_time"}.
 }
 \examples{
 \dontrun{
-res <- att(df, outcome = y, time = year, timing = g, unit = id,
+res <- att(y ~ 1 | id + year, data = df, time = year, timing = g,
            aggregation = "by_cohort")
 plot(res)
 }

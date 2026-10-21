@@ -7,7 +7,7 @@
 glance.att_result(x, ...)
 }
 \arguments{
-\item{x}{An \code{att_result} object returned by \code{\link[=calc_att]{calc_att()}}.}
+\item{x}{An \code{att_result} object returned by \code{\link[=att]{att()}}.}
 
 \item{...}{Unused; for S3 generic compatibility.}
 }
@@ -16,13 +16,13 @@ A one-row data frame with \code{nobs}, \code{n.units}, \code{n.treated},
 \code{estimator}, and \code{aggregation}.
 }
 \description{
-Returns a one-row summary of an \code{\link[=calc_att]{calc_att()}} result for the goodness-of-fit
+Returns a one-row summary of an \code{\link[=att]{att()}} result for the goodness-of-fit
 block of a \code{modelsummary::modelsummary()} table.
 }
 \examples{
 \dontrun{
-att <- calc_att(df, outcome = y, time = year, timing = g, unit = id)
-broom::glance(att)
+res <- att(y ~ D | id + year, data = df, time = year)
+broom::glance(res)
 }
 
 }

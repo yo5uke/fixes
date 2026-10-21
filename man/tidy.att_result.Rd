@@ -7,7 +7,7 @@
 \method{tidy}{att_result}(x, conf.int = FALSE, conf.level = 0.95, ...)
 }
 \arguments{
-\item{x}{An \code{att_result} object returned by \code{\link[=calc_att]{calc_att()}}.}
+\item{x}{An \code{att_result} object returned by \code{\link[=att]{att()}}.}
 
 \item{conf.int}{Logical; add \code{conf.low}/\code{conf.high} columns? Default \code{FALSE}.}
 
@@ -22,11 +22,11 @@ A data frame with columns \code{term}, \code{estimate}, \code{std.error},
 }
 \description{
 Returns a tidy data frame of the aggregated ATT estimates from a
-\code{\link[=calc_att]{calc_att()}} result, in the column format expected by
+\code{\link[=att]{att()}} result, in the column format expected by
 \code{modelsummary::modelsummary()} (and therefore renderable with
 \code{tinytable::tt()}).  This makes it easy to put overall, by-cohort, or
 by-time ATTs into a publication table, and to stack several estimators
-(e.g. \code{\link[=run_did]{run_did()}} TWFE, CS, and BJS) side by side in one table.
+(e.g. \code{\link[=did]{did()}} TWFE, CS, and BJS) side by side in one table.
 
 The \code{term} column is derived from the aggregation type so that rows align
 across models:
@@ -38,16 +38,14 @@ across models:
 }
 \examples{
 \dontrun{
-att <- calc_att(df, outcome = y, time = year, timing = g, unit = id,
-                estimator = "cs", aggregation = "by_cohort")
-broom::tidy(att)
+res <- att(y ~ D | id + year, data = df, time = year,
+           estimator = "cs", aggregation = "by_cohort")
+broom::tidy(res)
 
 # Compare estimators in one table:
-twfe <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
-cs   <- calc_att(df, outcome = y, time = year, timing = g, unit = id,
-                 estimator = "cs")
-bjs  <- calc_att(df, outcome = y, time = year, timing = g, unit = id,
-                 estimator = "bjs")
+twfe <- did(y ~ D | id + year, data = df)
+cs   <- att(y ~ D | id + year, data = df, time = year, estimator = "cs")
+bjs  <- att(y ~ D | id + year, data = df, time = year, estimator = "bjs")
 modelsummary::modelsummary(list(TWFE = twfe, CS = cs, BJS = bjs))
 }
 

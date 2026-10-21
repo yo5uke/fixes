@@ -7,7 +7,7 @@
 glance.did_result(x, ...)
 }
 \arguments{
-\item{x}{A \code{did_result} object returned by \code{\link[=run_did]{run_did()}}.}
+\item{x}{A \code{did_result} object returned by \code{\link[=did]{did()}}.}
 
 \item{...}{Unused; kept for compatibility with the \code{\link[broom:glance]{broom::glance()}}
 generic.}
@@ -16,14 +16,14 @@ generic.}
 A one-row tibble of model-level statistics.
 }
 \description{
-Returns a single-row summary of model-level statistics from a \code{\link[=run_did]{run_did()}}
+Returns a single-row summary of model-level statistics from a \code{\link[=did]{did()}}
 result: \code{r.squared}, \code{adj.r.squared}, \code{within.r.squared}, \code{sigma},
 \code{nobs}, \code{AIC}, \code{BIC}, and \code{logLik}, in the column layout of
 \code{\link[broom:glance]{broom::glance()}} on a \code{fixest} model.
 }
 \examples{
 \dontrun{
-res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+res <- did(y ~ D | id + year, data = df)
 broom::glance(res)
 }
 

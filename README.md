@@ -61,6 +61,41 @@ pak::pak("yo5uke/fixes")
 library(fixes)
 ```
 
+Every estimation function takes the same model formula,
+`outcome ~ treatment + covariates | fixed effects`, as in
+`fixest::feols()`. Swap the function to get a different summary of the
+same design:
+
+``` r
+did(y ~ D | id + year, data = df)                        # one DiD coefficient
+event_study(y ~ D | id + year, data = df, time = year)   # effects by event time
+att(y ~ D | id + year, data = df, time = year)           # aggregated staggered ATT
+```
+
+### Specifying treatment
+
+Describe treatment in whichever way matches your data:
+
+| Your data has | Write |
+|----|----|
+| D: 1 for treated units in post-treatment periods | `y ~ D + x \| id + year, time = year` |
+| each unit’s first treated period (`NA` = never treated) | `y ~ x \| id + year, time = year, timing = g` |
+| a treated-group dummy and one treatment date | `y ~ treated + x \| id + year, time = year, timing = 2005` |
+
+- With a D column, each unit’s treatment start is the first period with
+  `D = 1`, so you never build event time or cohorts yourself.
+- With a timing column, the right-hand side holds only covariates
+  (`y ~ 1 | id + year` when there are none).
+- `time` is required by `event_study()` and `att()`. The unit is read
+  from the fixed effects (`| id + year` with `time = year`) and reported
+  in a message; pass `unit = id` to set it yourself. `print()` shows
+  both.
+
+> The argument interface (`outcome =`, `treatment =`, `fe =`,
+> `covariates =`) still works in fixes 1.x with a deprecation warning
+> that prints the equivalent formula call; fixes 2.0.0 is planned to
+> accept only the formula.
+
 ------------------------------------------------------------------------
 
 ## Basic DiD — `did()`
@@ -69,22 +104,15 @@ For a simple two-way FE DiD with a single treatment coefficient, use
 `did()`. Output is fully compatible with `modelsummary::modelsummary()`
 and `tinytable::tt()`.
 
-There are two equivalent ways to specify the treatment:
-
 ``` r
-# Option A: supply a pre-built D_it indicator
-df$D <- as.integer(df$treated & df$year >= 2006)
-res <- did(df, outcome = y, treatment = D, fe = ~ id + year)
+# D column
+res <- did(y ~ D | id + year, data = df)
+
+# treated-group dummy and treatment date: did() builds D = treated * (year >= 2006)
+res <- did(y ~ treated | id + year, data = df, time = year, timing = 2006)
 ```
 
-``` r
-# Option B: let did() construct D_it from group indicator + timing
-res <- did(df, outcome = y, treatment = treated,
-               time = year, timing = 2006,
-               fe = ~ id + year)
-```
-
-Both options produce a `did_result` object:
+Either way the result is a `did_result` object:
 
 ``` r
 df <- fixest::base_did
@@ -92,13 +120,7 @@ df <- fixest::base_did
 # Build a universal-timing DiD dataset
 df$D <- as.integer(df$treat == 1 & df$period >= 5)
 
-res <- did(
-  data    = df,
-  outcome = y,
-  treatment = D,
-  fe      = ~ id + period,
-  cluster = ~ id
-)
+res <- did(y ~ D | id + period, data = df, cluster = ~ id)
 
 print(res)
 ```
@@ -133,21 +155,20 @@ period 5.
 
 ``` r
 es <- event_study(
-  data      = df,
-  outcome   = y,
-  treatment = treat,
-  time      = period,
-  timing    = 5,
-  fe        = ~ id + period,
-  cluster   = ~ id,
-  baseline  = -1
+  y ~ treat | id + period,
+  data     = df,
+  time     = period,
+  timing   = 5,
+  cluster  = ~ id,
+  baseline = -1
 )
 
 print(es)
 ```
 
     ## Event Study Result (fixes)
-    ##   N: 1080  | Units: NA  | Treated units: 1080  | Never-treated: NA 
+    ##   N: 1080  | Units: 108  | Treated units: 55  | Never-treated: 53 
+    ##   Panel: unit = id | time = period
     ##   FE: id + period
     ##   VCOV: cluster  | Cluster: id 
     ##   Estimator: twfe 
@@ -174,6 +195,15 @@ df_stagg$timing <- df_stagg$year_treated
 df_stagg$timing[df_stagg$year_treated == 10000] <- NA
 ```
 
+The examples below pass this timing column. If your data holds a
+treatment indicator instead, put it in the formula and drop `timing`;
+each unit’s start is read off it:
+
+``` r
+df_stagg$D <- as.integer(!is.na(df_stagg$timing) & df_stagg$year >= df_stagg$timing)
+event_study(y ~ D | id + year, data = df_stagg, time = year, estimator = "cs")
+```
+
 #### Callaway & Sant’Anna (2021) — `estimator = "cs"`
 
 CS runs on a balanced panel: rows with missing values and units not
@@ -182,12 +212,10 @@ does by default.
 
 ``` r
 cs <- event_study(
+  y ~ 1 | id + year,
   data          = df_stagg,
-  outcome       = y,
   time          = year,
   timing        = timing,
-  unit          = id,
-  staggered     = TRUE,
   estimator     = "cs",
   control_group = "nevertreated"
 )
@@ -197,6 +225,7 @@ print(cs)
 
     ## Event Study Result (fixes)
     ##   N: 950  | Units: 95  | Treated units: 45  | Never-treated: 50 
+    ##   Panel: unit = id | time = year
     ##   FE: 
     ##   VCOV: analytic  | Cluster: - 
     ##   Estimator: cs 
@@ -228,14 +257,10 @@ plot(att_gt(cs), type = "facet")
 
 ``` r
 sa <- event_study(
+  y ~ 1 | id + year,
   data      = df_stagg,
-  outcome   = y,
-  treatment = treated,
   time      = year,
   timing    = timing,
-  unit      = id,
-  fe        = ~ id + year,
-  staggered = TRUE,
   estimator = "sa",
   cluster   = ~ id
 )
@@ -245,6 +270,7 @@ print(sa)
 
     ## Event Study Result (fixes)
     ##   N: 950  | Units: 95  | Treated units: 45  | Never-treated: 50 
+    ##   Panel: unit = id | time = year
     ##   FE: id + year
     ##   VCOV: HC1  | Cluster: id 
     ##   Estimator: sa 
@@ -262,12 +288,10 @@ plot(sa)
 
 ``` r
 bjs <- event_study(
+  y ~ 1 | id + year,
   data      = df_stagg,
-  outcome   = y,
   time      = year,
   timing    = timing,
-  unit      = id,
-  staggered = TRUE,
   estimator = "bjs"
 )
 
@@ -276,6 +300,7 @@ print(bjs)
 
     ## Event Study Result (fixes)
     ##   N: 950  | Units: 95  | Treated units: 45  | Never-treated: 50 
+    ##   Panel: unit = id | time = year
     ##   FE: id + year
     ##   VCOV: bjs_conservative  | Cluster: - 
     ##   Estimator: bjs 
@@ -297,13 +322,10 @@ differential pre-trends (output shows `relative_time ≥ 0` only).
 
 ``` r
 twm <- event_study(
+  y ~ 1 | id + year,
   data      = df_stagg,
-  outcome   = y,
   time      = year,
   timing    = timing,
-  unit      = id,
-  fe        = ~ id + year,
-  staggered = TRUE,
   estimator = "twm"
 )
 
@@ -312,6 +334,7 @@ print(twm)
 
     ## Event Study Result (fixes)
     ##   N: 950  | Units: 95  | Treated units: 45  | Never-treated: 50 
+    ##   Panel: unit = id | time = year
     ##   FE: id + year
     ##   VCOV: HC1  | Cluster: - 
     ##   Estimator: twm 
@@ -333,12 +356,11 @@ each observation belongs to.
 
 ``` r
 flex <- event_study(
+  y ~ 1,
   data      = df_rcs,
-  outcome   = y,
   time      = year,
   timing    = timing,
   group     = group_id,
-  staggered = TRUE,
   estimator = "flex"
 )
 
@@ -356,11 +378,10 @@ period.
 ``` r
 # Overall ATT
 att_simple <- att(
+  y ~ 1 | id + year,
   data        = df_stagg,
-  outcome     = y,
   time        = year,
   timing      = timing,
-  unit        = id,
   estimator   = "cs",
   aggregation = "simple"
 )
@@ -370,18 +391,19 @@ print(att_simple)
 
     ## ATT Estimation  [estimator: CS | aggregation: Simple (overall)]
     ## N = 950 obs | 95 units | 45 treated
+    ## Panel: unit = id | time = year
     ## 
     ##   group estimate std.error statistic  p.value conf_low_95 conf_high_95
     ## 1    NA   -0.755     0.226     -3.35 0.000813        -1.2       -0.313
 
 ``` r
 # Per-cohort ATT
-att(df_stagg, y, year, timing, unit = id,
-         estimator = "cs", aggregation = "by_cohort")
+att(y ~ 1 | id + year, data = df_stagg, time = year, timing = timing,
+    estimator = "cs", aggregation = "by_cohort")
 
 # Per-calendar-period ATT
-att(df_stagg, y, year, timing, unit = id,
-         estimator = "cs", aggregation = "by_time")
+att(y ~ 1 | id + year, data = df_stagg, time = year, timing = timing,
+    estimator = "cs", aggregation = "by_time")
 ```
 
 Supported estimators for `att()`: `"cs"` (Callaway-Sant’Anna 2021) and
@@ -398,12 +420,10 @@ provide joint coverage across the entire event-study curve.
 
 ``` r
 cs_boot <- event_study(
+  y ~ 1 | id + year,
   data          = df_stagg,
-  outcome       = y,
   time          = year,
   timing        = timing,
-  unit          = id,
-  staggered     = TRUE,
   estimator     = "cs",
   control_group = "nevertreated",
   bootstrap     = TRUE,
@@ -434,8 +454,7 @@ pre-trends, plus a *breakdown value* — the largest violation at which
 the effect is still significant.
 
 ``` r
-res <- event_study(df, outcome = y, treatment = treat, time = year, timing = 6,
-              fe = ~ id + year)
+res <- event_study(y ~ treat | id + year, data = df, time = year, timing = 6)
 
 # Relative-magnitude restriction: post violation <= Mbar x max pre violation
 h <- honest_sensitivity(res, type = "relative_magnitude",
@@ -477,13 +496,11 @@ plot(es, color = "#1B4965", errorbar_color = "grey60")
 
 ``` r
 es_multi <- event_study(
-  data      = df,
-  outcome   = y,
-  treatment = treat,
-  time      = period,
-  timing    = 5,
-  fe        = ~ id + period,
-  cluster   = ~ id,
+  y ~ treat | id + period,
+  data       = df,
+  time       = period,
+  timing     = 5,
+  cluster    = ~ id,
   conf_level = c(0.90, 0.95, 0.99)
 )
 plot(es_multi, ci_level = 0.90, theme_style = "minimal")
@@ -518,14 +535,11 @@ plot(es, interactive = TRUE)
 
 | Argument | Default | Description |
 |----|----|----|
-| `data` | — | Data frame (panel) |
-| `outcome` | — | Outcome variable (unquoted; expressions like `log(y)` OK) |
-| `treatment` | — | Binary D_it indicator, or group dummy when `timing` is set |
-| `timing` | `NULL` | Scalar treatment period; auto-constructs `D_it = treatment*(time>=timing)` |
-| `fe` | `NULL` | FE formula `~ id + year`; auto-inferred from `unit` + `time` if omitted |
-| `unit` | `NULL` | Unit identifier (for FE inference and sample-size metadata) |
-| `time` | `NULL` | Time variable (for FE inference and `timing`-based D_it construction) |
-| `covariates` | `NULL` | Additional controls, e.g. `~ x1 + x2` |
+| `formula` | — | `outcome ~ treatment + covariates \| fixed effects`; without `\|` there are no fixed effects |
+| `data` | — | Data frame (panel); may come before `formula` |
+| `time` | `NULL` | Time variable; required with `timing` |
+| `timing` | `NULL` | Timing column (`NA` = never treated) or a single date; omit for a D column |
+| `unit` | `NULL` | Unit identifier (sample-size metadata); read from the fixed effects when possible |
 | `cluster` | `NULL` | Clustering: formula `~ id`, column name, or vector |
 | `conf_level` | `0.95` | CI level(s); vector allowed |
 | `vcov` | `"HC1"` | VCOV type; cluster-robust SE used automatically when `cluster` is set |
@@ -534,18 +548,15 @@ plot(es, interactive = TRUE)
 
 | Argument | Default | Description |
 |----|----|----|
-| `data` | — | Data frame (panel or RCS) |
-| `outcome` | — | Outcome variable (unquoted) |
-| `treatment` | `NULL` | 0/1 treatment dummy (`"twfe"` only) |
-| `time` | — | Time variable (numeric) |
-| `timing` | — | Treatment date (scalar for `"twfe"`, column for others; `NA` = never treated; constant within each unit) |
-| `unit` | `NULL` | Unit ID (required for `"cs"`, `"sa"`, `"bjs"`, `"twm"`) |
-| `fe` | `NULL` | Fixed effects formula, e.g. `~ id + year` |
+| `formula` | — | `outcome ~ treatment + covariates \| fixed effects`; covariates are supported by `"twfe"`, `"twm"` and `"flex"` |
+| `data` | — | Data frame (panel or RCS); may come before `formula` |
+| `time` | — | Time variable (numeric or Date) |
+| `timing` | `NULL` | Timing column (`NA` = never treated; constant within each unit) or a single date; omit for a D column |
+| `unit` | `NULL` | Unit ID; read from the fixed effects when they are `time` plus one column. Needed for `"cs"`, `"sa"`, `"bjs"`, `"twm"` and for a D column |
 | `estimator` | `"twfe"` | `"twfe"`, `"cs"`, `"sa"`, `"bjs"`, `"twm"`, or `"flex"` |
-| `staggered` | `NULL` | Inferred: `timing` naming a column means staggered; override with `TRUE`/`FALSE` |
+| `staggered` | `NULL` | Inferred from how treatment is given; override with `TRUE`/`FALSE` |
 | `group` | `NULL` | **FLEX only**: treatment group identifier |
 | `trends` | `FALSE` | **TWM only**: cohort-specific linear trends |
-| `covariates` | `NULL` | Controls (supported for `"twm"` and `"flex"`) |
 | `control_group` | `"nevertreated"` | CS only: `"nevertreated"` or `"notyettreated"` |
 | `cluster` | `NULL` | Clustering formula, e.g. `~ id` |
 | `baseline` | `-1` | Reference period |
@@ -559,11 +570,11 @@ plot(es, interactive = TRUE)
 
 | Argument | Default | Description |
 |----|----|----|
-| `data` | — | Data frame (panel) |
-| `outcome` | — | Outcome variable (unquoted) |
+| `formula` | — | `outcome ~ treatment \| fixed effects` (no covariates) |
+| `data` | — | Data frame (panel); may come before `formula` |
 | `time` | — | Calendar time variable |
-| `timing` | — | First treatment period per unit; `NA` = never treated; constant within each unit |
-| `unit` | — | Unit identifier (required) |
+| `timing` | `NULL` | Timing column (`NA` = never treated; constant within each unit) or a single date; omit for a D column |
+| `unit` | `NULL` | Unit identifier; read from the fixed effects when possible |
 | `estimator` | `"cs"` | `"cs"` or `"bjs"` |
 | `aggregation` | `"simple"` | `"simple"`, `"by_cohort"`, or `"by_time"` |
 | `control_group` | `"nevertreated"` | CS only |

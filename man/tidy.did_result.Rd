@@ -7,7 +7,7 @@
 \method{tidy}{did_result}(x, conf.int = FALSE, conf.level = 0.95, ...)
 }
 \arguments{
-\item{x}{A \code{did_result} object returned by \code{\link[=run_did]{run_did()}}.}
+\item{x}{A \code{did_result} object returned by \code{\link[=did]{did()}}.}
 
 \item{conf.int}{Logical; add \code{conf.low}/\code{conf.high} columns? Default \code{FALSE}.}
 
@@ -22,15 +22,15 @@ A tibble with columns \code{term}, \code{estimate}, \code{std.error},
 \code{statistic}, \code{p.value} (and optionally \code{conf.low}, \code{conf.high}).
 }
 \description{
-Returns a tidy data frame of model coefficients from a \code{\link[=run_did]{run_did()}} result:
+Returns a tidy data frame of model coefficients from a \code{\link[=did]{did()}} result:
 all regressors (treatment and covariates), in the format expected by
 \code{modelsummary::modelsummary()}. The table is read from the fit stored at
-estimation time; the VCOV type chosen in \code{\link[=run_did]{run_did()}} (\code{vcov} / \code{cluster})
+estimation time; the VCOV type chosen in \code{\link[=did]{did()}} (\code{vcov} / \code{cluster})
 is already reflected in the standard errors.
 }
 \examples{
 \dontrun{
-res <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
+res <- did(y ~ D | id + year, data = df)
 broom::tidy(res)
 broom::tidy(res, conf.int = TRUE)
 }

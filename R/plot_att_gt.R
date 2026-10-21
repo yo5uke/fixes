@@ -47,8 +47,8 @@
 #'
 #' @examples
 #' \dontrun{
-#' cs_result <- event_study(data = mydata, outcome = y, time = year,
-#'                          timing = g, unit = id, estimator = "cs")
+#' cs_result <- event_study(y ~ 1 | id + year, data = mydata, time = year,
+#'                          timing = g, estimator = "cs")
 #' plot(att_gt(cs_result))
 #' plot(att_gt(cs_result), type = "facet")
 #' }

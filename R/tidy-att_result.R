@@ -2,11 +2,11 @@
 #'
 #' @description
 #' Returns a tidy data frame of the aggregated ATT estimates from a
-#' [calc_att()] result, in the column format expected by
+#' [att()] result, in the column format expected by
 #' `modelsummary::modelsummary()` (and therefore renderable with
 #' `tinytable::tt()`).  This makes it easy to put overall, by-cohort, or
 #' by-time ATTs into a publication table, and to stack several estimators
-#' (e.g. [run_did()] TWFE, CS, and BJS) side by side in one table.
+#' (e.g. [did()] TWFE, CS, and BJS) side by side in one table.
 #'
 #' The `term` column is derived from the aggregation type so that rows align
 #' across models:
@@ -16,7 +16,7 @@
 #'   \item `aggregation = "by_time"` -> `"Time <t>"`
 #' }
 #'
-#' @param x An `att_result` object returned by [calc_att()].
+#' @param x An `att_result` object returned by [att()].
 #' @param conf.int Logical; add `conf.low`/`conf.high` columns? Default `FALSE`.
 #' @param conf.level Confidence level for `conf.int` (normal approximation).
 #'   Default `0.95`.
@@ -27,16 +27,14 @@
 #'
 #' @examples
 #' \dontrun{
-#' att <- calc_att(df, outcome = y, time = year, timing = g, unit = id,
-#'                 estimator = "cs", aggregation = "by_cohort")
-#' broom::tidy(att)
+#' res <- att(y ~ D | id + year, data = df, time = year,
+#'            estimator = "cs", aggregation = "by_cohort")
+#' broom::tidy(res)
 #'
 #' # Compare estimators in one table:
-#' twfe <- run_did(df, outcome = y, treatment = D, fe = ~ id + year)
-#' cs   <- calc_att(df, outcome = y, time = year, timing = g, unit = id,
-#'                  estimator = "cs")
-#' bjs  <- calc_att(df, outcome = y, time = year, timing = g, unit = id,
-#'                  estimator = "bjs")
+#' twfe <- did(y ~ D | id + year, data = df)
+#' cs   <- att(y ~ D | id + year, data = df, time = year, estimator = "cs")
+#' bjs  <- att(y ~ D | id + year, data = df, time = year, estimator = "bjs")
 #' modelsummary::modelsummary(list(TWFE = twfe, CS = cs, BJS = bjs))
 #' }
 #'
@@ -73,10 +71,10 @@ tidy.att_result <- function(x, conf.int = FALSE, conf.level = 0.95, ...) {
 #' Glance at an `att_result` object
 #'
 #' @description
-#' Returns a one-row summary of an [calc_att()] result for the goodness-of-fit
+#' Returns a one-row summary of an [att()] result for the goodness-of-fit
 #' block of a `modelsummary::modelsummary()` table.
 #'
-#' @param x An `att_result` object returned by [calc_att()].
+#' @param x An `att_result` object returned by [att()].
 #' @param ... Unused; for S3 generic compatibility.
 #'
 #' @return A one-row data frame with `nobs`, `n.units`, `n.treated`,
@@ -84,8 +82,8 @@ tidy.att_result <- function(x, conf.int = FALSE, conf.level = 0.95, ...) {
 #'
 #' @examples
 #' \dontrun{
-#' att <- calc_att(df, outcome = y, time = year, timing = g, unit = id)
-#' broom::glance(att)
+#' res <- att(y ~ D | id + year, data = df, time = year)
+#' broom::glance(res)
 #' }
 #'
 #' @exportS3Method broom::glance att_result

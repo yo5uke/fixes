@@ -71,16 +71,16 @@ period corresponds to several calendar periods.
 }
 \examples{
 \dontrun{
-res <- event_study(df, outcome = y, time = year, timing = g,
-                   unit = id, estimator = "cs")
+res <- event_study(y ~ 1 | id + year, data = df, time = year, timing = g,
+                   estimator = "cs")
 plot(res)
 plot(res, type = "ribbon", ci_level = 0.9)
 plot(res, color = "#1B4965", errorbar_color = "grey50")
 plot(res, interactive = TRUE)
 
 # Universal timing: label the axis with calendar years instead
-uni <- event_study(df, outcome = y, treatment = d, time = year,
-                   timing = 2010, fe = ~ id + year)
+uni <- event_study(y ~ d | id + year, data = df, time = year,
+                   timing = 2010)
 plot(uni, time_axis = "calendar")
 }
 

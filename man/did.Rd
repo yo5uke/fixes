@@ -5,47 +5,44 @@
 \title{Basic two-way fixed-effects DiD estimation}
 \usage{
 did(
+  formula,
   data,
-  outcome,
-  treatment,
-  timing = NULL,
-  fe = NULL,
-  unit = NULL,
   time = NULL,
-  covariates = NULL,
+  timing = NULL,
+  unit = NULL,
   cluster = NULL,
   weights = NULL,
   conf_level = 0.95,
   vcov = "HC1",
-  vcov_args = list()
+  vcov_args = list(),
+  outcome,
+  treatment,
+  fe = NULL,
+  covariates = NULL
 )
 }
 \arguments{
-\item{data}{A data.frame (panel format).}
+\item{formula}{A model formula
+\verb{outcome ~ treatment + covariates | fixed effects}. The left-hand side
+may be an expression (e.g. \code{log(y)}); without \code{|} the model has no
+fixed effects. The first right-hand-side term is D without \code{timing},
+the treated-group dummy with a single \code{timing} date, and absent with a
+timing column (see \strong{Description}). All variables must be columns of
+\code{data}.}
 
-\item{outcome}{Unquoted outcome variable or expression (e.g., \code{log(y)}).}
+\item{data}{A data.frame (panel format). \code{formula} and \code{data} may come in
+either order.}
 
-\item{treatment}{Unquoted column name.  When \code{timing = NULL} (default): a
-pre-built binary \code{D_it} indicator (1 = treated unit-time, 0 = otherwise).
-When \code{timing} is provided: a binary group indicator (1 = treated unit,
-0 = control unit; constant within units).}
+\item{time}{Unquoted time variable. Required with \code{timing}; with plain
+fixed effects such as \verb{| id + year} it also lets \code{did()} report the
+unit (see \code{\link[=event_study]{event_study()}}, \strong{Panel identifiers}).}
 
-\item{timing}{Numeric scalar.  When provided, \code{D_it} is constructed as
-\code{treatment * (time >= timing)}.  Requires \code{time} to be specified.
-Default \code{NULL} (user supplies pre-built \code{D_it} via \code{treatment}).}
+\item{timing}{Treatment timing: an unquoted column giving each unit's
+first treatment period (\code{NA} = never treated), or a single numeric
+treatment date. Default \code{NULL}: the formula holds D.}
 
-\item{fe}{One-sided formula specifying fixed effects, e.g. \code{~ id + year}.
-If \code{NULL} and both \code{unit} and \code{time} are supplied, \code{fe} is auto-inferred
-as \code{~ unit + time}.  If \code{NULL} and neither is supplied, a pooled OLS model
-is estimated (with a message).}
-
-\item{unit}{Unquoted unit identifier column (for metadata and \code{fe}
-auto-inference).}
-
-\item{time}{Unquoted time variable column.  Used for (a) \code{fe} auto-inference
-and (b) \code{D_it} construction when \code{timing} is provided.}
-
-\item{covariates}{One-sided formula of additional controls, e.g. \code{~ x1 + x2}.}
+\item{unit}{Unquoted unit identifier column (for metadata). Taken from
+the fixed effects when possible.}
 
 \item{cluster}{Clustering specification: a one-sided formula (\code{~ id}),
 a single character column name, or a numeric vector of length \code{nrow(data)}.
@@ -63,6 +60,16 @@ Ignored in favour of cluster-robust SE when \code{cluster} is supplied and
 
 \item{vcov_args}{Named list of additional arguments forwarded to
 \code{fixest::vcov()}.}
+
+\item{outcome, treatment, fe, covariates}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+The model arguments of the older interface: the unquoted outcome, the
+treatment column (D, or the treated-group dummy when \code{timing} is
+given), a one-sided fixed-effects formula (\code{NULL} with both \code{unit} and
+\code{time} gives \code{~ unit + time}), and a one-sided covariate formula. They
+still work in fixes 1.x, with a deprecation warning that shows the
+equivalent formula call; fixes 2.0.0 is planned to accept only
+\code{formula}. Name them when you use them: the second argument is now
+\code{data}.}
 }
 \value{
 A \code{did_result} object (named list) with elements:
@@ -80,51 +87,45 @@ logLik, AIC, BIC) used by \code{\link[broom:glance]{broom::glance()}}.}
 }
 Attributes: \code{call}, \code{formula_str}, \code{outcome}, \code{treatment}, \code{timing},
 \code{fe}, \code{vcov_type}, \code{cluster_vars}, \code{conf.level}, \code{N}, \code{N_units},
-\code{N_treated}, \code{unit}, \code{time}.  \code{N}, \code{N_units}, and \code{N_treated} describe the
-\emph{estimation} sample (after rows with missing values are dropped),
-matching \code{broom::glance()}, not \code{nrow(data)}.
+\code{N_treated}, \code{unit}, \code{time} (and \code{timing_var} with a timing column).
+\code{N}, \code{N_units}, and \code{N_treated} describe the \emph{estimation} sample (after
+rows with missing values are dropped), matching \code{broom::glance()}, not
+\code{nrow(data)}.
 }
 \description{
 Estimates a classic difference-in-differences model of the form
-\code{outcome ~ D_it | fe} on the package's internal fixed-effects OLS engine
-(numerically equivalent to \code{fixest::feols()}).
+\verb{outcome ~ D + covariates | fixed effects} on the package's internal
+fixed-effects OLS engine (numerically equivalent to \code{fixest::feols()}).
+The formula is the one used by \code{\link[=event_study]{event_study()}} and \code{\link[=att]{att()}}: swap the
+function to get effects by event time or aggregated staggered ATTs.
 
 \code{did()} supersedes \code{\link[=run_did]{run_did()}} as of fixes 1.0.0.
 
-There are two ways to supply the treatment indicator:
+Treatment is given in one of three ways, as in \code{\link[=event_study]{event_study()}}:
 
-\strong{Option A — pre-built \code{D_it}} (maximum flexibility):
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# D: 1 for treated units in post-treatment periods
+did(y ~ D | id + year, data = df)
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{df$D <- as.integer(df$treated & df$year >= 2006)
-did(df, outcome = y, treatment = D, fe = ~ id + year)
+# each unit's first treated period (NA = never treated)
+did(y ~ 1 | id + year, data = df, time = year, timing = g)
+
+# a treated-group dummy and one treatment date
+did(y ~ treated | id + year, data = df, time = year, timing = 2006)
 }\if{html}{\out{</div>}}
 
-\strong{Option B — timing-based construction} (convenience; consistent with
-\code{event_study()} and \code{att()}):
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{did(df, outcome = y, treatment = treated, time = year, timing = 2006,
-    fe = ~ id + year)
-}\if{html}{\out{</div>}}
-
-Here \code{treatment} is a binary group indicator (1 = treated unit, 0 = control),
-\code{time} is the calendar-time variable, and \code{timing} is the scalar treatment
-onset period.  Internally \code{D_it = treatment * (time >= timing)} is constructed
-automatically.  For staggered-adoption settings use \code{\link[=att]{att()}}; for dynamic
-event-study estimates use \code{\link[=event_study]{event_study()}}.
+With \code{timing}, \code{D = treatment * (time >= timing)} is built internally.
+For staggered-adoption settings see \code{\link[=att]{att()}}; for dynamic effects see
+\code{\link[=event_study]{event_study()}}.
 }
 \examples{
 \dontrun{
-# Option A: pre-built D_it
-df$D <- as.integer(df$treated & df$year >= 2006)
-res <- did(df, outcome = y, treatment = D, fe = ~ id + year)
+res <- did(y ~ D | id + year, data = df)
 
-# Option B: timing-based construction
-res <- did(df, outcome = y, treatment = treated, time = year,
-           timing = 2006, fe = ~ id + year)
+# Built from a treated-group dummy and the treatment date
+res <- did(y ~ treated | id + year, data = df, time = year, timing = 2006)
 
-# Cluster-robust SE
-res <- did(df, outcome = y, treatment = D, fe = ~ id + year,
-           cluster = ~ id)
+# Covariates and cluster-robust SE
+res <- did(y ~ D + x1 | id + year, data = df, cluster = ~ id)
 
 print(res)
 broom::tidy(res)

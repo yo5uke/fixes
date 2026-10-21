@@ -74,12 +74,10 @@ df <- fixest::base_did
 
 # Run the event study (supports multiple confidence levels)
 es <- event_study(
+  y ~ treat | id + period,
   data       = df,
-  outcome    = y,
-  treatment  = treat,
   time       = period,
   timing     = 5,  # Treatment occurs at period 5 (universal timing)
-  fe         = ~ id + period,
   cluster    = ~ id,
   baseline   = -1,
   interval   = 1,
@@ -92,9 +90,37 @@ es <- event_study(
 head(es)
 ```
 
-Because `timing = 5` is a scalar, `event_study()` recognizes a universal
-(non-staggered) design automatically; when `timing` names a column of
-adoption times, a staggered design is inferred instead.
+The model is written as in `fixest::feols()`:
+`outcome ~ treatment + covariates | fixed effects`. Here `treat` marks the
+treated units and `timing = 5` gives their common treatment date, so
+`event_study()` uses the universal (non-staggered) design. The unit is read
+from the fixed effects (`id`, the one besides `time`) and reported in a
+message.
+
+## Specifying treatment
+
+Describe treatment in whichever way matches your data:
+
+| Your data has | Write |
+|---|---|
+| D: 1 for treated units in post-treatment periods | `y ~ D + x \| id + year, time = year` |
+| each unit's first treated period (`NA` = never treated) | `y ~ x \| id + year, time = year, timing = g` |
+| a treated-group dummy and one treatment date | `y ~ treated + x \| id + year, time = year, timing = 2005` |
+
+With a D column, each unit's treatment start is the first period with
+`D = 1`: one start date gives the universal design, several the staggered
+one. With a timing column, the right-hand side holds only covariates
+(`y ~ 1 | id + year` when there are none). The same formula works in
+`did()` and `att()`.
+
+```{r d-column}
+df$D <- as.integer(df$treat == 1 & df$period >= 5)
+es_d <- event_study(y ~ D | id + period, data = df, time = period,
+                    cluster = ~ id)
+all.equal(es_d$estimate, event_study(y ~ treat | id + period, data = df,
+                                     time = period, timing = 5,
+                                     cluster = ~ id)$estimate)
+```
 
 ## Visualizing Event Study Results
 
@@ -150,8 +176,9 @@ plot(es, interactive = TRUE)
     - Six estimators behind one interface (`estimator =`): classic TWFE,
       Callaway & Sant'Anna, Sun & Abraham, Borusyak-Jaravel-Spiess,
       Wooldridge two-way Mundlak, and Deb et al. FLEX.
+    - One formula for the model, shared with `did()` and `att()`.
     - Automatic creation of lead/lag dummies relative to treatment, with
-      staggered/universal timing inferred from `timing`.
+      staggered/universal timing inferred from how treatment is given.
     - Covariates, clustering, weights, and flexible baseline normalization.
     - Multiple confidence interval levels (e.g., 90%, 95%, 99%).
     - Handles irregular time panels via `time_transform`.
@@ -192,11 +219,10 @@ to an event-study curve using cohort-size weights.
 
 ```{r cs-est}
 res_cs <- event_study(
+  y ~ 1 | id + year,
   data          = df_stagg,
-  outcome       = y,
   time          = year,
   timing        = timing,
-  unit          = id,
   estimator     = "cs",
   control_group = "nevertreated"
 )
@@ -211,13 +237,10 @@ weights. Numerically identical to `fixest::sunab()` (which the deprecated
 
 ```{r sa-est}
 res_sa <- event_study(
+  y ~ 1 | id + year,
   data      = df_stagg,
-  outcome   = y,
-  treatment = treated,
   time      = year,
   timing    = timing,
-  unit      = id,
-  fe        = ~ id + year,
   estimator = "sa",
   cluster   = ~ id
 )
@@ -231,11 +254,10 @@ then averages by horizon.
 
 ```{r bjs-est}
 res_bjs <- event_study(
+  y ~ 1 | id + year,
   data      = df_stagg,
-  outcome   = y,
   time      = year,
   timing    = timing,
-  unit      = id,
   estimator = "bjs"
 )
 plot(res_bjs) + ggplot2::ggtitle("Borusyak, Jaravel & Spiess (2024)")
@@ -252,7 +274,7 @@ When you want a single number (or one per cohort / per period) instead of
 the full curve:
 
 ```{r att-demo}
-att(df_stagg, outcome = y, time = year, timing = timing, unit = id,
+att(y ~ 1 | id + year, data = df_stagg, time = year, timing = timing,
     estimator = "cs", aggregation = "simple")
 ```
 
@@ -281,11 +303,10 @@ The multiplier bootstrap (Algorithm 1 of Callaway & Sant'Anna 2021) is used.
 ```{r boot-demo, eval=FALSE}
 # NOTE: boot_reps = 199 shown here for brevity; use 999 in practice
 res_cs_boot <- event_study(
+  y ~ 1 | id + year,
   data          = df_stagg,
-  outcome       = y,
   time          = year,
   timing        = timing,
-  unit          = id,
   estimator     = "cs",
   control_group = "nevertreated",
   bootstrap     = TRUE,

@@ -5,6 +5,50 @@ names, base `plot()` methods for every result class, and a fixest-optional
 estimation core. All pre-1.0.0 functions keep working (with a deprecation
 warning) and return numerically identical results.
 
+## Formula interface
+
+- `event_study()`, `did()` and `att()` take the model as a formula,
+  `outcome ~ treatment + covariates | fixed effects`, as in
+  `fixest::feols()`. The same formula works in all three, so switching
+  between a single DiD coefficient, an event study, and aggregated ATTs means
+  swapping the function name. `formula` and `data` may come in either order
+  (`df |> event_study(y ~ D | id + year, time = year)` works).
+- Treatment can be given in three ways, matching the shape of the data:
+  - a D column (1 for treated units in post-treatment periods):
+    `y ~ D | id + year`. Each unit's treatment start is the first period
+    with `D = 1`; a single start date gives the universal design, several
+    the staggered one. D must stay on once it starts, and rows with a
+    missing D are dropped with a warning. With `time_transform = TRUE` the
+    start is read on the time index.
+  - a timing column (each unit's first treated period, `NA` = never
+    treated): `y ~ x | id + year, timing = g`, with only covariates on the
+    right-hand side (`y ~ 1 | ...` when there are none).
+  - a treated-group dummy and a single treatment date:
+    `y ~ treated | id + year, timing = 2005`. The staggered estimators and
+    `att()` now accept this form too, and `did()` also accepts a timing
+    column.
+- Mix-ups are caught with an error rather than estimated silently: a
+  treated-group dummy given as D, D next to a single treatment date, or D or
+  the treated-group dummy next to a timing column.
+- `time` is required by `event_study()` and `att()`. `unit` is taken from
+  the fixed effects when they are `time` plus exactly one other column, and
+  a message reports the unit and time used; `print()` now shows them for
+  every `es_result`, `did_result` and `att_result` (new `unit_var` /
+  `time_var` attributes on `es_result` and `att_result`).
+- Formulas are checked against what each estimator supports: covariates stop
+  with an error for `"cs"`, `"sa"`, `"bjs"` and `att()` (the argument
+  interface ignores them silently). `"cs"`, `"bjs"` and `"flex"` accept unit
+  (group) and time fixed effects silently and warn about any others.
+- The argument interface (`outcome`, `treatment`, `fe`, `covariates`) keeps
+  working in fixes 1.x with a deprecation warning that prints the
+  equivalent formula call; fixes 2.0.0 is planned to accept only the
+  formula. These arguments must now be named: positional calls such as
+  `att(df, y, year, g, unit = id)` stop with an error pointing to the
+  formula. `run_es()`, `run_did()` and `calc_att()` still give exactly one
+  deprecation warning.
+- The classic TWFE path now returns sequential row names, like the other
+  estimators, instead of coefficient names.
+
 ## New API
 
 - `event_study()` replaces `run_es()`. Argument modernization:
@@ -15,7 +59,8 @@ warning) and return numerically identical results.
   a scalar means universal timing.
 - `att()` replaces `calc_att()`. The reserved-but-ignored arguments
   (`treatment`, `fe`, `covariates`, `cluster`, `weights`, `vcov`,
-  `vcov_args`) are dropped; `unit` is required; `conf.level` -> `conf_level`.
+  `vcov_args`) are dropped; a unit identifier is required (`unit`, or read
+  from the fixed effects of the formula); `conf.level` -> `conf_level`.
 - `did()` replaces `run_did()` (`conf.level` -> `conf_level`).
 - `att_gt()` extracts the Callaway-Sant'Anna ATT(g,t) table as a real
   `att_gt_result` object with its own `plot()`/`autoplot()` methods.
@@ -136,6 +181,21 @@ warning) and return numerically identical results.
   so results equal those from the same data with those rows removed.
 - `contamination_weights()` returned `NA` weights when only one TWFE
   event-time coefficient was estimated; they are now computed.
+- **TWM and FLEX covariate expressions were replaced by their variables.**
+  Each covariate was read through `all.vars()`, so `covariates = ~ log(x)`
+  silently estimated with `x`. Covariate terms are now evaluated with
+  model.matrix conventions, as in the TWFE path (`log(x)`, `I(x^2)`,
+  `factor(region)` dummies, `x1:x2`), in the formula, in the `covariates`
+  argument, and in the deprecated `run_es()`. Results with plain numeric
+  covariates are unchanged.
+- **The classic TWFE event study miscounted treated units.** `N_treated`
+  was the number of rows with a known event time (every row under
+  universal timing), and `N_nevertreated` was 0 under universal timing.
+  Both now count units, as for the other estimators: units with
+  `treatment = 1` and a known event time, and all other units. They are
+  `NA` when no unit identifier is available.
+- `tests/testthat.R` was missing, so `R CMD check` (and the R-CMD-check CI
+  jobs) never ran the test suite; it now does.
 
 ## Performance
 

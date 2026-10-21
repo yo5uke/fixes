@@ -5,32 +5,40 @@
 \title{ATT aggregation for staggered adoption designs}
 \usage{
 att(
+  formula,
   data,
-  outcome,
   time,
-  timing,
-  unit,
+  timing = NULL,
+  unit = NULL,
   estimator = c("cs", "bjs"),
   aggregation = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
   conf_level = 0.95,
   interval = 1,
-  time_transform = FALSE
+  time_transform = FALSE,
+  outcome
 )
 }
 \arguments{
-\item{data}{A data.frame containing panel data.}
+\item{formula}{A model formula \verb{outcome ~ treatment | fixed effects}
+(see \code{\link[=event_study]{event_study()}}). The fixed effects only serve to name the unit:
+both estimators absorb unit and time effects themselves, and neither
+takes covariates.}
 
-\item{outcome}{Unquoted outcome variable (name or expression, e.g., \code{log(y)}).}
+\item{data}{A data.frame containing panel data. \code{formula} and \code{data} may
+come in either order.}
 
 \item{time}{Unquoted calendar time variable (numeric).}
 
-\item{timing}{Unquoted column giving each unit's first treatment period
-(\code{NA} = never treated). The value must be the same on every row of a
-unit; otherwise \code{att()} stops with an error naming the offending units.}
+\item{timing}{Treatment timing: an unquoted column giving each unit's
+first treatment period (\code{NA} = never treated), or a single treatment
+date. Omit it when the formula holds a D column. A timing column must
+have the same value on every row of a unit; otherwise \code{att()} stops
+with an error naming the offending units.}
 
-\item{unit}{Unquoted unit identifier (required).}
+\item{unit}{Unquoted unit identifier; taken from the fixed effects when
+they are \code{time} plus one other column.}
 
 \item{estimator}{Estimation strategy: \code{"cs"} (Callaway-Sant'Anna 2021,
 default) or \code{"bjs"} (Borusyak-Jaravel-Spiess 2024).}
@@ -51,7 +59,14 @@ levels are supported, e.g., \code{c(0.90, 0.95)}.}
 \item{interval}{Numeric time spacing (default \code{1}; informational only).}
 
 \item{time_transform}{Logical; if \code{TRUE}, creates consecutive integer time
-within unit via \code{dplyr::dense_rank()}. Requires \code{unit}.}
+within unit via \code{dplyr::dense_rank()}. A timing column or value is then
+read as an index; a D column needs no adjustment.}
+
+\item{outcome}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} The unquoted outcome of
+the older interface. Still works in fixes 1.x, with a deprecation
+warning that shows the equivalent formula call; fixes 2.0.0 is planned
+to accept only \code{formula}. Name it when you use it: the second argument
+is now \code{data}.}
 }
 \value{
 A \code{data.frame} of class \code{"att_result"} with columns:
@@ -65,8 +80,9 @@ A \code{data.frame} of class \code{"att_result"} with columns:
 }
 
 Attributes: \code{aggregation}, \code{estimator}, \code{conf.level}, \code{N}, \code{N_units},
-\code{N_treated}, \code{N_nevertreated}, \code{control_group} (CS only), \code{att_gt} (CS
-raw ATT(g,t) table), \code{tau_it} (BJS unit-time effects table).
+\code{N_treated}, \code{N_nevertreated}, \code{unit_var}, \code{time_var}, \code{control_group}
+(CS only), \code{att_gt} (CS raw ATT(g,t) table), \code{tau_it} (BJS unit-time
+effects table).
 }
 \description{
 Estimates average treatment effects on the treated (ATT) using either the
@@ -78,7 +94,13 @@ aggregated to a single summary effect (\code{"simple"}), per-cohort effects
 This function complements \code{\link[=event_study]{event_study()}}: use \code{event_study()} when you
 want a full event-study curve (dynamic effects by relative time), and
 \code{att()} when you want aggregated ATT estimates that collapse the time
-dimension.
+dimension. Both take the same formula, and treatment is given in the same
+three ways (see \code{\link[=event_study]{event_study()}}, \strong{Specifying treatment}):
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{att(y ~ D | id + year, data = df, time = year)                 # D column
+att(y ~ 1 | id + year, data = df, time = year, timing = g)     # timing column
+att(y ~ treated | id + year, data = df, time = year, timing = 2005)
+}\if{html}{\out{</div>}}
 
 The result has \code{broom::tidy()} and \code{broom::glance()} methods, so it can be
 passed to \code{modelsummary::modelsummary()} (rendered with \code{tinytable}) to build
@@ -111,8 +133,8 @@ Cluster-robust SEs for BJS aggregations are planned for a future release.
 
 \examples{
 \dontrun{
-att(df, outcome = y, time = year, timing = g, unit = id)
-att(df, outcome = y, time = year, timing = g, unit = id,
+att(y ~ 1 | id + year, data = df, time = year, timing = g)
+att(y ~ D | id + year, data = df, time = year,
     estimator = "bjs", aggregation = "by_cohort")
 }
 

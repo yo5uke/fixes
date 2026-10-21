@@ -24,8 +24,8 @@ is included; drop it with \code{x[!x$is_baseline, ]} beforehand if undesired.
 }
 \examples{
 \dontrun{
-res <- event_study(df, outcome = y, time = year, timing = g,
-                   unit = id, estimator = "cs")
+res <- event_study(y ~ 1 | id + year, data = df, time = year, timing = g,
+                   estimator = "cs")
 broom::tidy(res)
 }
 
