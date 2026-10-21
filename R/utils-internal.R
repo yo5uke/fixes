@@ -92,6 +92,7 @@
 # TWM, and FLEX backends coerce time/timing with as.integer(), which silently
 # truncates fractional values and would misassign treatment cells.
 .assert_integerish <- function(v, name) {
+  if (is.integer(v)) return(invisible(NULL))
   vv <- v[!is.na(v)]
   if (length(vv) > 0L && is.numeric(vv) && any(vv != round(vv)))
     stop("'", name, "' must be integer-valued for this estimator ",
