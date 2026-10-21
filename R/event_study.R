@@ -944,11 +944,11 @@ event_study <- function(
       paste(unit_chr, time_chr, sep = " + ")
     }
 
-    cov_chrs_twm <- if (!is.null(covariates)) all.vars(covariates) else NULL
+    cov_twm <- .covariate_columns(covariates, data)
     conf.level <- sort(unique(conf.level))
 
     twm_out <- .run_twm(
-      data = data,
+      data = cov_twm$data,
       outcome_chr = outcome_chr,
       timing_chr = timing_chr,
       time_chr = time_chr,
@@ -956,7 +956,7 @@ event_study <- function(
       fe_str = fe_str,
       baseline = baseline,
       trends = isTRUE(trends),
-      covariate_chrs = cov_chrs_twm,
+      covariate_chrs = cov_twm$names,
       cluster = cluster,
       vcov_type = vcov,
       vcov_args = vcov_args,
@@ -1014,17 +1014,17 @@ event_study <- function(
       )
     }
 
-    cov_chrs_flex <- if (!is.null(covariates)) all.vars(covariates) else NULL
+    cov_flex <- .covariate_columns(covariates, data)
     conf.level <- sort(unique(conf.level))
 
     flex_out <- .run_flex(
-      data = data,
+      data = cov_flex$data,
       outcome_chr = outcome_chr,
       timing_chr = timing_chr,
       time_chr = time_chr,
       group_chr = group_chr,
       baseline = baseline,
-      covariate_chrs = cov_chrs_flex,
+      covariate_chrs = cov_flex$names,
       cluster = cluster,
       vcov_type = vcov,
       vcov_args = vcov_args,

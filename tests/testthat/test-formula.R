@@ -507,6 +507,38 @@ test_that("unsupported covariates are rejected instead of ignored", {
                "covariates")
 })
 
+test_that("twm and flex evaluate covariate expressions instead of their variables", {
+  d <- df
+  d$ax1 <- abs(d$x1)
+  d$r2 <- as.integer(d$region == 2L)
+  d$r3 <- as.integer(d$region == 3L)
+  d$r4 <- as.integer(d$region == 4L)
+  expr_fit <- event_study(y ~ abs(x1) + factor(region) | id + year, d,
+                          time = year, timing = gvar, estimator = "twm")
+  col_fit  <- event_study(y ~ ax1 + r2 + r3 + r4 | id + year, d,
+                          time = year, timing = gvar, estimator = "twm")
+  expect_identical(es_core(expr_fit), es_core(col_fit))
+  # the legacy argument used to read `abs(x1)` as `x1`
+  old <- event_study(d, outcome = y, time = year, timing = gvar, unit = id,
+                     fe = ~ id + year, covariates = ~ abs(x1),
+                     estimator = "twm")
+  ref <- event_study(y ~ ax1 | id + year, d, time = year, timing = gvar,
+                     estimator = "twm")
+  expect_identical(es_core(old), es_core(ref))
+
+  fx <- make_fml_flex()
+  set.seed(1L)
+  fx$x <- runif(nrow(fx), 1, 5)
+  fx$lx <- log(fx$x)
+  expr_fit <- event_study(y ~ log(x), fx, time = year, timing = g,
+                          group = group_id, estimator = "flex",
+                          cluster = ~group_id)
+  col_fit  <- event_study(y ~ lx, fx, time = year, timing = g,
+                          group = group_id, estimator = "flex",
+                          cluster = ~group_id)
+  expect_identical(es_core(expr_fit), es_core(col_fit))
+})
+
 test_that("unit and time fixed effects are accepted silently by cs and bjs", {
   expect_no_warning(event_study(y ~ 1 | id + year, df, time = year,
                                 timing = gvar, estimator = "cs"))

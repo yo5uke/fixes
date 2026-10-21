@@ -29,6 +29,33 @@
   }
 }
 
+# Covariates of a one-sided formula as columns of `data`, for the TWM and FLEX
+# backends, which address covariates by column name. Numeric and logical
+# columns are used as they are; any other term (`log(x)`, `factor(r)`,
+# `x1:x2`) is expanded with model.matrix conventions into new columns.
+# Returns list(data, names).
+.covariate_columns <- function(covariates, data) {
+  if (is.null(covariates)) return(list(data = data, names = NULL))
+  out <- character()
+  for (term in .split_plus(rlang::f_rhs(covariates))) {
+    if (rlang::is_symbol(term)) {
+      nm <- rlang::as_string(term)
+      if (!nm %in% names(data)) stop("Covariate '", nm, "' not found in data.")
+      if (is.numeric(data[[nm]]) || is.logical(data[[nm]])) {
+        out <- c(out, nm)
+        next
+      }
+    }
+    cm <- .build_cov_matrix(rlang::expr_text(term), data)
+    for (j in seq_len(ncol(cm))) {
+      nm <- .fresh_col(data, paste0(".cov_", make.names(colnames(cm)[j])))
+      data[[nm]] <- unname(cm[, j])
+      out <- c(out, nm)
+    }
+  }
+  list(data = data, names = unique(out))
+}
+
 # Append symmetric normal-approximation CI columns (conf_low_XX / conf_high_XX)
 # for each requested confidence level.  Iterates `conf.level` in the order
 # given (callers pass an already-sorted vector), preserving column order.
