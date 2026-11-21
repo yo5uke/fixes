@@ -24,10 +24,11 @@ reference:
 
   - title: Diagnostics
     desc: >
-      ATT(g,t) extraction and contamination-weight diagnostics for the
-      Sun-Abraham estimator.
+      ATT(g,t) extraction, per-unit propensity scores, and
+      contamination-weight diagnostics for the Sun-Abraham estimator.
     contents:
       - att_gt
+      - propensity_scores
       - contamination_weights
 
   - title: Visualization
