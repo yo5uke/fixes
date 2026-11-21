@@ -497,14 +497,30 @@ test_that("a D column next to a single treatment date is rejected", {
 # Estimator-specific checks
 # ---------------------------------------------------------------------------
 
-test_that("unsupported covariates are rejected instead of ignored", {
-  for (est in c("cs", "sa", "bjs")) {
-    expect_error(event_study(y ~ x1 | id + year, df, time = year,
-                             timing = gvar, estimator = est),
-                 "covariates")
+test_that("sa accepts covariates via formula in event_study()", {
+  e_g <- event_study(y ~ x1 | id + year, df, time = year, timing = gvar,
+                     estimator = "sa")
+  e_d <- event_study(y ~ D + x1 | id + year, df, time = year,
+                     estimator = "sa")
+  expect_s3_class(e_g, "es_result")
+  expect_identical(es_core(e_g), es_core(e_d))
+})
+
+test_that("cs and bjs accept covariates via formula in att() and event_study()", {
+  for (est in c("cs", "bjs")) {
+    a_g <- att(y ~ x1 | id + year, df, time = year, timing = gvar,
+               estimator = est)
+    a_d <- att(y ~ D + x1 | id + year, df, time = year, estimator = est)
+    expect_s3_class(a_g, "att_result")
+    expect_identical(as.data.frame(a_g), as.data.frame(a_d))
+
+    e_g <- event_study(y ~ x1 | id + year, df, time = year, timing = gvar,
+                       estimator = est)
+    e_d <- event_study(y ~ D + x1 | id + year, df, time = year,
+                       estimator = est)
+    expect_s3_class(e_g, "es_result")
+    expect_identical(es_core(e_g), es_core(e_d))
   }
-  expect_error(att(y ~ x1 | id + year, df, time = year, timing = gvar),
-               "covariates")
 })
 
 test_that("twm and flex evaluate covariate expressions instead of their variables", {

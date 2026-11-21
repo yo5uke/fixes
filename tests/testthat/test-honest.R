@@ -112,8 +112,12 @@ test_that("es_result without es_vcov errors informatively", {
   res_cs <- run_es(df, outcome = y, timing = cohort, time = year, unit = id,
                    staggered = TRUE, estimator = "cs",
                    lead_range = 3, lag_range = 2)
-  expect_null(attr(res_cs, "es_vcov"))
-  expect_error(honest_sensitivity(res_cs, type = "smoothness"),
+  expect_false(is.null(attr(res_cs, "es_vcov")))
+  expect_s3_class(honest_sensitivity(res_cs, type = "smoothness"), "honest_result")
+
+  res_no_vcov <- res_cs
+  attr(res_no_vcov, "es_vcov") <- NULL
+  expect_error(honest_sensitivity(res_no_vcov, type = "smoothness"),
                regexp = "es_vcov|covariance")
 })
 
