@@ -492,10 +492,9 @@
 #' test (Section 3.2.1), which is uniformly valid and recommended for general
 #' restriction sets.
 #'
-#' @param object An `es_result` from [event_study()] with
-#'   `estimator = "twfe"` (which carries the event-study coefficient
-#'   covariance).  Alternatively, supply `betahat` and `sigma` directly (see
-#'   below) for any estimator.
+#' @param object An `es_result` from [event_study()] carrying an `es_vcov`
+#'   attribute with at least one pre-treatment and one post-treatment
+#'   coefficient. Alternatively, supply `betahat` and `sigma` directly.
 #' @param type Restriction family: `"relative_magnitude"` (default) or
 #'   `"smoothness"`.
 #' @param m_grid Numeric vector of restriction parameters.  For
@@ -585,9 +584,7 @@ honest_sensitivity <- function(object = NULL,
     V <- attr(object, "es_vcov")
     if (is.null(V))
       stop("This `es_result` does not carry an event-study covariance ",
-           "(`es_vcov`). honest_sensitivity() currently supports ",
-           "`estimator = \"twfe\"`. ",
-           "For other estimators, pass `betahat` and `sigma` directly.")
+           "(`es_vcov`). Pass `betahat` and `sigma` directly.")
     rel <- as.integer(rownames(V))
     ord <- order(rel)
     rel <- rel[ord]

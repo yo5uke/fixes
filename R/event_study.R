@@ -45,24 +45,27 @@
   bjs_lead = FALSE
 ) {
   baseline <- as.integer(baseline)
-  bl_row <- data.frame(
-    term = as.character(baseline),
-    estimate = 0,
-    std.error = 0,
-    statistic = NA_real_,
-    p.value = NA_real_,
-    relative_time = baseline,
-    is_baseline = TRUE,
-    stringsAsFactors = FALSE
-  )
-  for (cl in conf.level) {
-    suf <- sprintf("%.0f", cl * 100)
-    bl_row[[paste0("conf_low_", suf)]] <- 0
-    bl_row[[paste0("conf_high_", suf)]] <- 0
+  if (!(baseline %in% tidy$relative_time)) {
+    bl_row <- data.frame(
+      term = as.character(baseline),
+      estimate = 0,
+      std.error = 0,
+      statistic = NA_real_,
+      p.value = NA_real_,
+      relative_time = baseline,
+      is_baseline = TRUE,
+      stringsAsFactors = FALSE
+    )
+    for (cl in conf.level) {
+      suf <- sprintf("%.0f", cl * 100)
+      bl_row[[paste0("conf_low_", suf)]] <- 0
+      bl_row[[paste0("conf_high_", suf)]] <- 0
+    }
+    tidy <- rbind(tidy, bl_row)
+    tidy$is_baseline <- tidy$relative_time == baseline
+  } else {
+    tidy$is_baseline <- FALSE
   }
-
-  tidy <- rbind(tidy, bl_row)
-  tidy$is_baseline <- tidy$relative_time == baseline
   tidy <- tidy[order(tidy$relative_time), ]
   rownames(tidy) <- NULL
 
@@ -98,6 +101,15 @@
 
   class(tidy) <- c("es_result", "data.frame")
   tidy
+}
+
+.trim_es_vcov <- function(V, tidy) {
+  if (is.null(V)) return(NULL)
+  nb <- tidy[!tidy$is_baseline, , drop = FALSE]
+  if (nrow(nb) == 0L) return(NULL)
+  nm <- as.character(nb$relative_time)
+  if (!all(nm %in% rownames(V))) return(NULL)
+  V[nm, nm, drop = FALSE]
 }
 
 # Calendar period that relative time 0 refers to, or NULL when the design has
@@ -176,9 +188,9 @@
 #' `"twfe"`, `"sa"` and `"twm"` use the fixed effects as written. `"cs"`,
 #' `"bjs"` and `"flex"` absorb the unit (group) and time effects themselves:
 #' those fixed effects are accepted silently, any others are ignored with a
-#' warning. Covariates are supported by `"twfe"`, `"twm"` and `"flex"`, and
-#' may be expressions such as `log(x)` or `factor(region)`; `"cs"`, `"sa"`
-#' and `"bjs"` stop with an error when the formula contains covariates.
+#' warning. Covariates are supported by all six estimators (`"twfe"`, `"cs"`,
+#' `"sa"`, `"bjs"`, `"twm"`, and `"flex"`), and may be expressions such as
+#' `log(x)` or `factor(region)`.
 #'
 #' @details
 #' **How relative (event) time is defined.** `event_study()` can build the
@@ -280,6 +292,9 @@
 #'   `"nevertreated"` (default) or `"notyettreated"`.
 #' @param anticipation For `estimator = "cs"`: number of anticipation periods
 #'   before treatment (non-negative integer, default `0L`).
+#' @param est_method For `estimator = "cs"` with covariates: estimation method,
+#'   `"dr"` (doubly robust, default), `"reg"` (outcome regression), or `"ipw"`
+#'   (inverse probability weighting). Ignored when no covariates are supplied.
 #' @param conf_level Numeric vector of confidence levels (default `0.95`).
 #' @param vcov VCOV type: `"HC1"` (default), `"iid"`, or `"hetero"` on the
 #'   internal engine; other types are delegated to `fixest::vcov()` when the
@@ -310,6 +325,11 @@
 #'   cohort's counterfactual trend to deviate linearly from the common time
 #'   trend.  Requires at least 2 pre-treatment periods per cohort.
 #'   Default `FALSE`.
+#' @param pretrends Logical or negative integer vector; for `estimator = "bjs"`
+#'   only. When `TRUE`, estimates pre-treatment period coefficients on
+#'   untreated observations (Borusyak et al. 2024, Section 4.4) excluding
+#'   `baseline`; when a negative integer vector (e.g. `-4:-2`), estimates those
+#'   specific horizons. Default `FALSE`.
 #' @param outcome,treatment,fe,covariates `r lifecycle::badge("deprecated")`
 #'   The model arguments of the older interface: the unquoted outcome, the
 #'   treated-group dummy (used only by `estimator = "twfe"`), a one-sided
@@ -367,12 +387,14 @@ event_study <- function(
   vcov_args = list(),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
+  est_method = c("dr", "reg", "ipw"),
   bootstrap = FALSE,
   boot_reps = 999L,
   boot_alpha = 0.05,
   boot_seed = NULL,
   group = NULL,
   trends = FALSE,
+  pretrends = FALSE,
   interval = 1,
   time_transform = FALSE,
   rel_time = NULL,
@@ -513,6 +535,7 @@ event_study <- function(
   estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
+  est_method = c("dr", "reg", "ipw"),
   conf_level = 0.95,
   vcov = "HC1",
   vcov_args = list(),
@@ -521,7 +544,8 @@ event_study <- function(
   boot_alpha = 0.05,
   boot_seed = NULL,
   group = NULL,
-  trends = FALSE
+  trends = FALSE,
+  pretrends = FALSE
 ) {
   estimator <- match.arg(estimator)
   stopifnot(is.data.frame(data))
@@ -658,6 +682,7 @@ event_study <- function(
     }
 
     control_group <- match.arg(control_group)
+    est_method    <- match.arg(est_method)
     conf.level <- sort(unique(conf.level))
 
     cs_out <- .run_cs(
@@ -668,7 +693,9 @@ event_study <- function(
       unit_chr = unit_chr,
       anticipation = anticipation,
       control_group = control_group,
-      conf.level = conf.level
+      conf.level = conf.level,
+      covariates = covariates,
+      est_method = est_method
     )
 
     n_units <- cs_out$n_units
@@ -706,7 +733,11 @@ event_study <- function(
     # ---- Multiplier bootstrap (Algorithm 1, CS 2021) -------------------------
     if (isTRUE(bootstrap)) {
       # 1. Unit-level influence functions at the (g,t) level
-      psi_gt <- .cs_psi_cols(cs_out$if_ctx, cs_out$att_gt$g, cs_out$att_gt$t)
+      psi_gt <- if (!is.null(cs_out$if_ctx$psi_gt)) {
+        cs_out$if_ctx$psi_gt
+      } else {
+        .cs_psi_cols(cs_out$if_ctx, cs_out$att_gt$g, cs_out$att_gt$t)
+      }
       gt_index <- data.frame(
         col_idx = seq_len(nrow(cs_out$att_gt)),
         g = cs_out$att_gt$g,
@@ -779,6 +810,7 @@ event_study <- function(
 
     class(tidy) <- c("es_result", "data.frame")
     attr(tidy, "estimator") <- estimator
+    attr(tidy, "es_vcov")   <- .trim_es_vcov(cs_out$es_vcov, tidy)
     return(tidy)
   }
 
@@ -802,10 +834,11 @@ event_study <- function(
       paste(unit_chr, time_chr, sep = " + ")
     }
 
+    cov_sa <- .covariate_columns(covariates, data)
     conf.level <- sort(unique(conf.level))
 
     sa_out <- .run_sa(
-      data = data,
+      data = cov_sa$data,
       outcome_chr = outcome_chr,
       timing_chr = timing_chr,
       time_chr = time_chr,
@@ -815,7 +848,9 @@ event_study <- function(
       cluster = cluster,
       vcov_type = vcov,
       vcov_args = vcov_args,
-      conf.level = conf.level
+      conf.level = conf.level,
+      covariate_chrs = cov_sa$names,
+      weights = weights
     )
 
     n_units <- length(unique(data[[unit_chr]]))
@@ -849,6 +884,7 @@ event_study <- function(
     )
 
     attr(tidy, "estimator") <- estimator
+    attr(tidy, "es_vcov")   <- .trim_es_vcov(sa_out$es_vcov, tidy)
     return(tidy)
   }
 
@@ -880,7 +916,10 @@ event_study <- function(
       time_chr = time_chr,
       unit_chr = unit_chr,
       clustervars = clustervars_chr,
-      conf.level = conf.level
+      conf.level = conf.level,
+      covariates = covariates,
+      pretrends = pretrends,
+      baseline = baseline
     )
 
     n_units <- length(unique(data[[unit_chr]]))
@@ -917,6 +956,7 @@ event_study <- function(
     )
 
     attr(tidy, "estimator") <- estimator
+    attr(tidy, "es_vcov")   <- .trim_es_vcov(bjs_out$es_vcov, tidy)
     return(tidy)
   }
 
@@ -956,7 +996,8 @@ event_study <- function(
       cluster = cluster,
       vcov_type = vcov,
       vcov_args = vcov_args,
-      conf.level = conf.level
+      conf.level = conf.level,
+      weights = weights
     )
 
     n_units <- length(unique(data[[unit_chr]]))
@@ -990,6 +1031,7 @@ event_study <- function(
     )
 
     attr(tidy, "estimator") <- estimator
+    attr(tidy, "es_vcov")   <- .trim_es_vcov(twm_out$es_vcov, tidy)
     return(tidy)
   }
 
@@ -1024,7 +1066,8 @@ event_study <- function(
       cluster = cluster,
       vcov_type = vcov,
       vcov_args = vcov_args,
-      conf.level = conf.level
+      conf.level = conf.level,
+      weights = weights
     )
 
     n_groups <- length(unique(data[[group_chr]]))
@@ -1066,6 +1109,7 @@ event_study <- function(
     )
 
     attr(tidy, "estimator") <- estimator
+    attr(tidy, "es_vcov")   <- .trim_es_vcov(flex_out$es_vcov, tidy)
     return(tidy)
   }
 
@@ -1342,4 +1386,13 @@ event_study <- function(
   rownames(tidy) <- NULL
   class(tidy) <- c("es_result", "data.frame")
   tidy
+}
+
+.trim_es_vcov <- function(V, tidy) {
+  if (is.null(V)) return(NULL)
+  nb <- tidy[!tidy$is_baseline, , drop = FALSE]
+  if (nrow(nb) == 0L) return(NULL)
+  nm <- as.character(nb$relative_time)
+  if (!all(nm %in% rownames(V))) return(NULL)
+  V[nm, nm, drop = FALSE]
 }

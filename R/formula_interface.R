@@ -450,12 +450,6 @@
 
 .formula_covariates <- function(terms, estimator, env) {
   if (!length(terms)) return(NULL)
-  labels <- vapply(terms, rlang::expr_text, character(1L))
-  shown  <- paste0("`", labels, "`", collapse = ", ")
-  if (estimator %in% c("cs", "sa", "bjs")) {
-    stop("estimator = \"", estimator, "\" does not support covariates; ",
-         "remove ", shown, " from the formula.", call. = FALSE)
-  }
   .covariate_formula(terms, env)
 }
 

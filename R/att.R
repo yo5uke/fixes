@@ -142,10 +142,12 @@
 #' al. (2024, Theorem 3), clustered by unit, including the uncertainty from
 #' the imputation regression. It matches `didimputation::did_imputation()`.
 #'
-#' @param formula A model formula `outcome ~ treatment | fixed effects`
+#' @param formula A model formula `outcome ~ treatment + covariates | fixed effects`
 #'   (see [event_study()]). The fixed effects only serve to name the unit:
-#'   both estimators absorb unit and time effects themselves, and neither
-#'   takes covariates.
+#'   both estimators absorb unit and time effects themselves. Covariates may
+#'   be expressions such as `log(x)` or `factor(region)`; for `"cs"` they are
+#'   evaluated at each cohort's base period, and for `"bjs"` they are included
+#'   in the untreated imputation regression.
 #' @param data A data.frame containing panel data. `formula` and `data` may
 #'   come in either order.
 #' @param time Unquoted calendar time variable (numeric).
@@ -165,6 +167,12 @@
 #'   `"nevertreated"` (default) or `"notyettreated"`.
 #' @param anticipation For `estimator = "cs"`: number of anticipation periods
 #'   before treatment (non-negative integer, default `0L`).
+#' @param est_method For `estimator = "cs"` with covariates: estimation method,
+#'   `"dr"` (doubly robust, default), `"reg"` (outcome regression), or `"ipw"`
+#'   (inverse probability weighting). Ignored when no covariates are supplied.
+#' @param cluster For `estimator = "bjs"`: clustering specification (a
+#'   one-sided formula like `~ grp` or a single character column name); defaults
+#'   to clustering by `unit`. Ignored with a warning when `estimator = "cs"`.
 #' @param conf_level Numeric confidence level(s) (default `0.95`). Multiple
 #'   levels are supported, e.g., `c(0.90, 0.95)`.
 #' @param interval Numeric time spacing (default `1`; informational only).
@@ -216,6 +224,8 @@ att <- function(
   aggregation   = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation  = 0L,
+  est_method    = c("dr", "reg", "ipw"),
+  cluster       = NULL,
   conf_level    = 0.95,
   interval      = 1,
   time_transform = FALSE,
@@ -250,7 +260,7 @@ att <- function(
   tr <- .formula_treatment(p, timing_s, FALSE, data, panel$unit, time_chr,
                            "att", time_transform = time_transform)
   data <- tr$data
-  .formula_covariates(tr$covariates, estimator, p$env)
+  cov_fml <- .formula_covariates(tr$covariates, estimator, p$env)
   .formula_fe(p$fe, estimator, keep = c(panel$unit, time_chr))
 
   timing_arg <- if (tr$mode == "cohort") timing_s$name else {
@@ -265,6 +275,7 @@ att <- function(
   new$timing    <- timing_arg
   new$unit      <- panel$unit
   new$estimator <- estimator
+  if (!is.null(cov_fml)) new$covariates <- cov_fml
   .eval_impl(new, "att", .att_impl, env, data = data)
 }
 
@@ -280,13 +291,17 @@ att <- function(
   aggregation = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation  = 0L,
+  est_method    = c("dr", "reg", "ipw"),
   conf_level    = 0.95,
   interval   = 1,
-  time_transform = FALSE
+  time_transform = FALSE,
+  covariates = NULL,
+  cluster    = NULL
 ) {
   estimator     <- match.arg(estimator)
   aggregation   <- match.arg(aggregation)
   control_group <- match.arg(control_group)
+  est_method    <- match.arg(est_method)
   conf.level    <- sort(unique(conf_level))
 
   stopifnot(is.data.frame(data))
@@ -321,8 +336,14 @@ att <- function(
 
   # ---- dispatch to estimator -------------------------------------------------
   if (estimator == "cs") {
+    if (!is.null(cluster)) {
+      warning("`cluster` is ignored when `estimator = \"cs\"`; unit-level ",
+              "influence functions are used.", call. = FALSE)
+    }
     cs_out     <- .run_cs(data, outcome_chr, timing_chr, time_chr, unit_chr,
-                          anticipation, control_group, conf.level)
+                          anticipation, control_group, conf.level,
+                          covariates = covariates, est_method = est_method,
+                          aggregate_es = FALSE)
     agg_df     <- .agg_cs(cs_out, aggregation, conf.level)
     n_obs      <- cs_out$n_obs
     n_units    <- cs_out$n_units
@@ -333,8 +354,21 @@ att <- function(
                         dropped_cohorts = cs_out$dropped_cohorts)
 
   } else {  # bjs
+    clustervars_chr <- if (!is.null(cluster)) {
+      if (inherits(cluster, "formula")) {
+        all.vars(rlang::f_rhs(cluster))
+      } else if (is.character(cluster) && length(cluster) == 1L) {
+        cluster
+      } else {
+        stop("`cluster` must be a one-sided formula or single column name.",
+             call. = FALSE)
+      }
+    } else {
+      NULL
+    }
     bjs_out    <- .run_bjs(data, outcome_chr, timing_chr, time_chr, unit_chr,
-                           clustervars = NULL, conf.level)
+                           clustervars = clustervars_chr, conf.level,
+                           covariates = covariates, aggregate_es = FALSE)
     agg_df     <- .agg_bjs(bjs_out, aggregation)
     n_obs      <- nrow(data)
     n_units    <- length(unique(data[[unit_chr]]))

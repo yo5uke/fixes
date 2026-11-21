@@ -73,7 +73,8 @@
                       cluster        = NULL,
                       vcov_type      = "HC1",
                       vcov_args      = list(),
-                      conf.level     = 0.95) {
+                      conf.level     = 0.95,
+                      weights        = NULL) {
 
   baseline <- as.integer(baseline)
 
@@ -192,6 +193,7 @@
 
   # FE: group + time (not unit + time, since RCS has no unit tracking)
   fe_str_flex <- paste(group_chr, time_chr, sep = " + ")
+  w_vec       <- .resolve_weights_vec(weights, data)
   fe_vars     <- .parse_fe_list(fe_str_flex, data)
   cl_vals     <- .resolve_cluster_vals(cluster, data)
 
@@ -216,7 +218,8 @@
     cell_key[is.na(cohort_of_obs)] <- NA_integer_
 
     est_ok <- .fe_ols_cov_sample_ok(
-      data[[outcome_chr]], cov_mat, fe_vars, cl_vals, data, fe_str_flex, cluster
+      data[[outcome_chr]], cov_mat, fe_vars, cl_vals, data, fe_str_flex, cluster,
+      weights = w_vec
     )
     if (!is.null(est_ok)) cell_key[!est_ok] <- NA_integer_
 
@@ -227,7 +230,7 @@
                                                covariate_chrs[j], "__k__", kk)
 
     cov_int_mat           <- build_cov_interactions_cpp(
-                              cov_mat, ind_mat, cell_key)
+                              cov_mat, ind_mat, cell_key, wt = w_vec)
     colnames(cov_int_mat) <- ci_names
 
     excl_t    <- as.integer(cohorts[1L] + baseline)
@@ -276,11 +279,12 @@
       data$.flex_X <- ind_mat
       if (!is.null(covariate_chrs) && length(covariate_chrs) > 0L)
         data$.flex_cov_X <- cov_int_mat
-      .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args)
+      .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args,
+                          weights = weights)
     } else {
       .fit_fe_ols(data[[outcome_chr]], X_reg, fe_list = fe_vars,
                   cluster_vals = cl_vals, vcov_type = vcov_type,
-                  vcov_args = vcov_args)
+                  vcov_args = vcov_args, weights = w_vec)
     }
   }, error = function(e)
     stop("FLEX regression failed: ", e$message,
@@ -317,7 +321,11 @@
 
   # ---- IW aggregation — cohort-size-weighted (n_g = unique groups per cohort)
   # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
-  es <- .aggregate_iw(tau_gt, V_full, coef_names, cohort_sizes, min_t, max_t)
+  cell_w <- .cell_weight_sums(fit$used, cohort_of_obs, data[[time_chr]], w_vec,
+                              tau_gt$g, tau_gt$t)
+  iw <- .aggregate_iw(tau_gt, V_full, coef_names, cohort_sizes, min_t, max_t,
+                      cell_weights = cell_w)
+  es <- iw$es
 
   if (nrow(es) == 0L)
     stop("FLEX event-study aggregation produced no estimates.")
@@ -328,6 +336,7 @@
 
   list(
     es             = es,
+    es_vcov        = iw$es_vcov,
     tau_gt         = tau_gt,
     cohorts        = cohorts,
     n_never_groups = n_never_groups,

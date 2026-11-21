@@ -59,6 +59,17 @@ compute_att_gt_cpp <- function(unit_id, time_id, outcome, cohort, cohorts, all_t
     .Call(`_fixes_compute_att_gt_cpp`, unit_id, time_id, outcome, cohort, cohorts, all_times, control_group, anticipation)
 }
 
+#' Callaway-Sant'Anna (2021) ATT(g,t) with covariates in C++
+#'
+#' Computes ATT(g,t), analytic standard errors, and the n_units x n_gt
+#' unit-level influence function matrix for outcome regression ("reg"),
+#' inverse probability weighting ("ipw"), or doubly robust ("dr").
+#'
+#' @noRd
+compute_cs_cov_cpp <- function(Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method) {
+    .Call(`_fixes_compute_cs_cov_cpp`, Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method)
+}
+
 #' Build covariate-interaction matrix with group-level demeaning
 #'
 #' For each unique non-missing, non-zero value in \code{group_key}, the
@@ -92,8 +103,8 @@ compute_att_gt_cpp <- function(unit_id, time_id, outcome, cohort, cohorts, all_t
 #'   for k = 0 … K-1 are contiguous.  Column names are set by the R caller.
 #'
 #' @noRd
-build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key) {
-    .Call(`_fixes_build_cov_interactions_cpp`, cov_mat, ind_mat, group_key)
+build_cov_interactions_cpp <- function(cov_mat, ind_mat, group_key, wt = NULL) {
+    .Call(`_fixes_build_cov_interactions_cpp`, cov_mat, ind_mat, group_key, wt)
 }
 
 #' K-way fixed-effects demeaning by alternating projections
@@ -361,34 +372,29 @@ build_indicator_matrix_cpp <- function(cohort_id, time_id, gs_g, gs_s) {
 
 #' Interaction-weighted event-study aggregation with full VCOV
 #'
-#' Computes the cohort-size-weighted event-study estimate and its standard
-#' error for each unique event time \eqn{\ell} in \code{unique_l}:
-#' \deqn{\hat\theta(\ell) = \sum_g w_{g,\ell} \hat\tau_{g,g+\ell}}
-#' \deqn{\widehat{SE}^2(\hat\theta(\ell)) =
-#'   \mathbf{w}_\ell^\top \Sigma_\ell \mathbf{w}_\ell}
-#' where \eqn{\Sigma_\ell} is the VCOV sub-block for all cohorts at \eqn{\ell}
-#' and \eqn{w_{g,\ell} = n_g / \sum_{g' : g'+\ell \in [t_{\min}, t_{\max}]} n_{g'}}.
-#'
-#' This is a shared utility replacing the equivalent R loop in the SA, TWM,
-#' and FLEX estimators, using RcppArmadillo for the quadratic form.
+#' Computes the cohort-size-weighted (or cell-weight-weighted) event-study
+#' estimate, its standard error, and the full event-study VCOV matrix for
+#' each unique event time \eqn{\ell} in \code{unique_l}.
 #'
 #' @param estimates Numeric vector (length K): \eqn{\hat\tau_{g,s}} estimates.
 #' @param l_vals Integer vector (length K): relative time \eqn{\ell = s - g}.
 #' @param cohort_vals Integer vector (length K): cohort \eqn{g} for each cell.
 #' @param idx_in_V Integer vector (length K): 0-based row/column index into
-#'   \code{V_full_r}.  Pass \code{-1L} for cells not found in the VCOV.
+#'   \code{V_full_r}. Pass \code{-1L} for cells not found in the VCOV.
 #' @param V_full_r Numeric matrix: full VCOV from the regression.
 #' @param unique_l Sorted integer vector: all unique event times to aggregate.
 #' @param cs_keys Integer vector: cohort values (one per cohort).
 #' @param cs_vals Integer vector: cohort sizes corresponding to \code{cs_keys}.
 #' @param min_t,max_t Integer: range of observed calendar times.
+#' @param cell_weights Optional numeric vector (length K) of cell observation
+#'   weight sums (used when estimation is weighted).
 #'
-#' @return A data.frame with columns \code{relative_time}, \code{estimate},
-#'   \code{std_error}, one row per valid event time.
+#' @return A list with \code{es} (data.frame with \code{relative_time},
+#'   \code{estimate}, \code{std_error}) and \code{vcov} (event-study VCOV).
 #'
 #' @noRd
-aggregate_iw_cpp <- function(estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t) {
-    .Call(`_fixes_aggregate_iw_cpp`, estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t)
+aggregate_iw_cpp <- function(estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t, cell_weights = NULL) {
+    .Call(`_fixes_aggregate_iw_cpp`, estimates, l_vals, cohort_vals, idx_in_V, V_full_r, unique_l, cs_keys, cs_vals, min_t, max_t, cell_weights)
 }
 
 #' Sums of a vector by 1-based integer group code

@@ -68,9 +68,13 @@
                     unit_chr,
                     anticipation  = 0L,
                     control_group = c("nevertreated", "notyettreated"),
-                    conf.level    = 0.95) {
+                    conf.level    = 0.95,
+                    covariates    = NULL,
+                    est_method    = c("dr", "reg", "ipw"),
+                    aggregate_es  = TRUE) {
 
   control_group <- match.arg(control_group)
+  est_method    <- match.arg(est_method)
   anticipation  <- as.integer(anticipation)
 
   # ---- Validate inputs -------------------------------------------------------
@@ -80,6 +84,10 @@
     stop("`anticipation` must be a non-negative integer.")
   .assert_integerish(data[[time_chr]], time_chr)
   .assert_integerish(data[[timing_chr]], timing_chr)
+
+  cov_res   <- .covariate_columns(covariates, data)
+  data      <- cov_res$data
+  cov_names <- cov_res$names
 
   orig_cohorts <- sort(unique(data[[timing_chr]][
     !is.na(data[[timing_chr]]) & is.finite(data[[timing_chr]])
@@ -92,6 +100,11 @@
   bad_row <- !is.finite(data[[outcome_chr]]) | !is.finite(data[[time_chr]]) |
     is.na(data[[unit_chr]]) |
     (!is.na(data[[timing_chr]]) & !is.finite(data[[timing_chr]]))
+  if (length(cov_names) > 0L) {
+    for (cn in cov_names) {
+      bad_row <- bad_row | !is.finite(data[[cn]])
+    }
+  }
   if (any(bad_row)) {
     warning("Dropped ", sum(bad_row),
             " row(s) due to missing or non-finite values.",
@@ -103,7 +116,7 @@
 
   all_periods <- sort(unique(data[[time_chr]]))
   n_periods   <- length(all_periods)
-  u_all       <- unique(data[[unit_chr]])
+  u_all       <- sort(unique(data[[unit_chr]]))
   u_idx       <- match(data[[unit_chr]], u_all)
   t_idx       <- match(data[[time_chr]], all_periods)
   ut_code     <- (u_idx - 1L) * n_periods + t_idx
@@ -115,7 +128,9 @@
   keep_u <- (u_cnt == n_periods)
   if (!all(keep_u)) {
     n_drop_units <- sum(!keep_u)
-    data <- data[keep_u[u_idx], , drop = FALSE]
+    keep_rows <- keep_u[u_idx]
+    data  <- data[keep_rows, , drop = FALSE]
+    t_idx <- t_idx[keep_rows]
     if (nrow(data) == 0L)
       stop("No complete units remain after balancing the panel.")
     rem_cohorts <- sort(unique(data[[timing_chr]][!is.na(data[[timing_chr]])]))
@@ -185,38 +200,97 @@
             call. = FALSE)
   }
 
-  min_val <- min(c(all_periods, cohorts))
-  offset  <- if (min_val <= 0) 1L - as.integer(min_val) else 0L
+  Y_mat <- matrix(NA_real_, nrow = n_units, ncol = n_periods)
+  Y_mat[cbind(unit_int, t_idx)] <- as.numeric(data[[outcome_chr]])
 
-  cohort_int <- as.integer(data[[timing_chr]]) + offset
-  cohort_int[is.na(cohort_int)] <- 0L
+  timing_vals <- data[[timing_chr]]
+  unit_timing <- rep(NA_real_, n_units)
+  ok_t <- !is.na(timing_vals)
+  unit_timing[unit_int[ok_t]] <- as.numeric(timing_vals[ok_t])
 
-  cpp_result <- compute_att_gt_cpp(
-    unit_id       = unit_int,
-    time_id       = as.integer(data[[time_chr]]) + offset,
-    outcome       = as.numeric(data[[outcome_chr]]),
-    cohort        = cohort_int,
-    cohorts       = as.integer(cohorts) + offset,
-    all_times     = as.integer(all_periods) + offset,
-    control_group = control_group,
-    anticipation  = as.integer(anticipation)
-  )
+  if (length(cov_names) == 0L) {
+    min_val <- min(c(all_periods, cohorts))
+    offset  <- if (min_val <= 0) 1L - as.integer(min_val) else 0L
 
-  if (nrow(cpp_result) == 0L)
-    stop("No ATT(g,t) estimates were computed. ",
-         "Ensure the timing column, base periods, and comparison group ",
-         "are consistent with the panel structure.")
+    cohort_int <- as.integer(timing_vals) + offset
+    cohort_int[is.na(cohort_int)] <- 0L
 
-  att_gt <- data.frame(
-    g             = cpp_result$g - offset,
-    t             = cpp_result$t - offset,
-    relative_time = as.integer(cpp_result$t - cpp_result$g),
-    estimate      = cpp_result$att,
-    std_error     = cpp_result$se,
-    stringsAsFactors = FALSE
-  )
-  att_gt          <- att_gt[order(att_gt$g, att_gt$t), ]
-  rownames(att_gt) <- NULL
+    cpp_result <- compute_att_gt_cpp(
+      unit_id       = unit_int,
+      time_id       = as.integer(data[[time_chr]]) + offset,
+      outcome       = as.numeric(data[[outcome_chr]]),
+      cohort        = cohort_int,
+      cohorts       = as.integer(cohorts) + offset,
+      all_times     = as.integer(all_periods) + offset,
+      control_group = control_group,
+      anticipation  = as.integer(anticipation)
+    )
+
+    if (nrow(cpp_result) == 0L)
+      stop("No ATT(g,t) estimates were computed. ",
+           "Ensure the timing column, base periods, and comparison group ",
+           "are consistent with the panel structure.")
+
+    att_gt <- data.frame(
+      g             = cpp_result$g - offset,
+      t             = cpp_result$t - offset,
+      relative_time = as.integer(cpp_result$t - cpp_result$g),
+      estimate      = cpp_result$att,
+      std_error     = cpp_result$se,
+      stringsAsFactors = FALSE
+    )
+    att_gt          <- att_gt[order(att_gt$g, att_gt$t), ]
+    rownames(att_gt) <- NULL
+    psi_gt <- NULL
+  } else {
+    n_cov <- length(cov_names)
+    X_base_list <- vector("list", length(cohorts))
+    for (gi in seq_along(cohorts)) {
+      base_ti <- match(cohorts[gi] - 1L - anticipation, all_periods)
+      if (is.na(base_ti)) next
+      sel <- (t_idx == base_ti)
+      u_sel <- unit_int[sel]
+      X_mat <- matrix(1, nrow = n_units, ncol = 1L + n_cov)
+      for (k in seq_len(n_cov)) {
+        X_mat[u_sel, 1L + k] <- as.numeric(data[[cov_names[k]]][sel])
+      }
+      X_base_list[[gi]] <- X_mat
+    }
+
+    cpp_cov <- compute_cs_cov_cpp(
+      Y_mat         = Y_mat,
+      unit_timing   = unit_timing,
+      cohorts       = as.numeric(cohorts),
+      all_times     = as.numeric(all_periods),
+      X_base_list   = X_base_list,
+      control_group = control_group,
+      anticipation  = as.integer(anticipation),
+      est_method    = est_method
+    )
+
+    if (isTRUE(cpp_cov$overlap_warn)) {
+      warning("Propensity score estimates near 1 detected in some (g,t) cells ",
+              "(limited covariate overlap).", call. = FALSE)
+    }
+
+    if (length(cpp_cov$g) == 0L)
+      stop("No ATT(g,t) estimates were computed. ",
+           "Ensure the timing column, base periods, covariates, and ",
+           "comparison group are consistent with the panel structure.")
+
+    att_gt <- data.frame(
+      g             = cpp_cov$g,
+      t             = cpp_cov$t,
+      relative_time = as.integer(cpp_cov$t - cpp_cov$g),
+      estimate      = cpp_cov$att,
+      std_error     = cpp_cov$se,
+      stringsAsFactors = FALSE
+    )
+    ord <- order(att_gt$g, att_gt$t)
+    att_gt           <- att_gt[ord, , drop = FALSE]
+    rownames(att_gt) <- NULL
+    psi_gt           <- cpp_cov$psi[, ord, drop = FALSE]
+  }
 
   # ---- Diagnose silently-dropped cohorts ------------------------------------
   # A cohort can vanish from att_gt even when its base period exists on the
@@ -234,64 +308,83 @@
             call. = FALSE)
   }
 
+  if_ctx <- list(
+    Y_mat         = Y_mat,
+    unit_timing   = unit_timing,
+    time_to_col   = stats::setNames(seq_len(n_periods), as.character(all_periods)),
+    control_group = control_group,
+    anticipation  = as.integer(anticipation),
+    n_units       = n_units,
+    psi_gt        = psi_gt
+  )
+
   # ---- Event-study aggregation — CS 2021, Table 1, eq. 3.4 -----------------
   # theta_es(l) = sum_{g: g+l in [min_t, max_t]} ATT(g, g+l) * w(g, l)
   # w(g, l)     = n_g / sum_{g': g'+l in [min_t, max_t]} n_{g'}
   #
   # SE: influence function of theta_es(l) (see .cs_aggregate_if()).
+  es <- NULL
+  psi_es <- NULL
+  es_vcov <- NULL
+  if (isTRUE(aggregate_es)) {
+    event_times <- sort(unique(att_gt$relative_time))
+    es_rows     <- list()
+    es_specs    <- list()
+    key_gt      <- paste(att_gt$g, att_gt$t, sep = "\r")  # O(1) (g,t) row lookup
 
-  event_times <- sort(unique(att_gt$relative_time))
-  es_rows     <- list()
-  es_specs    <- list()
-  key_gt      <- paste(att_gt$g, att_gt$t, sep = "\r")  # O(1) (g,t) row lookup
+    for (l in event_times) {
+      # Cohorts for which g+l falls within the sample
+      in_sample <- (cohorts + l) >= min_t & (cohorts + l) <= max_t
+      elig      <- cohorts[in_sample]
 
-  for (l in event_times) {
-    # Cohorts for which g+l falls within the sample
-    in_sample <- (cohorts + l) >= min_t & (cohorts + l) <= max_t
-    elig      <- cohorts[in_sample]
+      # Restrict to cohorts for which ATT(g, g+l) was actually estimated
+      idx  <- match(paste(elig, elig + l, sep = "\r"), key_gt)
+      elig <- elig[!is.na(idx)]
+      idx  <- idx[!is.na(idx)]
 
-    # Restrict to cohorts for which ATT(g, g+l) was actually estimated
-    idx  <- match(paste(elig, elig + l, sep = "\r"), key_gt)
-    elig <- elig[!is.na(idx)]
-    idx  <- idx[!is.na(idx)]
+      if (length(elig) == 0L) next
 
-    if (length(elig) == 0L) next
+      sz    <- cohort_sizes[as.character(elig)]
+      total <- sum(sz)
+      if (total == 0L) next
+      w <- sz / total
 
-    sz    <- cohort_sizes[as.character(elig)]
-    total <- sum(sz)
-    if (total == 0L) next
-    w <- sz / total
+      es_rows[[length(es_rows) + 1L]] <- data.frame(
+        relative_time = l,
+        estimate      = sum(w * att_gt$estimate[idx]),
+        std_error     = NA_real_,
+        stringsAsFactors = FALSE
+      )
+      es_specs[[length(es_specs) + 1L]] <- list(
+        rows = idx, w = as.numeric(w), p = as.numeric(sz) / n_units
+      )
+    }
 
-    es_rows[[length(es_rows) + 1L]] <- data.frame(
-      relative_time = l,
-      estimate      = sum(w * att_gt$estimate[idx]),
-      std_error     = NA_real_,
-      stringsAsFactors = FALSE
-    )
-    es_specs[[length(es_specs) + 1L]] <- list(
-      rows = idx, w = as.numeric(w), p = as.numeric(sz) / n_units
-    )
+    if (length(es_rows) == 0L)
+      stop("Event-study aggregation produced no estimates.")
+
+    psi_es <- .cs_aggregate_if(if_ctx, att_gt, es_specs)
+    se_es  <- sqrt(colSums(psi_es^2)) / n_units
+    for (j in seq_along(es_rows)) es_rows[[j]]$std_error <- se_es[j]
+
+    es           <- do.call(rbind, es_rows)
+    ord_es       <- order(es$relative_time)
+    es           <- es[ord_es, , drop = FALSE]
+    rownames(es) <- NULL
+
+    psi_es  <- psi_es[, ord_es, drop = FALSE]
+    es_vcov <- crossprod(psi_es) / (n_units^2)
+    nm_es   <- as.character(es$relative_time)
+    dimnames(es_vcov) <- list(nm_es, nm_es)
+
+    # ---- Confidence intervals ------------------------------------------------
+    conf.level <- sort(unique(conf.level))
+    es <- .add_ci_columns(es, conf.level, se_col = "std_error")
   }
-
-  if (length(es_rows) == 0L)
-    stop("Event-study aggregation produced no estimates.")
-
-  if_ctx <- .cs_influence_context(data, control_group, unit_chr, time_chr,
-                                  timing_chr, outcome_chr, anticipation)
-  psi_es <- .cs_aggregate_if(if_ctx, att_gt, es_specs)
-  se_es  <- sqrt(colSums(psi_es^2)) / n_units
-  for (j in seq_along(es_rows)) es_rows[[j]]$std_error <- se_es[j]
-
-  es           <- do.call(rbind, es_rows)
-  es           <- es[order(es$relative_time), ]
-  rownames(es) <- NULL
-
-  # ---- Confidence intervals --------------------------------------------------
-  conf.level <- sort(unique(conf.level))
-  es <- .add_ci_columns(es, conf.level, se_col = "std_error")
 
   list(
     es              = es,
+    es_vcov         = es_vcov,
     att_gt          = att_gt,
     cohorts         = cohorts,
     n_never         = n_never,

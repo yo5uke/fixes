@@ -212,13 +212,21 @@
 # @return n_units x length(specs) matrix of influence functions.
 # @noRd
 .cs_aggregate_if <- function(ctx, att_gt, specs) {
-  rows <- unlist(lapply(specs, `[[`, "rows"))
-  out  <- .cs_psi_cols(
-    ctx, att_gt$g[rows], att_gt$t[rows],
-    weight  = unlist(lapply(specs, `[[`, "w")),
-    out_col = rep(seq_along(specs), lengths(lapply(specs, `[[`, "rows"))),
-    n_out   = length(specs)
-  )
+  if (!is.null(ctx$psi_gt)) {
+    out <- matrix(0, nrow = ctx$n_units, ncol = length(specs))
+    for (j in seq_along(specs)) {
+      sp <- specs[[j]]
+      out[, j] <- as.numeric(ctx$psi_gt[, sp$rows, drop = FALSE] %*% sp$w)
+    }
+  } else {
+    rows <- unlist(lapply(specs, `[[`, "rows"))
+    out  <- .cs_psi_cols(
+      ctx, att_gt$g[rows], att_gt$t[rows],
+      weight  = unlist(lapply(specs, `[[`, "w")),
+      out_col = rep(seq_along(specs), lengths(lapply(specs, `[[`, "rows"))),
+      n_out   = length(specs)
+    )
+  }
   # The weight term depends on the unit only through its cohort.
   cohorts <- sort(unique(att_gt$g))
   i_g <- match(ctx$unit_timing, cohorts, nomatch = length(cohorts) + 1L)

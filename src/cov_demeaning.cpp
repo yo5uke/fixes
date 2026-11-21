@@ -40,11 +40,14 @@ using namespace Rcpp;
 NumericMatrix build_cov_interactions_cpp(
     NumericMatrix cov_mat,
     IntegerMatrix ind_mat,
-    IntegerVector group_key
+    IntegerVector group_key,
+    Nullable<NumericVector> wt = R_NilValue
 ) {
     int N = cov_mat.nrow();
     int p = cov_mat.ncol();
     int K = ind_mat.ncol();
+    bool has_w = wt.isNotNull();
+    NumericVector w_vec = has_w ? NumericVector(wt.get()) : NumericVector(0);
 
     // ---- Step 0: identify rows with any NA/NaN in cov_mat ------------------
     std::vector<uint8_t> row_has_na(N, 0);
@@ -71,21 +74,39 @@ NumericMatrix build_cov_interactions_cpp(
 
     for (auto& kv : groups) {
         const std::vector<int>& rows = kv.second;
+        double sum_w = 0.0;
         int n_valid = 0;
         for (int r : rows) {
-            if (!row_has_na[r]) n_valid++;
+            if (row_has_na[r]) continue;
+            if (has_w) {
+                double wr = w_vec[r];
+                if (R_finite(wr) && wr > 0.0) {
+                    sum_w += wr;
+                    n_valid++;
+                }
+            } else {
+                n_valid++;
+            }
         }
 
         for (int j = 0; j < p; j++) {
-            if (n_valid == 0) {
+            if (n_valid == 0 || (has_w && !(sum_w > 0.0))) {
                 for (int r : rows) x_centred(r, j) = NA_REAL;
                 continue;
             }
             double sum = 0.0;
-            for (int r : rows) {
-                if (!row_has_na[r]) sum += cov_mat(r, j);
+            if (has_w) {
+                for (int r : rows) {
+                    if (row_has_na[r]) continue;
+                    double wr = w_vec[r];
+                    if (R_finite(wr) && wr > 0.0) sum += wr * cov_mat(r, j);
+                }
+            } else {
+                for (int r : rows) {
+                    if (!row_has_na[r]) sum += cov_mat(r, j);
+                }
             }
-            double mean_val = sum / n_valid;
+            double mean_val = sum / (has_w ? sum_w : (double)n_valid);
             for (int r : rows) {
                 x_centred(r, j) = row_has_na[r] ? NA_REAL : (cov_mat(r, j) - mean_val);
             }

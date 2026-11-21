@@ -215,20 +215,39 @@
 # cohort_sizes : named integer vector (cohort -> size)
 # min_t, max_t : scalar calendar-time bounds
 .aggregate_iw <- function(coef_df, V_full, coef_names, cohort_sizes,
-                          min_t, max_t) {
+                          min_t, max_t, cell_weights = NULL) {
   idx_V <- match(coef_df$col_name, coef_names) - 1L  # 0-based
   idx_V[is.na(idx_V)] <- -1L
 
-  aggregate_iw_cpp(
-    estimates   = coef_df$estimate,
-    l_vals      = as.integer(coef_df$l),
-    cohort_vals = as.integer(coef_df$g),
-    idx_in_V    = idx_V,
-    V_full_r    = V_full,
-    unique_l    = as.integer(sort(unique(coef_df$l))),
-    cs_keys     = as.integer(names(cohort_sizes)),
-    cs_vals     = as.integer(cohort_sizes),
-    min_t       = as.integer(min_t),
-    max_t       = as.integer(max_t)
+  res <- aggregate_iw_cpp(
+    estimates    = coef_df$estimate,
+    l_vals       = as.integer(coef_df$l),
+    cohort_vals  = as.integer(coef_df$g),
+    idx_in_V     = idx_V,
+    V_full_r     = V_full,
+    unique_l     = as.integer(sort(unique(coef_df$l))),
+    cs_keys      = as.integer(names(cohort_sizes)),
+    cs_vals      = as.integer(cohort_sizes),
+    min_t        = as.integer(min_t),
+    max_t        = as.integer(max_t),
+    cell_weights = cell_weights
   )
+  V_es <- res$vcov
+  nm <- as.character(res$es$relative_time)
+  dimnames(V_es) <- list(nm, nm)
+  list(es = res$es, es_vcov = V_es)
+}
+
+# Sum observation weights over `used` rows for each (cell_g, cell_t) pair.
+.cell_weight_sums <- function(used, g_obs, t_obs, w_vec, cell_g, cell_t) {
+  if (is.null(w_vec)) return(NULL)
+  gu <- g_obs[used]
+  tu <- t_obs[used]
+  wu <- w_vec[used]
+  ok <- !is.na(gu) & !is.na(tu)
+  gu <- gu[ok]; tu <- tu[ok]; wu <- wu[ok]
+  pos <- match(paste(gu, tu, sep = "\r"), paste(cell_g, cell_t, sep = "\r"))
+  hit <- !is.na(pos)
+  if (!any(hit)) return(rep(0, length(cell_g)))
+  sum_by_code_cpp(pos[hit], wu[hit], length(cell_g))
 }

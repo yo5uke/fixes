@@ -54,11 +54,13 @@
                     time_chr,
                     unit_chr,
                     fe_str,
-                    baseline   = -1L,
-                    cluster    = NULL,
-                    vcov_type  = "HC1",
-                    vcov_args  = list(),
-                    conf.level = 0.95) {
+                    baseline       = -1L,
+                    cluster        = NULL,
+                    vcov_type      = "HC1",
+                    vcov_args      = list(),
+                    conf.level     = 0.95,
+                    covariate_chrs = NULL,
+                    weights        = NULL) {
 
   baseline <- as.integer(baseline)
 
@@ -143,10 +145,12 @@
          g        = gl_pairs$g[k],
          l        = gl_pairs$l[k]))
 
+  has_cov <- !is.null(covariate_chrs) && length(covariate_chrs) > 0L
+  cov_rhs <- if (has_cov) paste0(" + ", paste(covariate_chrs, collapse = " + ")) else ""
   formula_str <- if (nzchar(fe_str)) {
-    paste0(outcome_chr, " ~ .sa_X | ", fe_str)
+    paste0(outcome_chr, " ~ .sa_X", cov_rhs, " | ", fe_str)
   } else {
-    paste0(outcome_chr, " ~ .sa_X")
+    paste0(outcome_chr, " ~ .sa_X", cov_rhs)
   }
 
   # Regression via the internal FE-OLS engine. Coefficient names keep the
@@ -154,18 +158,28 @@
   # so catt_df$col_name and the VCOV row names are unchanged.
   X_reg <- ind_mat
   colnames(X_reg) <- .mat_coef_names(".sa_X", col_names)
+  if (has_cov) {
+    for (cv in covariate_chrs) {
+      if (!cv %in% names(data)) stop("Covariate '", cv, "' not found in data.")
+    }
+    cov_mat <- as.matrix(data[, covariate_chrs, drop = FALSE])
+    storage.mode(cov_mat) <- "double"
+    X_reg <- cbind(X_reg, cov_mat)
+  }
 
+  w_vec   <- .resolve_weights_vec(weights, data)
   fe_vars <- .parse_fe_list(fe_str, data)
   cl_vals <- .resolve_cluster_vals(cluster, data)
 
   fit <- tryCatch({
     if (isFALSE(fe_vars) || isFALSE(cl_vals)) {
       data$.sa_X <- ind_mat
-      .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args)
+      .fit_fe_ols_formula(data, formula_str, cluster, vcov_type, vcov_args,
+                          weights = weights)
     } else {
       .fit_fe_ols(data[[outcome_chr]], X_reg, fe_list = fe_vars,
                   cluster_vals = cl_vals, vcov_type = vcov_type,
-                  vcov_args = vcov_args)
+                  vcov_args = vcov_args, weights = w_vec)
     }
   }, error = function(e)
     stop("SA regression failed: ", e$message,
@@ -240,7 +254,11 @@
   # Uses aggregate_iw_cpp (RcppArmadillo) for the quadratic-form VCOV step.
   cohort_sizes <- .sample_cohort_sizes(data, fit$used, timing_chr, unit_chr,
                                        cohorts)
-  es <- .aggregate_iw(catt_df, V_full, coef_names, cohort_sizes, min_t, max_t)
+  cell_w <- .cell_weight_sums(fit$used, timing_vec, data[[time_chr]], w_vec,
+                              catt_df$g, catt_df$g + catt_df$l)
+  iw <- .aggregate_iw(catt_df, V_full, coef_names, cohort_sizes, min_t, max_t,
+                      cell_weights = cell_w)
+  es <- iw$es
 
   if (nrow(es) == 0L)
     stop("SA event-study aggregation produced no estimates.")
@@ -251,6 +269,7 @@
 
   list(
     es           = es,
+    es_vcov      = iw$es_vcov,
     catt_df      = catt_df,
     cohorts      = cohorts,
     n_never      = n_never,
