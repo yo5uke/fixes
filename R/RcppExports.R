@@ -63,11 +63,24 @@ compute_att_gt_cpp <- function(unit_id, time_id, outcome, cohort, cohorts, all_t
 #'
 #' Computes ATT(g,t), analytic standard errors, and the n_units x n_gt
 #' unit-level influence function matrix for outcome regression ("reg"),
-#' inverse probability weighting ("ipw"), or doubly robust ("dr").
+#' inverse probability weighting ("ipw"), traditional doubly robust
+#' ("trad"), or improved doubly robust ("imp"; Sant'Anna & Zhao 2020).
 #'
 #' @noRd
-compute_cs_cov_cpp <- function(Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method) {
-    .Call(`_fixes_compute_cs_cov_cpp`, Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method)
+compute_cs_cov_cpp <- function(Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method, keep_ps = FALSE) {
+    .Call(`_fixes_compute_cs_cov_cpp`, Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method, keep_ps)
+}
+
+#' Sant'Anna & Zhao (2020) two-period panel DR-DID estimator in C++
+#'
+#' Computes the ATT, analytic standard error, influence function, and
+#' per-unit propensity score on a balanced two-period panel for improved DR
+#' ("imp"), traditional DR ("trad"), outcome regression ("reg"), or
+#' standardized IPW ("ipw").
+#'
+#' @noRd
+compute_dr_did_panel_cpp <- function(y0, y1, D, X, est_method, weights = NULL) {
+    .Call(`_fixes_compute_dr_did_panel_cpp`, y0, y1, D, X, est_method, weights)
 }
 
 #' Build covariate-interaction matrix with group-level demeaning

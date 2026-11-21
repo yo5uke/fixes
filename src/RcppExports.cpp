@@ -64,8 +64,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // compute_cs_cov_cpp
-Rcpp::List compute_cs_cov_cpp(Rcpp::NumericMatrix Y_mat, Rcpp::NumericVector unit_timing, Rcpp::NumericVector cohorts, Rcpp::NumericVector all_times, Rcpp::List X_base_list, std::string control_group, int anticipation, std::string est_method);
-RcppExport SEXP _fixes_compute_cs_cov_cpp(SEXP Y_matSEXP, SEXP unit_timingSEXP, SEXP cohortsSEXP, SEXP all_timesSEXP, SEXP X_base_listSEXP, SEXP control_groupSEXP, SEXP anticipationSEXP, SEXP est_methodSEXP) {
+Rcpp::List compute_cs_cov_cpp(Rcpp::NumericMatrix Y_mat, Rcpp::NumericVector unit_timing, Rcpp::NumericVector cohorts, Rcpp::NumericVector all_times, Rcpp::List X_base_list, std::string control_group, int anticipation, std::string est_method, bool keep_ps);
+RcppExport SEXP _fixes_compute_cs_cov_cpp(SEXP Y_matSEXP, SEXP unit_timingSEXP, SEXP cohortsSEXP, SEXP all_timesSEXP, SEXP X_base_listSEXP, SEXP control_groupSEXP, SEXP anticipationSEXP, SEXP est_methodSEXP, SEXP keep_psSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -77,7 +77,24 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type control_group(control_groupSEXP);
     Rcpp::traits::input_parameter< int >::type anticipation(anticipationSEXP);
     Rcpp::traits::input_parameter< std::string >::type est_method(est_methodSEXP);
-    rcpp_result_gen = Rcpp::wrap(compute_cs_cov_cpp(Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method));
+    Rcpp::traits::input_parameter< bool >::type keep_ps(keep_psSEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_cs_cov_cpp(Y_mat, unit_timing, cohorts, all_times, X_base_list, control_group, anticipation, est_method, keep_ps));
+    return rcpp_result_gen;
+END_RCPP
+}
+// compute_dr_did_panel_cpp
+Rcpp::List compute_dr_did_panel_cpp(Rcpp::NumericVector y0, Rcpp::NumericVector y1, Rcpp::NumericVector D, Rcpp::NumericMatrix X, std::string est_method, Rcpp::Nullable<Rcpp::NumericVector> weights);
+RcppExport SEXP _fixes_compute_dr_did_panel_cpp(SEXP y0SEXP, SEXP y1SEXP, SEXP DSEXP, SEXP XSEXP, SEXP est_methodSEXP, SEXP weightsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type y0(y0SEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type y1(y1SEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type D(DSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type X(XSEXP);
+    Rcpp::traits::input_parameter< std::string >::type est_method(est_methodSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type weights(weightsSEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_dr_did_panel_cpp(y0, y1, D, X, est_method, weights));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -311,7 +328,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fixes_bootstrap_cs_cpp", (DL_FUNC) &_fixes_bootstrap_cs_cpp, 4},
     {"_fixes_compute_psi_cs_cpp", (DL_FUNC) &_fixes_compute_psi_cs_cpp, 10},
     {"_fixes_compute_att_gt_cpp", (DL_FUNC) &_fixes_compute_att_gt_cpp, 8},
-    {"_fixes_compute_cs_cov_cpp", (DL_FUNC) &_fixes_compute_cs_cov_cpp, 8},
+    {"_fixes_compute_cs_cov_cpp", (DL_FUNC) &_fixes_compute_cs_cov_cpp, 9},
+    {"_fixes_compute_dr_did_panel_cpp", (DL_FUNC) &_fixes_compute_dr_did_panel_cpp, 6},
     {"_fixes_build_cov_interactions_cpp", (DL_FUNC) &_fixes_build_cov_interactions_cpp, 4},
     {"_fixes_demean_kway_cpp", (DL_FUNC) &_fixes_demean_kway_cpp, 8},
     {"_fixes_chol_seq_drop_cpp", (DL_FUNC) &_fixes_chol_seq_drop_cpp, 3},

@@ -293,8 +293,17 @@
 #' @param anticipation For `estimator = "cs"`: number of anticipation periods
 #'   before treatment (non-negative integer, default `0L`).
 #' @param est_method For `estimator = "cs"` with covariates: estimation method,
-#'   `"dr"` (doubly robust, default), `"reg"` (outcome regression), or `"ipw"`
-#'   (inverse probability weighting). Ignored when no covariates are supplied.
+#'   `"trad"` (traditional doubly robust, default; `"dr"` in the did package),
+#'   `"imp"` (Sant'Anna & Zhao 2020 improved doubly robust with IPT propensity
+#'   score), `"reg"` (outcome regression), or `"ipw"` (inverse probability
+#'   weighting), as in [did()]. Ignored when no covariates are supplied. As in
+#'   the DRDID package, propensity scores are
+#'   capped at `1 - 1e-6` and control units with a score of at least 0.995 get
+#'   zero weight; with `"imp"`, ATT(g,t) cells whose IPT fit does not converge
+#'   are dropped with a warning.
+#' @param keep_ps Logical; for `estimator = "cs"` with covariates and
+#'   `est_method` in `"trad"`, `"imp"`, or `"ipw"`, store per-unit propensity
+#'   scores so [propensity_scores()] can extract them. Default `FALSE`.
 #' @param conf_level Numeric vector of confidence levels (default `0.95`).
 #' @param vcov VCOV type: `"HC1"` (default), `"iid"`, or `"hetero"` on the
 #'   internal engine; other types are delegated to `fixest::vcov()` when the
@@ -348,7 +357,8 @@
 #' `unit_var`, `time_var`.
 #'
 #' @seealso [plot.es_result()] for visualization, [att()] for aggregated ATT
-#'   estimation, and [run_es()] for the deprecated verb-style predecessor.
+#'   estimation, [propensity_scores()] for extracting propensity scores, and
+#'   [run_es()] for the deprecated verb-style predecessor.
 #'
 #' @examples
 #' \dontrun{
@@ -387,7 +397,8 @@ event_study <- function(
   vcov_args = list(),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
-  est_method = c("dr", "reg", "ipw"),
+  est_method = c("trad", "imp", "reg", "ipw"),
+  keep_ps = FALSE,
   bootstrap = FALSE,
   boot_reps = 999L,
   boot_alpha = 0.05,
@@ -535,7 +546,8 @@ event_study <- function(
   estimator = c("twfe", "cs", "sa", "bjs", "twm", "flex"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
-  est_method = c("dr", "reg", "ipw"),
+  est_method = c("trad", "imp", "reg", "ipw"),
+  keep_ps = FALSE,
   conf_level = 0.95,
   vcov = "HC1",
   vcov_args = list(),
@@ -682,7 +694,7 @@ event_study <- function(
     }
 
     control_group <- match.arg(control_group)
-    est_method    <- match.arg(est_method)
+    est_method    <- .match_est_method(est_method)
     conf.level <- sort(unique(conf.level))
 
     cs_out <- .run_cs(
@@ -695,7 +707,8 @@ event_study <- function(
       control_group = control_group,
       conf.level = conf.level,
       covariates = covariates,
-      est_method = est_method
+      est_method = est_method,
+      keep_ps = isTRUE(keep_ps)
     )
 
     n_units <- cs_out$n_units
@@ -811,6 +824,9 @@ event_study <- function(
     class(tidy) <- c("es_result", "data.frame")
     attr(tidy, "estimator") <- estimator
     attr(tidy, "es_vcov")   <- .trim_es_vcov(cs_out$es_vcov, tidy)
+    if (!is.null(cs_out$propensity_scores)) {
+      attr(tidy, "propensity_scores") <- cs_out$propensity_scores
+    }
     return(tidy)
   }
 
@@ -1386,13 +1402,4 @@ event_study <- function(
   rownames(tidy) <- NULL
   class(tidy) <- c("es_result", "data.frame")
   tidy
-}
-
-.trim_es_vcov <- function(V, tidy) {
-  if (is.null(V)) return(NULL)
-  nb <- tidy[!tidy$is_baseline, , drop = FALSE]
-  if (nrow(nb) == 0L) return(NULL)
-  nm <- as.character(nb$relative_time)
-  if (!all(nm %in% rownames(V))) return(NULL)
-  V[nm, nm, drop = FALSE]
 }

@@ -70,11 +70,12 @@
                     control_group = c("nevertreated", "notyettreated"),
                     conf.level    = 0.95,
                     covariates    = NULL,
-                    est_method    = c("dr", "reg", "ipw"),
+                    est_method    = c("trad", "imp", "reg", "ipw"),
+                    keep_ps       = FALSE,
                     aggregate_es  = TRUE) {
 
   control_group <- match.arg(control_group)
-  est_method    <- match.arg(est_method)
+  est_method    <- .match_est_method(est_method)
   anticipation  <- as.integer(anticipation)
 
   # ---- Validate inputs -------------------------------------------------------
@@ -242,6 +243,7 @@
     att_gt          <- att_gt[order(att_gt$g, att_gt$t), ]
     rownames(att_gt) <- NULL
     psi_gt <- NULL
+    ps_df  <- NULL
   } else {
     n_cov <- length(cov_names)
     X_base_list <- vector("list", length(cohorts))
@@ -265,12 +267,26 @@
       X_base_list   = X_base_list,
       control_group = control_group,
       anticipation  = as.integer(anticipation),
-      est_method    = est_method
+      est_method    = est_method,
+      keep_ps       = isTRUE(keep_ps)
     )
 
     if (isTRUE(cpp_cov$overlap_warn)) {
       warning("Propensity score estimates near 1 detected in some (g,t) cells ",
               "(limited covariate overlap).", call. = FALSE)
+    }
+    if (length(cpp_cov$ipt_nc_g) > 0L) {
+      warning("IPT propensity-score fit did not converge for (g, t) = ",
+              paste0("(", cpp_cov$ipt_nc_g, ", ", cpp_cov$ipt_nc_t, ")",
+                     collapse = ", "),
+              "; these ATT(g,t) cells are dropped. ",
+              "Consider `est_method = \"trad\"`.", call. = FALSE)
+    }
+    if (length(cpp_cov$logit_nc_g) > 0L) {
+      warning("Propensity score estimation did not converge for (g, t) = ",
+              paste0("(", cpp_cov$logit_nc_g, ", ", cpp_cov$logit_nc_t, ")",
+                     collapse = ", "),
+              ".", call. = FALSE)
     }
 
     if (length(cpp_cov$g) == 0L)
@@ -290,6 +306,17 @@
     att_gt           <- att_gt[ord, , drop = FALSE]
     rownames(att_gt) <- NULL
     psi_gt           <- cpp_cov$psi[, ord, drop = FALSE]
+
+    ps_df <- if (isTRUE(keep_ps) && est_method != "reg" && length(cpp_cov$ps_val) > 0L) {
+      data.frame(
+        g                = cpp_cov$ps_g,
+        t                = cpp_cov$ps_t,
+        unit             = u_all[cpp_cov$ps_unit],
+        treated          = as.integer(cpp_cov$ps_treated),
+        propensity_score = cpp_cov$ps_val,
+        stringsAsFactors = FALSE
+      )
+    } else NULL
   }
 
   # ---- Diagnose silently-dropped cohorts ------------------------------------
@@ -393,8 +420,9 @@
     data            = data,
     cohort_sizes    = cohort_sizes,
     control_group   = control_group,
-    dropped_cohorts = dropped_cohorts,
-    if_ctx          = if_ctx,
-    psi_es          = psi_es
+    dropped_cohorts   = dropped_cohorts,
+    if_ctx            = if_ctx,
+    psi_es            = psi_es,
+    propensity_scores = ps_df
   )
 }

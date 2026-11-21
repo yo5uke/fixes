@@ -29,6 +29,18 @@
   }
 }
 
+# `est_method` of did(estimator = "dr") and the CS estimator. The names follow
+# DRDID; "dr", the did package's name for the traditional estimator, points
+# to "trad".
+.match_est_method <- function(est_method) {
+  if (identical(est_method, "dr")) {
+    stop("`est_method = \"dr\"` (the did package's name) is `\"trad\"` here, ",
+         "the traditional doubly robust estimator; `\"imp\"` is the improved ",
+         "doubly robust estimator.", call. = FALSE)
+  }
+  match.arg(est_method, c("trad", "imp", "reg", "ipw"))
+}
+
 # Covariates of a one-sided formula as columns of `data`, for the TWM and FLEX
 # backends, which address covariates by column name. Numeric and logical
 # columns are used as they are; any other term (`log(x)`, `factor(r)`,

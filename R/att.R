@@ -168,8 +168,17 @@
 #' @param anticipation For `estimator = "cs"`: number of anticipation periods
 #'   before treatment (non-negative integer, default `0L`).
 #' @param est_method For `estimator = "cs"` with covariates: estimation method,
-#'   `"dr"` (doubly robust, default), `"reg"` (outcome regression), or `"ipw"`
-#'   (inverse probability weighting). Ignored when no covariates are supplied.
+#'   `"trad"` (traditional doubly robust, default; `"dr"` in the did package),
+#'   `"imp"` (Sant'Anna & Zhao 2020 improved doubly robust with IPT propensity
+#'   score), `"reg"` (outcome regression), or `"ipw"` (inverse probability
+#'   weighting), as in [did()]. Ignored when no covariates are supplied. As in
+#'   the DRDID package, propensity scores are
+#'   capped at `1 - 1e-6` and control units with a score of at least 0.995 get
+#'   zero weight; with `"imp"`, ATT(g,t) cells whose IPT fit does not converge
+#'   are dropped with a warning.
+#' @param keep_ps Logical; for `estimator = "cs"` with covariates and
+#'   `est_method` in `"trad"`, `"imp"`, or `"ipw"`, store per-unit propensity
+#'   scores so [propensity_scores()] can extract them. Default `FALSE`.
 #' @param cluster For `estimator = "bjs"`: clustering specification (a
 #'   one-sided formula like `~ grp` or a single character column name); defaults
 #'   to clustering by `unit`. Ignored with a warning when `estimator = "cs"`.
@@ -200,8 +209,9 @@
 #' (CS only), `att_gt` (CS raw ATT(g,t) table), `tau_it` (BJS unit-time
 #' effects table).
 #'
-#' @seealso [event_study()] for event-study (dynamic) estimates, and
-#'   [calc_att()] for the deprecated verb-style predecessor.
+#' @seealso [event_study()] for event-study (dynamic) estimates,
+#'   [propensity_scores()] for extracting propensity scores, and [calc_att()]
+#'   for the deprecated verb-style predecessor.
 #'
 #' @examples
 #' \dontrun{
@@ -224,7 +234,8 @@ att <- function(
   aggregation   = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation  = 0L,
-  est_method    = c("dr", "reg", "ipw"),
+  est_method    = c("trad", "imp", "reg", "ipw"),
+  keep_ps       = FALSE,
   cluster       = NULL,
   conf_level    = 0.95,
   interval      = 1,
@@ -291,7 +302,8 @@ att <- function(
   aggregation = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation  = 0L,
-  est_method    = c("dr", "reg", "ipw"),
+  est_method    = c("trad", "imp", "reg", "ipw"),
+  keep_ps       = FALSE,
   conf_level    = 0.95,
   interval   = 1,
   time_transform = FALSE,
@@ -301,7 +313,7 @@ att <- function(
   estimator     <- match.arg(estimator)
   aggregation   <- match.arg(aggregation)
   control_group <- match.arg(control_group)
-  est_method    <- match.arg(est_method)
+  est_method    <- .match_est_method(est_method)
   conf.level    <- sort(unique(conf_level))
 
   stopifnot(is.data.frame(data))
@@ -343,6 +355,7 @@ att <- function(
     cs_out     <- .run_cs(data, outcome_chr, timing_chr, time_chr, unit_chr,
                           anticipation, control_group, conf.level,
                           covariates = covariates, est_method = est_method,
+                          keep_ps = isTRUE(keep_ps),
                           aggregate_es = FALSE)
     agg_df     <- .agg_cs(cs_out, aggregation, conf.level)
     n_obs      <- cs_out$n_obs
@@ -352,6 +365,9 @@ att <- function(
     extra_attrs <- list(control_group   = control_group,
                         att_gt          = cs_out$att_gt,
                         dropped_cohorts = cs_out$dropped_cohorts)
+    if (!is.null(cs_out$propensity_scores)) {
+      extra_attrs$propensity_scores <- cs_out$propensity_scores
+    }
 
   } else {  # bjs
     clustervars_chr <- if (!is.null(cluster)) {
