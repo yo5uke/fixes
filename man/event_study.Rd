@@ -21,7 +21,8 @@ event_study(
   vcov_args = list(),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
-  est_method = c("dr", "reg", "ipw"),
+  est_method = c("trad", "imp", "reg", "ipw"),
+  keep_ps = FALSE,
   bootstrap = FALSE,
   boot_reps = 999L,
   boot_alpha = 0.05,
@@ -97,8 +98,18 @@ optional \{fixest\} package is installed.}
 before treatment (non-negative integer, default \code{0L}).}
 
 \item{est_method}{For \code{estimator = "cs"} with covariates: estimation method,
-\code{"dr"} (doubly robust, default), \code{"reg"} (outcome regression), or \code{"ipw"}
-(inverse probability weighting). Ignored when no covariates are supplied.}
+\code{"trad"} (traditional doubly robust, default; \code{"dr"} in the did package),
+\code{"imp"} (Sant'Anna & Zhao 2020 improved doubly robust with IPT propensity
+score), \code{"reg"} (outcome regression), or \code{"ipw"} (inverse probability
+weighting), as in \code{\link[=did]{did()}}. Ignored when no covariates are supplied. As in
+the DRDID package, propensity scores are
+capped at \code{1 - 1e-6} and control units with a score of at least 0.995 get
+zero weight; with \code{"imp"}, ATT(g,t) cells whose IPT fit does not converge
+are dropped with a warning.}
+
+\item{keep_ps}{Logical; for \code{estimator = "cs"} with covariates and
+\code{est_method} in \code{"trad"}, \code{"imp"}, or \code{"ipw"}, store per-unit propensity
+scores so \code{\link[=propensity_scores]{propensity_scores()}} can extract them. Default \code{FALSE}.}
 
 \item{bootstrap}{Logical; if \code{TRUE} and \code{estimator = "cs"}, compute
 simultaneous confidence bands via the multiplier bootstrap (Algorithm 1,
@@ -309,5 +320,6 @@ res <- event_study(y ~ treated + x1 | id + year, data = df, time = year,
 }
 \seealso{
 \code{\link[=plot.es_result]{plot.es_result()}} for visualization, \code{\link[=att]{att()}} for aggregated ATT
-estimation, and \code{\link[=run_es]{run_es()}} for the deprecated verb-style predecessor.
+estimation, \code{\link[=propensity_scores]{propensity_scores()}} for extracting propensity scores, and
+\code{\link[=run_es]{run_es()}} for the deprecated verb-style predecessor.
 }

@@ -4,7 +4,7 @@
 
 ## 設計と API 契約
 
-- 動的効果は `event_study()`、集計 ATT は `att()`、単一の DiD 係数は `did()`。推定量は `estimator = "twfe"|"cs"|"sa"|"bjs"|"twm"|"flex"` で選ぶ。
+- 動的効果は `event_study()`、集計 ATT は `att()`、単一の DiD 係数は `did()`。推定量は `estimator = "twfe"|"cs"|"sa"|"bjs"|"twm"|"flex"` で選ぶ(`did()` は `"twfe"|"dr"`、`att()` は `"cs"|"bjs"`)。
 - 3 関数とも `f(formula, data, time, timing, unit, ...)` の形で、モデルは `outcome ~ treatment + covariates | fe` の式で受ける。このシグネチャは 2.0.0 まで変更しない。`formula` と `data` は順序が逆でも受け付ける。
 - 処置の指定は 3 通りで、`timing` の形で決まる(`R/formula_interface.R`)。
   - `timing` なし: 右辺の先頭は D(処置群かつ処置後 = 1)。ユニットごとの開始時点は D から求める。
@@ -23,12 +23,12 @@
 
 - fixest は Imports ではなく **Suggests**。既定の推定は内部の FE-OLS エンジン(`R/fe_ols.R`、`R/fe_solver.R`)で動く。
 - fixest が必要なのは、旧 `sunab` 経路、多元クラスタ、`vcov_args`、iid/hetero/HC1・一元クラスタ以外の vcov、`~ id^year` のような列以外の FE/クラスタ指定。新たに fixest に触れる箇所は `.require_fixest()` で囲む。
-- CI には fixest なしでビルドする job がある。fixest・did・didimputation・modelsummary・plotly を使うテストには `skip_if_not_installed()` が必須。
+- CI には fixest なしでビルドする job がある。fixest・did・DRDID・didimputation・modelsummary・plotly を使うテストには `skip_if_not_installed()` が必須。
 
 ## テスト
 
 - 推定量は参照実装との数値一致で担保する。許容誤差は `1e-6`(エンジン単体のオラクルは `1e-8`)。
-  TWFE/`did()` は `fixest::feols`、CS は `did::att_gt()`、SA は `fixest::sunab()`、BJS は `didimputation` と比べる。
+  TWFE/`did()` は `fixest::feols`、`did(estimator = "dr")` と CS の各セルは `DRDID` のパネル推定関数、CS は `did::att_gt()`、SA は `fixest::sunab()`、BJS は `didimputation` と比べる。
 - **新しい推定量はテストを先に書く。** 既存テストを壊さない。
 - 新旧 API の同値性は、`call` 属性を除いて `expect_identical` で検証する。formula と旧引数の同値性も同じ(`tests/testthat/test-formula.R`)。例外は、twfe で `timing` 列を使う場合。内部で作る処置群列の名前が `model_formula` に入るため、この属性も除いて比べる。
 - Rcpp 関数には R 実装との一致テストを付ける(浮動小数は `1e-12`、整数は `expect_identical`)。
@@ -41,12 +41,16 @@
 |---|---|
 | `sa` | Sun and Abraham (2021) |
 | `cs` | Callaway and Sant'Anna (2021) |
+| `did(estimator = "dr")`、`est_method = "imp"` | Sant'Anna and Zhao (2020)(参照実装 `DRDID`) |
 | `bjs` | Borusyak et al. (2024) |
 | `twm` | Woodridge (2025) |
 | `flex` | Deb et al. (2024) |
 | `honest_sensitivity()` | Rambachan and Roth (2023)(参照実装 `HonestDiD`) |
 
 - TWM の `trends = TRUE` は、単位 FE があると `d_g * t` が処置セル指標と代数的に共線になる。処置後セル(`s >= g`)だけを入れてトレンド列を足す(Wooldridge 2025, Sec. 8)。そのため出力は `relative_time >= 0` のみで、事前トレンド検定はできない。
+- `est_method` は `did(estimator = "dr")`・`att()`・`event_study()` で共通の `"trad"|"imp"|"reg"|"ipw"`(DRDID の名前)、既定は `"trad"`(`did::att_gt()` の既定 `"dr"` と同じ推定量)。`"dr"` は `"trad"` を案内するエラーにする。did と比べるテストでは `"trad"` を `"dr"` に読み替える。
+- 傾向スコアを使う手法(`trad`/`imp`/`ipw`)は DRDID に合わせ、スコアを `1 - 1e-6` で頭打ちにし、0.995 以上の対照ユニットのウェイトを 0 にする(論文の (3.1)–(3.5) にはない、参照実装側の処理)。`imp` の対照ウェイトは論文 (3.2) の自己正規化ではなく、`DRDID::drdid_imp_panel` と同じく `E_n[D]` で割る(trimming がなく IPT が最適点にあれば同値)。
+- `imp` の IF に一段目の推定項がないのは、IPT の一階条件が成り立つときだけ(Sant'Anna and Zhao 2020, (3.6))。IPT の収束は DRDID と同じ基準(Newton decrement と線形指数のステップがともに 1e-6 以下)で判定し、収束しなければ `did()` はエラー、CS はそのセルを警告付きで落とす(`did::att_gt()` と同じ扱い)。ロジットの傾向スコアは glm/fastglm と同じ規則(|η| > 30 で平均と重みを ε に固定、deviance の相対変化 < 1e-8、最大 100 回)で反復し、収束しなければ警告のみで推定は返す(DRDID と同じ)。
 - Rcpp は先にプロファイルし、推測で最適化しない。classic 経路の高速化は、R 側の簿記(整数のグループコード化)と、`[y | X]` の組み立て・残差・VCOV の meat・event-study 設計行列を作る C++ カーネル(`R/fe_ols.R` から呼ぶ)の両方で得た。エクスポートを足したら `Rcpp::compileAttributes()` を実行する。OpenMP カーネルはスレッド数によらずビット同一でなければならない。
 
 ## 既知の制約

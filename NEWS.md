@@ -35,10 +35,10 @@ warning) and return numerically identical results.
   a message reports the unit and time used; `print()` now shows them for
   every `es_result`, `did_result` and `att_result` (new `unit_var` /
   `time_var` attributes on `es_result` and `att_result`).
-- Formulas are checked against what each estimator supports: covariates stop
-  with an error for `"cs"`, `"sa"`, `"bjs"` and `att()` (the argument
-  interface ignores them silently). `"cs"`, `"bjs"` and `"flex"` accept unit
-  (group) and time fixed effects silently and warn about any others.
+- Every estimator, and `att()`, accepts covariates in the formula; for
+  `"cs"` they enter through `est_method`. `"cs"`, `"bjs"` and `"flex"`
+  accept unit (group) and time fixed effects silently and warn about any
+  others.
 - The argument interface (`outcome`, `treatment`, `fe`, `covariates`) keeps
   working in fixes 1.x with a deprecation warning that prints the
   equivalent formula call; fixes 2.0.0 is planned to accept only the
@@ -71,6 +71,32 @@ warning) and return numerically identical results.
   deprecation warning).
 - `es_result` objects gain `broom::tidy()` / `broom::glance()` methods and
   an `estimator` attribute (shown by `print()`).
+
+## Doubly robust DiD
+
+- `did(estimator = "dr")` estimates the Sant'Anna and Zhao (2020) doubly
+  robust DiD on a two-period panel. Results match `DRDID::drdid_panel()`,
+  `drdid_imp_panel()`, `reg_did_panel()` and `std_ipw_did_panel()`,
+  including sampling weights. Multi-period panels stop with an error pointing
+  to `att()`/`event_study()` with `estimator = "cs"`.
+- `did(estimator = "dr")`, `att()` and `event_study()` (`estimator = "cs"`
+  with covariates) share `est_method = "trad"` (traditional DR, the default),
+  `"imp"` (improved DR: inverse probability tilting and a weighted outcome
+  regression), `"reg"` and `"ipw"`, with the DRDID names. The traditional
+  estimator is `est_method = "dr"` in the did package; `"dr"` here stops with
+  an error pointing to `"trad"`.
+- `propensity_scores()` returns the fitted per-unit propensity scores of
+  `did(estimator = "dr")`, and of CS results estimated with `keep_ps = TRUE`.
+- Propensity-score methods follow DRDID: scores are capped at `1 - 1e-6` and
+  control units with a score of at least 0.995 get zero weight, so CS results
+  also match `did::att_gt()` under limited overlap.
+- With `est_method = "imp"`, an IPT fit that does not converge stops
+  `did()` with an error (as in DRDID); the CS estimator drops the affected
+  ATT(g,t) cells with a warning (as `did::att_gt()` does).
+- A logit propensity-score fit (`"trad"`, `"ipw"`) that does not
+  converge by the glm criterion (relative deviance change below `1e-8`
+  within 100 iterations, as in DRDID) now gives a warning; the estimate is
+  still returned, as in DRDID. Perfect separation is not reported, as in glm.
 
 ## Plotting via plot()
 

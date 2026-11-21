@@ -2,7 +2,7 @@
 % Please edit documentation in R/did.R
 \name{did}
 \alias{did}
-\title{Basic two-way fixed-effects DiD estimation}
+\title{Basic or Doubly Robust DiD estimation}
 \usage{
 did(
   formula,
@@ -10,6 +10,8 @@ did(
   time = NULL,
   timing = NULL,
   unit = NULL,
+  estimator = c("twfe", "dr"),
+  est_method = c("trad", "imp", "reg", "ipw"),
   cluster = NULL,
   weights = NULL,
   conf_level = 0.95,
@@ -33,33 +35,50 @@ timing column (see \strong{Description}). All variables must be columns of
 \item{data}{A data.frame (panel format). \code{formula} and \code{data} may come in
 either order.}
 
-\item{time}{Unquoted time variable. Required with \code{timing}; with plain
-fixed effects such as \verb{| id + year} it also lets \code{did()} report the
-unit (see \code{\link[=event_study]{event_study()}}, \strong{Panel identifiers}).}
+\item{time}{Unquoted time variable. Required with \code{timing} and with
+\code{estimator = "dr"}; with plain fixed effects such as \verb{| id + year} it
+also lets \code{did()} report the unit (see \code{\link[=event_study]{event_study()}}, \strong{Panel identifiers}).}
 
 \item{timing}{Treatment timing: an unquoted column giving each unit's
 first treatment period (\code{NA} = never treated), or a single numeric
 treatment date. Default \code{NULL}: the formula holds D.}
 
-\item{unit}{Unquoted unit identifier column (for metadata). Taken from
-the fixed effects when possible.}
+\item{unit}{Unquoted unit identifier column. Taken from the fixed effects
+when possible; required when \code{estimator = "dr"}.}
+
+\item{estimator}{Estimation strategy: \code{"twfe"} (default, two-way fixed
+effects OLS) or \code{"dr"} (Sant'Anna & Zhao 2020 panel Doubly Robust DiD for
+2-period panels).}
+
+\item{est_method}{For \code{estimator = "dr"}: estimation method, \code{"trad"}
+(traditional DR with a logit propensity score, default), \code{"imp"}
+(improved locally efficient DR using IPT propensity scores and
+odds-weighted outcome regression), \code{"reg"} (outcome regression), or
+\code{"ipw"} (standardized inverse probability weighting). The same names are
+used by \code{\link[=att]{att()}} and \code{\link[=event_study]{event_study()}}. Ignored when \code{estimator = "twfe"}. As in the DRDID package,
+propensity scores are capped at \code{1 - 1e-6} and control units with a score
+of at least 0.995 get zero weight; with \code{"imp"}, an IPT fit that does not
+converge is an error.}
 
 \item{cluster}{Clustering specification: a one-sided formula (\code{~ id}),
 a single character column name, or a numeric vector of length \code{nrow(data)}.
 When \code{cluster} is specified and \code{vcov} is the default \code{"HC1"}, cluster-robust
-standard errors are used automatically.}
+standard errors are used automatically. Ignored with a warning when
+\code{estimator = "dr"}.}
 
-\item{weights}{Observation weights (formula or numeric vector).}
+\item{weights}{Observation weights (formula or numeric vector). For
+\code{estimator = "dr"}, unit-level pre-treatment weights are used.}
 
 \item{conf_level}{Confidence level(s) for CIs.  Scalar or vector
 (e.g., \code{c(0.90, 0.95)}).  Default \code{0.95}.}
 
 \item{vcov}{VCOV type string passed to \code{fixest::vcov()}.  Default \code{"HC1"}.
 Ignored in favour of cluster-robust SE when \code{cluster} is supplied and
-\code{vcov} is left at its default \code{"HC1"}.}
+\code{vcov} is left at its default \code{"HC1"}, and ignored with a warning when
+\code{estimator = "dr"}.}
 
 \item{vcov_args}{Named list of additional arguments forwarded to
-\code{fixest::vcov()}.}
+\code{fixest::vcov()}. Ignored with a warning when \code{estimator = "dr"}.}
 
 \item{outcome, treatment, fe, covariates}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
 The model arguments of the older interface: the unquoted outcome, the
@@ -93,9 +112,10 @@ rows with missing values are dropped), matching \code{broom::glance()}, not
 \code{nrow(data)}.
 }
 \description{
-Estimates a classic difference-in-differences model of the form
-\verb{outcome ~ D + covariates | fixed effects} on the package's internal
-fixed-effects OLS engine (numerically equivalent to \code{fixest::feols()}).
+Estimates a difference-in-differences model of the form
+\verb{outcome ~ D + covariates | fixed effects} using either classic two-way
+fixed-effects OLS (\code{estimator = "twfe"}, default) or Sant'Anna & Zhao
+(2020) panel Doubly Robust DiD (\code{estimator = "dr"}).
 The formula is the one used by \code{\link[=event_study]{event_study()}} and \code{\link[=att]{att()}}: swap the
 function to get effects by event time or aggregated staggered ATTs.
 
@@ -114,8 +134,10 @@ did(y ~ treated | id + year, data = df, time = year, timing = 2006)
 }\if{html}{\out{</div>}}
 
 With \code{timing}, \code{D = treatment * (time >= timing)} is built internally.
-For staggered-adoption settings see \code{\link[=att]{att()}}; for dynamic effects see
-\code{\link[=event_study]{event_study()}}.
+With \code{estimator = "dr"}, the sample must be a 2-period panel (pre-treatment
+and post-treatment); for multi-period or staggered panels use \code{\link[=att]{att()}} or
+\code{\link[=event_study]{event_study()}} with \code{estimator = "cs"}. Per-unit propensity scores from
+\code{estimator = "dr"} can be retrieved via \code{\link[=propensity_scores]{propensity_scores()}}.
 }
 \examples{
 \dontrun{
@@ -136,5 +158,6 @@ broom::glance(res)
 }
 \seealso{
 \code{\link[=event_study]{event_study()}} for dynamic effects, \code{\link[=att]{att()}} for staggered
-aggregation, and \code{\link[=run_did]{run_did()}} for the deprecated verb-style predecessor.
+aggregation, \code{\link[=propensity_scores]{propensity_scores()}} for DR-DID propensity scores, and
+\code{\link[=run_did]{run_did()}} for the deprecated verb-style predecessor.
 }

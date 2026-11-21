@@ -14,7 +14,8 @@ att(
   aggregation = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
-  est_method = c("dr", "reg", "ipw"),
+  est_method = c("trad", "imp", "reg", "ipw"),
+  keep_ps = FALSE,
   cluster = NULL,
   conf_level = 0.95,
   interval = 1,
@@ -58,8 +59,18 @@ per calendar time period).}
 before treatment (non-negative integer, default \code{0L}).}
 
 \item{est_method}{For \code{estimator = "cs"} with covariates: estimation method,
-\code{"dr"} (doubly robust, default), \code{"reg"} (outcome regression), or \code{"ipw"}
-(inverse probability weighting). Ignored when no covariates are supplied.}
+\code{"trad"} (traditional doubly robust, default; \code{"dr"} in the did package),
+\code{"imp"} (Sant'Anna & Zhao 2020 improved doubly robust with IPT propensity
+score), \code{"reg"} (outcome regression), or \code{"ipw"} (inverse probability
+weighting), as in \code{\link[=did]{did()}}. Ignored when no covariates are supplied. As in
+the DRDID package, propensity scores are
+capped at \code{1 - 1e-6} and control units with a score of at least 0.995 get
+zero weight; with \code{"imp"}, ATT(g,t) cells whose IPT fit does not converge
+are dropped with a warning.}
+
+\item{keep_ps}{Logical; for \code{estimator = "cs"} with covariates and
+\code{est_method} in \code{"trad"}, \code{"imp"}, or \code{"ipw"}, store per-unit propensity
+scores so \code{\link[=propensity_scores]{propensity_scores()}} can extract them. Default \code{FALSE}.}
 
 \item{cluster}{For \code{estimator = "bjs"}: clustering specification (a
 one-sided formula like \code{~ grp} or a single character column name); defaults
@@ -158,6 +169,7 @@ att(y ~ D | id + year, data = df, time = year,
 
 }
 \seealso{
-\code{\link[=event_study]{event_study()}} for event-study (dynamic) estimates, and
-\code{\link[=calc_att]{calc_att()}} for the deprecated verb-style predecessor.
+\code{\link[=event_study]{event_study()}} for event-study (dynamic) estimates,
+\code{\link[=propensity_scores]{propensity_scores()}} for extracting propensity scores, and \code{\link[=calc_att]{calc_att()}}
+for the deprecated verb-style predecessor.
 }
