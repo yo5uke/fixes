@@ -67,7 +67,7 @@ pure_r_cs_cov <- function(Y_mat, unit_timing, cohorts, all_times,
       n_sub <- length(D)
       w1 <- D / mean(D)
 
-      if (est_method %in% c("reg", "dr")) {
+      if (est_method %in% c("reg", "trad")) {
         Xc <- X[C == 1, , drop = FALSE]
         beta <- solve(crossprod(Xc), crossprod(Xc, dy[C == 1]))
         r <- dy - as.numeric(X %*% beta)
@@ -75,12 +75,14 @@ pure_r_cs_cov <- function(Y_mat, unit_timing, cohorts, all_times,
         r <- dy
       }
 
-      if (est_method %in% c("ipw", "dr")) {
+      if (est_method %in% c("ipw", "trad")) {
         ps <- stats::glm.fit(
           X, D, family = stats::binomial(),
           control = list(epsilon = 1e-14, maxit = 100L)
         )$fitted.values
-        w0_raw <- C * ps / (1 - ps)
+        ps <- pmin(ps, 1 - 1e-6)
+        trim <- ifelse(C == 1, ps < 0.995, TRUE)
+        w0_raw <- trim * C * ps / (1 - ps)
         w0 <- w0_raw / mean(w0_raw)
         H <- crossprod(X, X * (ps * (1 - ps))) / n_sub
       }
@@ -142,7 +144,7 @@ test_that("compute_cs_cov_cpp matches pure-R implementation within 1e-12", {
   })
 
   for (cg in c("nevertreated", "notyettreated")) {
-    for (m in c("dr", "reg", "ipw")) {
+    for (m in c("trad", "reg", "ipw")) {
       cpp <- fixes:::compute_cs_cov_cpp(Y_mat, unit_timing, cohorts, all_t,
                                         X_base_list, cg, 0L, m)
       ref <- pure_r_cs_cov(Y_mat, unit_timing, cohorts, all_t,
@@ -169,12 +171,13 @@ test_that("CS att() and event_study() with covariates match did package", {
 
   for (cg in c("nevertreated", "notyettreated")) {
     for (antic in c(0L, 1L)) {
-      for (m in c("dr", "reg", "ipw")) {
+      for (m in c("trad", "reg", "ipw")) {
+        did_m <- c(trad = "dr", reg = "reg", ipw = "ipw")[[m]]
         ref_gt <- suppressWarnings(did::att_gt(
           yname = "y", tname = "year", idname = "id", gname = "g",
           xformla = ~ x_const + x1 + x2, data = did_df,
           control_group = cg, anticipation = antic,
-          est_method = m, base_period = "universal",
+          est_method = did_m, base_period = "universal",
           bstrap = FALSE, cband = FALSE
         ))
 
@@ -197,7 +200,7 @@ test_that("CS att() and event_study() with covariates match did package", {
           }
         }
 
-        if (antic == 0L && m == "dr") {
+        if (antic == 0L && m == "trad") {
           ref_dyn <- did::aggte(ref_gt, type = "dynamic", bstrap = FALSE)
           es <- event_study(y ~ x_const + x1 + x2 | id + year, data = cov_df,
                             time = year, timing = g, estimator = "cs",
