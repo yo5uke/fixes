@@ -14,6 +14,8 @@ att(
   aggregation = c("simple", "by_cohort", "by_time"),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
+  est_method = c("dr", "reg", "ipw"),
+  cluster = NULL,
   conf_level = 0.95,
   interval = 1,
   time_transform = FALSE,
@@ -21,10 +23,12 @@ att(
 )
 }
 \arguments{
-\item{formula}{A model formula \verb{outcome ~ treatment | fixed effects}
+\item{formula}{A model formula \verb{outcome ~ treatment + covariates | fixed effects}
 (see \code{\link[=event_study]{event_study()}}). The fixed effects only serve to name the unit:
-both estimators absorb unit and time effects themselves, and neither
-takes covariates.}
+both estimators absorb unit and time effects themselves. Covariates may
+be expressions such as \code{log(x)} or \code{factor(region)}; for \code{"cs"} they are
+evaluated at each cohort's base period, and for \code{"bjs"} they are included
+in the untreated imputation regression.}
 
 \item{data}{A data.frame containing panel data. \code{formula} and \code{data} may
 come in either order.}
@@ -52,6 +56,14 @@ per calendar time period).}
 
 \item{anticipation}{For \code{estimator = "cs"}: number of anticipation periods
 before treatment (non-negative integer, default \code{0L}).}
+
+\item{est_method}{For \code{estimator = "cs"} with covariates: estimation method,
+\code{"dr"} (doubly robust, default), \code{"reg"} (outcome regression), or \code{"ipw"}
+(inverse probability weighting). Ignored when no covariates are supplied.}
+
+\item{cluster}{For \code{estimator = "bjs"}: clustering specification (a
+one-sided formula like \code{~ grp} or a single character column name); defaults
+to clustering by \code{unit}. Ignored with a warning when \code{estimator = "cs"}.}
 
 \item{conf_level}{Numeric confidence level(s) (default \code{0.95}). Multiple
 levels are supported, e.g., \code{c(0.90, 0.95)}.}

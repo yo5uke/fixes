@@ -22,10 +22,9 @@ honest_sensitivity(
 )
 }
 \arguments{
-\item{object}{An \code{es_result} from \code{\link[=event_study]{event_study()}} with
-\code{estimator = "twfe"} (which carries the event-study coefficient
-covariance).  Alternatively, supply \code{betahat} and \code{sigma} directly (see
-below) for any estimator.}
+\item{object}{An \code{es_result} from \code{\link[=event_study]{event_study()}} carrying an \code{es_vcov}
+attribute with at least one pre-treatment and one post-treatment
+coefficient. Alternatively, supply \code{betahat} and \code{sigma} directly.}
 
 \item{type}{Restriction family: \code{"relative_magnitude"} (default) or
 \code{"smoothness"}.}

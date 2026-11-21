@@ -21,12 +21,14 @@ event_study(
   vcov_args = list(),
   control_group = c("nevertreated", "notyettreated"),
   anticipation = 0L,
+  est_method = c("dr", "reg", "ipw"),
   bootstrap = FALSE,
   boot_reps = 999L,
   boot_alpha = 0.05,
   boot_seed = NULL,
   group = NULL,
   trends = FALSE,
+  pretrends = FALSE,
   interval = 1,
   time_transform = FALSE,
   rel_time = NULL,
@@ -94,6 +96,10 @@ optional \{fixest\} package is installed.}
 \item{anticipation}{For \code{estimator = "cs"}: number of anticipation periods
 before treatment (non-negative integer, default \code{0L}).}
 
+\item{est_method}{For \code{estimator = "cs"} with covariates: estimation method,
+\code{"dr"} (doubly robust, default), \code{"reg"} (outcome regression), or \code{"ipw"}
+(inverse probability weighting). Ignored when no covariates are supplied.}
+
 \item{bootstrap}{Logical; if \code{TRUE} and \code{estimator = "cs"}, compute
 simultaneous confidence bands via the multiplier bootstrap (Algorithm 1,
 Callaway and Sant'Anna 2021).  Adds \code{conf_low_sim} and
@@ -123,6 +129,12 @@ Procedure 5.1 regression (Wooldridge 2025, Section 8), allowing each
 cohort's counterfactual trend to deviate linearly from the common time
 trend.  Requires at least 2 pre-treatment periods per cohort.
 Default \code{FALSE}.}
+
+\item{pretrends}{Logical or negative integer vector; for \code{estimator = "bjs"}
+only. When \code{TRUE}, estimates pre-treatment period coefficients on
+untreated observations (Borusyak et al. 2024, Section 4.4) excluding
+\code{baseline}; when a negative integer vector (e.g. \code{-4:-2}), estimates those
+specific horizons. Default \code{FALSE}.}
 
 \item{interval}{Numeric spacing of the time variable (default \code{1}; ignored internally for Dates).}
 
@@ -262,9 +274,9 @@ identifiers of every result.
 \code{"twfe"}, \code{"sa"} and \code{"twm"} use the fixed effects as written. \code{"cs"},
 \code{"bjs"} and \code{"flex"} absorb the unit (group) and time effects themselves:
 those fixed effects are accepted silently, any others are ignored with a
-warning. Covariates are supported by \code{"twfe"}, \code{"twm"} and \code{"flex"}, and
-may be expressions such as \code{log(x)} or \code{factor(region)}; \code{"cs"}, \code{"sa"}
-and \code{"bjs"} stop with an error when the formula contains covariates.
+warning. Covariates are supported by all six estimators (\code{"twfe"}, \code{"cs"},
+\code{"sa"}, \code{"bjs"}, \code{"twm"}, and \code{"flex"}), and may be expressions such as
+\code{log(x)} or \code{factor(region)}.
 }
 
 \section{Key Features}{
